@@ -104,6 +104,18 @@ async def health():
     }
 
 
+@app.get("/readyz")
+async def readyz():
+    """Cloud Run startup probe target."""
+    return {"status": "ready"}
+
+
+@app.get("/healthz")
+async def healthz():
+    """Cloud Run liveness probe target."""
+    return {"status": "ok"}
+
+
 @app.websocket("/ws/call")
 async def handle_call(websocket: WebSocket):
     """Handle a Twilio Media Streams WebSocket connection.

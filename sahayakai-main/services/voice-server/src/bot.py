@@ -160,7 +160,15 @@ async def create_bot(
             ),
         )
 
-    # ── Transport: Twilio Media Streams via WebSocket ──
+    # RNNoise needs an optional native dep (pyrnnoise). If it is not installed,
+    # run without denoise rather than crashing the call mid-stream.
+    try:
+        audio_in_filter = RNNoiseFilter()
+    except Exception as _rnnoise_err:  # noqa: BLE001
+        logger.warning(f"RNNoise unavailable — running without denoise: {_rnnoise_err}")
+        audio_in_filter = None
+
+    # ── Transport: Media Streams via WebSocket ──
     # SmartTurn REMOVED — adds 1-3s of deliberation after silence.
     # VAD alone with stop_secs=0.6 is fast enough for phone calls.
     # (0.6s silence = user paused → send to LLM immediately)
@@ -170,7 +178,7 @@ async def create_bot(
             serializer=serializer,
             audio_in_enabled=True,
             audio_in_sample_rate=16000,
-            audio_in_filter=RNNoiseFilter(),  # Denoise phone audio — reduces echo/background noise
+            audio_in_filter=audio_in_filter,  # Denoise phone audio (None if unavailable)
             audio_out_enabled=True,
             audio_out_sample_rate=16000,
             vad_analyzer=SileroVADAnalyzer(
