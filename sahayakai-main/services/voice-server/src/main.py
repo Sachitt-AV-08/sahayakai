@@ -22,6 +22,12 @@ from src.bot import create_bot
 from src.persistence import fetch_call_context
 from src.call_store import CallStore
 from src.call_analyzer import analyze_call
+from src.vobiz import (
+    verify_stream_token,
+    fetch_context_firestore,
+    write_call_result_firestore,
+    hangup_vobiz_call,
+)
 
 app = FastAPI(title="SahayakAI Voice Server", version="0.1.0")
 config = load_config()
@@ -206,6 +212,138 @@ async def _post_call_cleanup(outreach_id: str, call_context: dict, cfg):
             )
     except Exception as e:
         logger.error(f"Fallback post-call cleanup error: {e}")
+
+
+@app.websocket("/telephony/vobiz/stream")
+async def handle_vobiz_call(websocket: WebSocket):
+    """Handle a Vobiz (Plivo-protocol) media stream.
+
+    The web app's answer webhook points Vobiz here with a signed URL:
+      wss://<sidecar>/telephony/vobiz/stream?t=<token>&cuid=<CallUUID>&lang=<lang>
+    Unlike Twilio, the outreachId is carried by the signed token (verified
+    against SAHAYAKAI_REQUEST_SIGNING_KEY), not by the stream 'start' event.
+    """
+    await websocket.accept()
+    qp = websocket.query_params
+    token = qp.get("t", "")
+    call_uuid = qp.get("cuid", "")
+
+    outreach_id = verify_stream_token(token, config.request_signing_key)
+    if not outreach_id:
+        logger.error("Vobiz stream rejected — bad or expired token")
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+    logger.info(f"Vobiz stream authorized: outreach={outreach_id}, cuid={call_uuid}")
+
+    # Load context. __test__ ids use the built-in scenarios; real ids read the
+    # outreach record straight from Firestore (no web internal key needed).
+    if outreach_id.startswith("__test__"):
+        call_context = _TEST_SCENARIOS.get(outreach_id, _TEST_SCENARIOS["__test__001"])
+    else:
+        call_context = await fetch_context_firestore(outreach_id, config.google_cloud_project)
+    if not call_context:
+        logger.error(f"Could not load context for outreach {outreach_id}")
+        await websocket.close(code=1011, reason="Failed to load call context")
+        return
+    call_context["id"] = outreach_id
+
+    # Plivo/Vobiz handshake — read the initial event(s) to get the stream id.
+    stream_id = await _wait_for_plivo_start(websocket)
+    if not stream_id:
+        logger.error("Vobiz stream: no streamId in handshake — closing")
+        await websocket.close(code=1011, reason="No streamId received")
+        return
+    logger.info(f"Vobiz stream started: streamId={stream_id}, outreach={outreach_id}")
+
+    # Plivo serializer. auto_hang_up is OFF: it would POST to Plivo's own REST
+    # host, but Vobiz lives at api.vobiz.ai — we end the leg ourselves below.
+    from pipecat.serializers.plivo import PlivoFrameSerializer
+
+    serializer = PlivoFrameSerializer(
+        stream_id=stream_id,
+        params=PlivoFrameSerializer.InputParams(
+            plivo_sample_rate=8000,
+            sample_rate=16000,
+            auto_hang_up=False,
+        ),
+    )
+
+    async def _on_call_end(transcript: list[dict], turns: int, insights: dict | None):
+        summary = _to_call_summary(insights) if insights else None
+        if not outreach_id.startswith("__test__"):
+            await write_call_result_firestore(
+                outreach_id, config.google_cloud_project, transcript, summary
+            )
+        await hangup_vobiz_call(call_uuid, config.vobiz_auth_id, config.vobiz_auth_token)
+
+    try:
+        task = await create_bot(
+            config,
+            call_context,
+            websocket,
+            stream_sid=stream_id,
+            call_sid=call_uuid,
+            call_store=call_store,
+            serializer=serializer,
+            on_call_end=_on_call_end,
+        )
+        logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
+        run_params = PipelineTaskParams(loop=asyncio.get_running_loop())
+        await task.run(run_params)
+    except WebSocketDisconnect:
+        logger.info("Vobiz stream disconnected")
+    except Exception as e:
+        logger.error(f"Vobiz bot pipeline error: {e}")
+        try:
+            await websocket.close(code=1011, reason="Internal error")
+        except Exception:
+            pass
+
+
+async def _wait_for_plivo_start(websocket: WebSocket, max_messages: int = 5) -> str:
+    """Read initial Plivo/Vobiz events and return the stream id.
+
+    Plivo sends a 'start' event carrying start.streamId (some deployments send a
+    'connected' event first). Any 'media' before 'start' is skipped. The raw
+    first frames are logged so a protocol difference surfaces on the first call.
+    """
+    for _ in range(max_messages):
+        try:
+            raw = await websocket.receive_text()
+        except Exception:
+            return ""
+        try:
+            msg = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        event = msg.get("event", "")
+        logger.debug(f"Vobiz handshake event={event!r}: {raw[:220]}")
+        if event == "start":
+            start = msg.get("start", {}) or {}
+            return (
+                start.get("streamId")
+                or start.get("stream_id")
+                or msg.get("streamId")
+                or msg.get("stream_id")
+                or ""
+            )
+    return ""
+
+
+def _to_call_summary(insights: dict) -> dict:
+    """Map post-call analysis insights onto the parent_outreach.callSummary shape
+    the Contact-Parent modal renders (src/types/attendance CallSummary)."""
+    follow_ups = insights.get("followUps") or []
+    return {
+        "parentResponse": insights.get("parentResponse") or insights.get("summary") or "",
+        "parentConcerns": insights.get("concerns", []),
+        "parentCommitments": insights.get("commitments", []),
+        "actionItemsForTeacher": insights.get("actionItems") or insights.get("actionItemsForTeacher") or [],
+        "guidanceGiven": insights.get("guidanceGiven", []),
+        "followUpNeeded": bool(follow_ups) or bool(insights.get("followUpNeeded")),
+        "followUpSuggestion": (follow_ups[0] if follow_ups else insights.get("followUpSuggestion", "")),
+        "parentSentiment": insights.get("parentSentiment", ""),
+    }
 
 
 async def _wait_for_twilio_start(

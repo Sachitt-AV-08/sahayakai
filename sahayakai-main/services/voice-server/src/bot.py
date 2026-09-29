@@ -107,6 +107,8 @@ async def create_bot(
     stream_sid: str,
     call_sid: str = "",
     call_store: CallStore | None = None,
+    serializer=None,
+    on_call_end=None,
 ) -> PipelineTask:
     """Create the streaming Pipecat pipeline for a parent call.
 
@@ -140,20 +142,23 @@ async def create_bot(
         greetings = get_greetings(lang_code)
         greeting_text = greetings["greeting"]
 
-    # ── Serializer: Twilio mu-law codec ──
+    # ── Serializer ──
+    # Provider-specific mu-law codec + call-control. The caller may pass one in
+    # (the Vobiz/Plivo path does); otherwise default to Twilio for back-compat.
     # auto_hang_up=True requires call_sid + Twilio creds so the serializer can
     # POST to the Twilio REST API to end the call when EndFrame fires.
-    serializer = TwilioFrameSerializer(
-        stream_sid=stream_sid,
-        call_sid=call_sid,
-        account_sid=config.twilio_account_sid,
-        auth_token=config.twilio_auth_token,
-        params=TwilioFrameSerializer.InputParams(
-            twilio_sample_rate=8000,
-            sample_rate=16000,  # Pipeline internal rate
-            auto_hang_up=bool(call_sid and config.twilio_account_sid and config.twilio_auth_token),
-        ),
-    )
+    if serializer is None:
+        serializer = TwilioFrameSerializer(
+            stream_sid=stream_sid,
+            call_sid=call_sid,
+            account_sid=config.twilio_account_sid,
+            auth_token=config.twilio_auth_token,
+            params=TwilioFrameSerializer.InputParams(
+                twilio_sample_rate=8000,
+                sample_rate=16000,  # Pipeline internal rate
+                auto_hang_up=bool(call_sid and config.twilio_account_sid and config.twilio_auth_token),
+            ),
+        )
 
     # ── Transport: Twilio Media Streams via WebSocket ──
     # SmartTurn REMOVED — adds 1-3s of deliberation after silence.
@@ -350,12 +355,13 @@ async def create_bot(
         )
 
         # Run post-call analysis (async, non-blocking)
-        if call_store and transcript:
+        insights = None
+        if transcript:
             try:
                 insights = await analyze_call(
                     call_context, transcript, api_key=config.google_api_key,
                 )
-                if insights:
+                if insights and call_store:
                     call_store.save_insights(outreach_id, insights)
                     parent_phone = call_context.get("parentPhone", "")
                     # Save structured concerns
@@ -376,5 +382,14 @@ async def create_bot(
                     )
             except Exception as e:
                 logger.error(f"Post-call analysis failed: {e}")
+
+        # Provider-specific finalisation. The Vobiz path uses this to write the
+        # transcript + summary to Firestore (for the modal) and to end the leg
+        # over Vobiz REST — the Twilio serializer hangs up on its own instead.
+        if on_call_end:
+            try:
+                await on_call_end(transcript, turns, insights)
+            except Exception as e:
+                logger.error(f"on_call_end hook failed: {e}")
 
     return task

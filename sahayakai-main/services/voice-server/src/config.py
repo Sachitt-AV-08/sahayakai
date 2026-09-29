@@ -14,6 +14,11 @@ class Config:
     port: int
     twilio_account_sid: str
     twilio_auth_token: str
+    # Vobiz media path
+    google_cloud_project: str
+    request_signing_key: str
+    vobiz_auth_id: str
+    vobiz_auth_token: str
 
 
 def load_config() -> Config:
@@ -32,4 +37,11 @@ def load_config() -> Config:
         port=int(os.environ.get("PORT", "8000")),
         twilio_account_sid=os.environ.get("TWILIO_ACCOUNT_SID", ""),
         twilio_auth_token=os.environ.get("TWILIO_AUTH_TOKEN", ""),
+        # Vobiz media path: context is read straight from Firestore
+        # (GOOGLE_CLOUD_PROJECT), the stream URL is verified with the same
+        # signing key the web app mints with, and the leg is ended over Vobiz REST.
+        google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+        request_signing_key=os.environ.get("SAHAYAKAI_REQUEST_SIGNING_KEY", ""),
+        vobiz_auth_id=os.environ.get("VOBIZ_AUTH_ID", ""),
+        vobiz_auth_token=os.environ.get("VOBIZ_AUTH_TOKEN", ""),
     )
