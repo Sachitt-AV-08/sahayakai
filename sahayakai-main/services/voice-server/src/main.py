@@ -15,7 +15,7 @@ import json
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from loguru import logger
-from pipecat.pipeline.task import PipelineTaskParams
+from pipecat.workers.runner import WorkerRunner
 
 from src.config import load_config
 from src.bot import create_bot
@@ -178,8 +178,14 @@ async def handle_call(websocket: WebSocket):
         task = await create_bot(config, call_context, websocket, stream_sid, call_sid=call_sid, call_store=call_store)
 
         logger.info(f"Bot pipeline started for outreach {outreach_id}")
-        run_params = PipelineTaskParams(loop=asyncio.get_running_loop())
-        await task.run(run_params)
+        # Pipecat 1.12 moved the event loop onto the runner and dropped the
+        # `loop` kwarg from the task params (PipelineTaskParams is now a bare
+        # alias of WorkerParams). A WorkerRunner owns the loop and runs the
+        # pipeline to its EndFrame; handle_sigint is off because this runs on a
+        # uvicorn worker loop, not the main thread, where signal handlers fail.
+        runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
+        await runner.add_workers(task)
+        await runner.run()
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -300,8 +306,14 @@ async def handle_vobiz_call(websocket: WebSocket):
             on_call_end=_on_call_end,
         )
         logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
-        run_params = PipelineTaskParams(loop=asyncio.get_running_loop())
-        await task.run(run_params)
+        # Pipecat 1.12 moved the event loop onto the runner and dropped the
+        # `loop` kwarg from the task params (PipelineTaskParams is now a bare
+        # alias of WorkerParams). A WorkerRunner owns the loop and runs the
+        # pipeline to its EndFrame; handle_sigint is off because this runs on a
+        # uvicorn worker loop, not the main thread, where signal handlers fail.
+        runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
+        await runner.add_workers(task)
+        await runner.run()
     except WebSocketDisconnect:
         logger.info("Vobiz stream disconnected")
     except Exception as e:
