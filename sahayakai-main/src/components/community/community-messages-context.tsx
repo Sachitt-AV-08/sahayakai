@@ -15,7 +15,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useLanguage } from "@/context/language-context";
 import { getUnifiedFeedAction } from "@/lib/api/groups";
-import { countNewerThan, newestTimestamp, pickTickerItems, type TickerItem } from "@/lib/community-feed-ticker";
+import { countNewerThan, newestTimestamp, pickTickerItems, standardTickerItems, type TickerItem } from "@/lib/community-feed-ticker";
 import type { FeedItem } from "@/types/community";
 
 const FEED_LIMIT = 20;
@@ -25,13 +25,17 @@ const SEEN_KEY = "sahayak.communityMessages.seenAt";
 export type CommunityFeedStatus = "idle" | "loading" | "ready" | "error";
 
 export interface CommunityMessagesState {
-  /** Community is for signed-in teachers; signed out there is no button or panel. */
+  /** Whether a teacher is signed in (their group posts load); signed out the panel shows standard messages. */
   signedIn: boolean;
   open: boolean;
   setOpen: (open: boolean) => void;
   toggle: () => void;
   status: CommunityFeedStatus;
   items: TickerItem[];
+  /** True when `items` are SahayakAI's standard messages (no group posts to show yet). */
+  standard: boolean;
+  /** The teacher's own group feed failed to load (the standard messages are shown meanwhile). */
+  loadError: boolean;
   offline: boolean;
   /** Posts newer than the last time the panel was opened. */
   newCount: number;
@@ -49,6 +53,22 @@ function readSeen(): number {
   }
 }
 
+const CLOSED_KEY = "sahayak.communityMessages.closedByUser";
+function readClosedByUser(): boolean {
+  try {
+    return localStorage.getItem(CLOSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeClosedByUser(closed: boolean) {
+  try {
+    localStorage.setItem(CLOSED_KEY, closed ? "1" : "0");
+  } catch {
+    // storage blocked: the panel just opens again next visit
+  }
+}
+
 function writeSeen(ms: number) {
   try {
     localStorage.setItem(SEEN_KEY, String(ms));
@@ -59,7 +79,7 @@ function writeSeen(ms: number) {
 
 export function CommunityMessagesProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const pathname = usePathname();
   const uid = user?.uid ?? null;
 
@@ -96,7 +116,6 @@ export function CommunityMessagesProvider({ children }: { children: React.ReactN
       requestId.current++;
       setFeed([]);
       setStatus("idle");
-      setOpenState(false);
       return;
     }
     load();
@@ -127,18 +146,32 @@ export function CommunityMessagesProvider({ children }: { children: React.ReactN
     setOpenState(false);
   }, [pathname]);
 
-  const items = useMemo(
+  // Real posts from the teacher's groups first. With none yet (new teacher, signed out,
+  // or a failed load) the panel scrolls SahayakAI's standard messages instead of
+  // sitting empty — they are labelled as SahayakAI's and carry no counts or times.
+  const feedItems = useMemo(
     () => pickTickerItems(feed, { viewerUid: uid, language }),
     [feed, uid, language],
   );
+  const standardItems = useMemo(() => standardTickerItems(t), [t]);
+  const showStandard = feedItems.length === 0 && status !== "loading";
+  const items = showStandard ? standardItems : feedItems;
 
   const setOpen = useCallback(
     (next: boolean) => {
       setOpenState(next);
+      writeClosedByUser(!next);
       if (next && uid && Date.now() - loadedAt.current > STALE_MS) load();
     },
     [uid, load],
   );
+
+  // On the home page the panel is part of the layout on wide screens (it sits beside
+  // VIDYA): open it there unless the teacher closed it before.
+  useEffect(() => {
+    if (pathname !== "/" || readClosedByUser()) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(min-width: 1280px)").matches) setOpenState(true);
+  }, [pathname]);
   const toggle = useCallback(() => setOpen(!open), [open, setOpen]);
 
   // Opening the panel marks what it shows as seen.
@@ -164,8 +197,8 @@ export function CommunityMessagesProvider({ children }: { children: React.ReactN
   const newCount = open ? 0 : countNewerThan(items, seenAt);
 
   const value = useMemo<CommunityMessagesState>(
-    () => ({ signedIn: !!uid, open, setOpen, toggle, status, items, offline, newCount, reload: load }),
-    [uid, open, setOpen, toggle, status, items, offline, newCount, load],
+    () => ({ signedIn: !!uid, open, setOpen, toggle, status: showStandard ? "ready" : status, items, standard: showStandard, loadError: status === "error", offline, newCount, reload: load }),
+    [uid, open, setOpen, toggle, status, items, showStandard, offline, newCount, load],
   );
 
   return <CommunityMessagesContext.Provider value={value}>{children}</CommunityMessagesContext.Provider>;

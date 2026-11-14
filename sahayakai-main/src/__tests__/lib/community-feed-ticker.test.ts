@@ -103,3 +103,28 @@ describe("unread helpers", () => {
 it("encodes ids in community links", () => {
   expect(communityPostHref("a b", "p/1")).toBe("/community?group=a+b&post=p%2F1");
 });
+
+describe("standardTickerItems (panel never sits empty)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { standardTickerItems } = require("@/lib/community-feed-ticker");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { COMMUNITY_PROMPTS } = require("@/data/community-prompts");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { SAMPLE_CONVERSATIONS } = require("@/data/community-sample-conversations");
+  const items = standardTickerItems();
+  it("includes every SahayakAI prompt and example, interleaved", () => {
+    expect(items).toHaveLength(COMMUNITY_PROMPTS.length + SAMPLE_CONVERSATIONS.length);
+    expect(items[0].key.startsWith("std-prompt-")).toBe(true);
+    expect(items[1].key.startsWith("std-example-")).toBe(true);
+  });
+  it("is labelled standard, with no counts or times and unique keys", () => {
+    for (const i of items) {
+      expect(i.standard).toBe(true);
+      expect([i.likes, i.replies, i.messages, i.createdAt]).toEqual([null, null, null, ""]);
+    }
+    expect(new Set(items.map((i: { key: string }) => i.key)).size).toBe(items.length);
+  });
+  it("translates through t()", () => {
+    expect(standardTickerItems((s: string) => `T:${s}`)[0].text.startsWith("T:")).toBe(true);
+  });
+});

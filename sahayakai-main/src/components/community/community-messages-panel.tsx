@@ -132,7 +132,7 @@ function MessageCard({ item, inert }: { item: TickerItem; inert?: boolean }) {
           </span>
         ) : null}
         <span className="ml-auto inline-flex items-center gap-1 font-medium text-primary opacity-80 group-hover/card:opacity-100">
-          {item.kind === "chat" ? t("Join the conversation") : t("Open post")}
+          {item.kind === "chat" || item.standard ? t("Join the conversation") : t("Open post")}
           <ArrowRight className="h-3 w-3" aria-hidden="true" />
         </span>
       </div>
@@ -247,7 +247,7 @@ export function CommunityMessagesPanel() {
     el.scrollTo({ top: target ? target.offsetTop : dir > 0 ? el.scrollHeight : 0, behavior: reducedMotion ? "auto" : "smooth" });
   }, [holdForHand, reducedMotion]);
 
-  if (!state || !open || !state.signedIn) return null;
+  if (!state || !open) return null;
 
   const { status, offline } = state;
   const loop = overflowing && count > 1;
@@ -341,6 +341,9 @@ export function CommunityMessagesPanel() {
         <MessagesSquare className="h-4 w-4 text-primary" aria-hidden="true" />
         <h2 id={headingId} className="flex-1 font-display text-sm font-semibold text-ink-900">
           {t("From the Community")}
+          {state.standard && (
+            <span className="block text-xs font-normal text-ink-500">{t("SahayakAI community prompts")}</span>
+          )}
         </h2>
         {loop && (
           <button
@@ -367,6 +370,14 @@ export function CommunityMessagesPanel() {
         </button>
       </header>
 
+      {state.loadError && !offline && (
+        <p className="flex items-center gap-2 bg-tint-subtle px-4 py-1.5 text-xs text-ink-600" role="status">
+          <span className="flex-1">{t("Couldn't load community messages.")}</span>
+          <button type="button" onClick={state.reload} className="focus-ring inline-flex items-center gap-1 rounded-pill px-2 py-0.5 font-medium text-primary hover:bg-tint-accent">
+            <RefreshCw className="h-3 w-3" aria-hidden="true" /> {t("Try again")}
+          </button>
+        </p>
+      )}
       {offline && count > 0 && (
         <p className="flex items-center gap-1.5 bg-tint-subtle px-4 py-1.5 text-xs text-ink-600">
           <WifiOff className="h-3 w-3" aria-hidden="true" /> {t("Offline — showing the last messages loaded.")}

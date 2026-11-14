@@ -15,7 +15,9 @@ import { COMMUNITY_MESSAGES_PANEL_ID } from "@/components/community/community-me
 export function MessagesHeaderButton() {
   const state = useCommunityMessages();
   const { t } = useLanguage();
-  if (!state?.signedIn) return null;
+  // Shown to everyone: signed out (or before any group posts) the panel scrolls
+  // SahayakAI's standard community messages.
+  if (!state) return null;
 
   const { open, toggle, newCount } = state;
   const label = newCount > 0

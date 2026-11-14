@@ -188,13 +188,14 @@ it("closes on Escape", async () => {
   expect(screen.queryByTestId("community-messages-panel")).not.toBeInTheDocument();
 });
 
-it("shows the empty state when the groups feed has no conversations", async () => {
+it("scrolls SahayakAI's standard messages when the groups feed has no conversations", async () => {
   mockFeed.mockResolvedValue([]);
   setup();
   await flush();
   fireEvent.click(screen.getByTestId("header-messages"));
-  expect(screen.getByText("No new conversations in your groups yet.")).toBeInTheDocument();
-  expect(screen.queryByTestId("community-message-card")).not.toBeInTheDocument();
+  expect(screen.getAllByText("SahayakAI community prompts").length).toBeGreaterThan(1); // header + prompt cards
+  expect(screen.getAllByTestId("community-message-card").length).toBeGreaterThan(5);
+  expect(screen.queryByText("No new conversations in your groups yet.")).not.toBeInTheDocument();
 });
 
 it("shows an error with retry when the feed fails", async () => {

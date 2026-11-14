@@ -12,6 +12,8 @@
 
 import type { FeedItem, PostType } from "@/types/community";
 import { excerpt } from "@/lib/community-highlights";
+import { COMMUNITY_PROMPTS, COMMUNITY_PROMPT_KIND_LABEL } from "@/data/community-prompts";
+import { SAMPLE_CONVERSATIONS } from "@/data/community-sample-conversations";
 
 export const TICKER_MAX_ITEMS = 12;
 export const TICKER_EXCERPT_CHARS = 320;
@@ -36,6 +38,55 @@ export interface TickerItem {
   /** Messages in a group chat highlight. */
   messages: number | null;
   href: string;
+  /** A SahayakAI standard message (prompt / example), not a real teacher's post. */
+  standard?: boolean;
+}
+
+/**
+ * The standard messages the floating panel scrolls through while the teacher's groups have
+ * nothing yet (or they are signed out): the SahayakAI community prompts and the example
+ * conversations, interleaved so neighbours differ. They carry no likes, counts or times, are
+ * labelled as SahayakAI's, and link to starting a post. `t` translates the English keys.
+ */
+export function standardTickerItems(t: (s: string) => string = (s) => s): TickerItem[] {
+  const prompts: TickerItem[] = COMMUNITY_PROMPTS.map((p) => ({
+    key: `std-prompt-${p.id}`,
+    kind: "post",
+    postType: p.postType ?? "share",
+    groupId: "",
+    groupName: t(COMMUNITY_PROMPT_KIND_LABEL[p.kind]),
+    authorName: t("SahayakAI community prompts"),
+    authorPhotoURL: null,
+    text: t(p.text),
+    createdAt: "",
+    likes: null,
+    replies: null,
+    messages: null,
+    href: "/community?compose=1",
+    standard: true,
+  }));
+  const examples: TickerItem[] = SAMPLE_CONVERSATIONS.map((c) => ({
+    key: `std-example-${c.id}`,
+    kind: "post",
+    postType: c.postType,
+    groupId: "",
+    groupName: `${t("Example")} · ${t(c.topic)}`,
+    authorName: t(c.persona),
+    authorPhotoURL: null,
+    text: c.reply ? `${t(c.text)}\n\n${t(c.reply.persona)}: ${t(c.reply.text)}` : t(c.text),
+    createdAt: "",
+    likes: null,
+    replies: null,
+    messages: null,
+    href: "/community",
+    standard: true,
+  }));
+  const out: TickerItem[] = [];
+  for (let i = 0; i < Math.max(prompts.length, examples.length); i++) {
+    if (prompts[i]) out.push(prompts[i]);
+    if (examples[i]) out.push(examples[i]);
+  }
+  return out;
 }
 
 /** Community page URL that opens a group and, given a post id, scrolls to that post. */
