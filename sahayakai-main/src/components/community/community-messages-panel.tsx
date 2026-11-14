@@ -143,6 +143,18 @@ function MessageCard({ item, inert }: { item: TickerItem; inert?: boolean }) {
 const iconButton =
   "focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-600 transition-colors duration-micro hover:bg-tint-subtle hover:text-ink-900 disabled:pointer-events-none disabled:opacity-40";
 
+/**
+ * The seamless-loop wrap for the auto-scrolling list (drawn twice). One loop is the distance
+ * from the first card to its copy: `loopAt - firstTop`, NOT `loopAt`, because the list has top
+ * padding. Subtracting `loopAt` made every wrap jump by that padding (12 px) — the visible
+ * "jumping text" in the floating panel.
+ */
+export function wrapLoopScroll(pos: number, loopAt: number, firstTop: number): number {
+  const period = loopAt - firstTop;
+  if (loopAt <= 0 || period <= 0) return pos;
+  return pos >= loopAt ? pos - period : pos;
+}
+
 export function CommunityMessagesPanel() {
   const state = useCommunityMessages();
   const { t } = useLanguage();
@@ -214,8 +226,8 @@ export function CommunityMessagesPanel() {
       last = now;
       if (Math.abs(el.scrollTop - pos) > 2) pos = el.scrollTop;
       pos += (SCROLL_PX_PER_SEC * dt) / 1000;
-      const loopAt = loopMarkRef.current?.offsetTop ?? 0;
-      if (loopAt > 0 && pos >= loopAt) pos -= loopAt;
+      const firstTop = el.querySelector<HTMLElement>("[data-card-top]")?.offsetTop ?? 0;
+      pos = wrapLoopScroll(pos, loopMarkRef.current?.offsetTop ?? 0, firstTop);
       el.scrollTop = pos;
       raf = requestAnimationFrame(step);
     });

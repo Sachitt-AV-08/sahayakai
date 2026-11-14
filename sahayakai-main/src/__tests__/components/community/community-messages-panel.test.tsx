@@ -10,7 +10,7 @@
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { CommunityMessagesProvider } from "@/components/community/community-messages-context";
-import { CommunityMessagesPanel, RESUME_AFTER_MS } from "@/components/community/community-messages-panel";
+import { CommunityMessagesPanel, RESUME_AFTER_MS, wrapLoopScroll } from "@/components/community/community-messages-panel";
 import { MessagesHeaderButton } from "@/components/community/messages-header-button";
 import type { FeedItem } from "@/types/community";
 
@@ -220,4 +220,20 @@ it("shows the offline state when offline with nothing loaded", async () => {
   await flush();
   fireEvent.click(screen.getByTestId("header-messages"));
   expect(screen.getByText("You're offline. Community messages will appear when you reconnect.")).toBeInTheDocument();
+});
+
+describe("wrapLoopScroll (seamless loop, no jump)", () => {
+  // List padding 12 px; first card at 12; its copy (loop mark) at 12 + 600 = 612.
+  it("wraps by one loop period (copy minus first card), keeping the same card under the eye", () => {
+    // At 612 the copy of card 1 is at the top edge; after the wrap card 1 itself must be there (12).
+    expect(wrapLoopScroll(612, 612, 12)).toBe(12);
+    expect(wrapLoopScroll(650.5, 612, 12)).toBeCloseTo(50.5);
+  });
+  it("does not wrap before the copy is reached", () => {
+    expect(wrapLoopScroll(611.9, 612, 12)).toBe(611.9);
+  });
+  it("is a no-op without a loop", () => {
+    expect(wrapLoopScroll(300, 0, 12)).toBe(300);
+    expect(wrapLoopScroll(300, 12, 12)).toBe(300);
+  });
 });
