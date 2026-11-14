@@ -25,12 +25,15 @@ describe('VIDYA colours and size follow the design system', () => {
 
     it('VIDYA on Home has one fixed size in every state', () => {
         const src = read('src/components/dashboard/dashboard-home.tsx');
-        expect(src).toMatch(/data-testid="vidya-home-live"[\s\S]{0,200}className="focus-ring relative h-40 w-40 shrink-0 rounded-pill md:h-52 md:w-52"/);
+        // The design-system orb (VidyaPresence) at the one fixed Home size.
+        expect(src).toMatch(/data-testid="vidya-home-live"[\s\S]{0,120}<VidyaPresence\s+size="compact"\s+className="h-40 w-40 shrink-0 md:h-52 md:w-52"/);
     });
 
-    it('VIDYA never moves when the messages panel opens or closes (wide-screen column always reserved)', () => {
+    it('VIDYA is centred; she moves aside ONLY while the messages panel is open', () => {
         const src = read('src/components/dashboard/dashboard-home.tsx');
-        expect(src).toMatch(/"xl:pr-\[384px\]",\n\s+messagesOpen && "pb-/);
-        expect(src).not.toMatch(/messagesOpen && "[^"]*xl:pr-/);
+        expect(src).toMatch(/messagesOpen && "[^"]*xl:pr-\[384px\]"/);
+        expect(src).not.toMatch(/^\s*"xl:pr-\[384px\]",/m);
+        // and the panel never opens by itself
+        expect(read('src/components/community/community-messages-context.tsx')).not.toMatch(/matchMedia/);
     });
 });

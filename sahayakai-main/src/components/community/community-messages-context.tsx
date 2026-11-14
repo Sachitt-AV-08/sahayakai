@@ -53,21 +53,6 @@ function readSeen(): number {
   }
 }
 
-const CLOSED_KEY = "sahayak.communityMessages.closedByUser";
-function readClosedByUser(): boolean {
-  try {
-    return localStorage.getItem(CLOSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-function writeClosedByUser(closed: boolean) {
-  try {
-    localStorage.setItem(CLOSED_KEY, closed ? "1" : "0");
-  } catch {
-    // storage blocked: the panel just opens again next visit
-  }
-}
 
 function writeSeen(ms: number) {
   try {
@@ -160,18 +145,13 @@ export function CommunityMessagesProvider({ children }: { children: React.ReactN
   const setOpen = useCallback(
     (next: boolean) => {
       setOpenState(next);
-      writeClosedByUser(!next);
       if (next && uid && Date.now() - loadedAt.current > STALE_MS) load();
     },
     [uid, load],
   );
 
-  // On the home page the panel is part of the layout on wide screens (it sits beside
-  // VIDYA): open it there unless the teacher closed it before.
-  useEffect(() => {
-    if (pathname !== "/" || readClosedByUser()) return;
-    if (typeof window !== "undefined" && window.matchMedia?.("(min-width: 1280px)").matches) setOpenState(true);
-  }, [pathname]);
+  // The panel opens only when the teacher opens it (top-bar Messages button): Home keeps
+  // VIDYA centred until then.
   const toggle = useCallback(() => setOpen(!open), [open, setOpen]);
 
   // Opening the panel marks what it shows as seen.
