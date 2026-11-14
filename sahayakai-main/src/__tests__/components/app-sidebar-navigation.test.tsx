@@ -132,9 +132,18 @@ describe('AppSidebar — information architecture', () => {
 
     it('keeps the teaching tools under Make', () => {
         render(<AppSidebar />);
-        for (const href of ['/lesson-plan', '/worksheet-wizard', '/quiz-generator', '/exam-paper', '/rubric-generator', '/instant-answer', '/attendance']) {
+        for (const href of ['/lesson-plan', '/worksheet-wizard', '/quiz-generator', '/exam-paper', '/rubric-generator', '/instant-answer']) {
             expect(sidebar().getAllByRole('link').some((a) => a.getAttribute('href') === href)).toBe(true);
         }
+    });
+
+    it('Attendance opens SamparkAI (the same place as the SamparkAI entry)', () => {
+        render(<AppSidebar />);
+        const attendance = sidebar().getAllByRole('link', { name: /Attendance/ });
+        const entry = screen.getAllByTestId('sampark-entry')[0].getAttribute('href');
+        expect(attendance.length).toBeGreaterThan(0);
+        for (const a of attendance) expect(a.getAttribute('href')).toBe(entry);
+        expect(entry).toMatch(/^\/sampark\//);
     });
 
     it('hides Labs and the internal dashboards from a teacher', () => {
@@ -156,8 +165,12 @@ describe('AppSidebar — information architecture', () => {
     // Class gate for "one SamparkAI entry, at the bottom": a second link from
     // any other section, or the entry moving above the teaching tools, fails.
     describe('the SamparkAI entry', () => {
+        // The branded SamparkAI entry. The Class › Attendance item also opens SamparkAI on purpose,
+        // and is checked on its own below, so it is not counted here.
         const samparkLinks = (root: HTMLElement) =>
-            [...root.querySelectorAll('a')].filter((a) => /sampark/i.test(a.getAttribute('href') ?? '') || /sampark/i.test(a.textContent ?? ''));
+            [...root.querySelectorAll('a')]
+                .filter((a) => !a.querySelector('[data-testicon="ClipboardList"]'))
+                .filter((a) => /sampark/i.test(a.getAttribute('href') ?? '') || /sampark/i.test(a.textContent ?? ''));
 
         it('appears exactly once in the sidebar and once in the rail, for every signed-in user', () => {
             render(<AppSidebar />);
@@ -184,7 +197,8 @@ describe('AppSidebar — information architecture', () => {
         it('opens the SamparkAI workspace entry (school picker) through the central URL helper', () => {
             render(<AppSidebar />);
             const hrefs = screen.getAllByTestId('sampark-entry').map((a) => a.getAttribute('href'));
-            expect(new Set(hrefs)).toEqual(new Set(['/sampark/workspace']));
+            // Through the calling-provider choice first (2026-11-09), which then opens the workspace.
+            expect(new Set(hrefs)).toEqual(new Set(['/sampark/choose-provider?next=%2Fsampark%2Fworkspace']));
         });
 
         it('goes to the configured SamparkAI subdomain as a full page load', () => {
@@ -193,23 +207,46 @@ describe('AppSidebar — information architecture', () => {
             try {
                 render(<AppSidebar />);
                 const hrefs = screen.getAllByTestId('sampark-entry').map((a) => a.getAttribute('href'));
-                expect(new Set(hrefs)).toEqual(new Set(['https://sampark.sahayakai.com/workspace']));
+                expect(new Set(hrefs)).toEqual(new Set(['https://sampark.sahayakai.com/choose-provider?next=%2Fworkspace']));
             } finally {
                 if (saved === undefined) delete process.env.NEXT_PUBLIC_SAMPARK_URL;
                 else process.env.NEXT_PUBLIC_SAMPARK_URL = saved;
             }
         });
 
-        it('sits in the footer, after the teaching and classroom navigation and before the account row', () => {
+        it('sits in the footer, after the teaching and classroom navigation', () => {
             render(<AppSidebar />);
             const aside = document.querySelector('aside.side-nav') as HTMLElement;
             const entry = aside.querySelector('.nav-full [data-testid="sampark-entry"]') as HTMLElement;
             const nav = aside.querySelector('nav') as HTMLElement;
-            const account = [...aside.querySelectorAll('.nav-full a')].find((a) => a.getAttribute('href') === '/my-profile' && !nav.contains(a));
             expect(nav.contains(entry)).toBe(false);
-            // DOCUMENT_POSITION_FOLLOWING (4): the entry comes after the nav, the account row after the entry.
+            // DOCUMENT_POSITION_FOLLOWING (4): the entry comes after the nav.
             expect(nav.compareDocumentPosition(entry) & 4).toBeTruthy();
-            expect(entry.compareDocumentPosition(account as Node) & 4).toBeTruthy();
+        });
+    });
+
+    // One account entry point (2026-11-10): the header avatar menu (AuthButton)
+    // holds profile, classes, settings and sign out. The sidebar keeps only the
+    // Profile destination in its nav — no footer account row, no settings gear.
+    describe('account', () => {
+        it('has no account row or settings gear outside the navigation, in either mode', () => {
+            render(<AppSidebar />);
+            const aside = document.querySelector('aside.side-nav') as HTMLElement;
+            const navs = [...aside.querySelectorAll('nav')];
+            const outsideNav = [...aside.querySelectorAll('a')].filter((a) => !navs.some((n) => n.contains(a)));
+            const hrefs = outsideNav.map((a) => a.getAttribute('href'));
+            expect(hrefs).not.toContain('/my-profile');
+            expect(hrefs).not.toContain('/settings');
+            expect(screen.queryByText('Profile and classes')).not.toBeInTheDocument();
+            expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument();
+        });
+
+        it('still offers the Profile destination in the navigation', () => {
+            render(<AppSidebar />);
+            const aside = document.querySelector('aside.side-nav') as HTMLElement;
+            const nav = aside.querySelector('.nav-full nav') ?? aside.querySelector('nav');
+            const profile = [...(nav as HTMLElement).querySelectorAll('a')].find((a) => a.getAttribute('href') === '/my-profile');
+            expect(profile).toBeTruthy();
         });
     });
 });

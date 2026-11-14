@@ -24,7 +24,6 @@ import {
   MessageCircle,
   PencilRuler,
   PenLine,
-  Settings,
   ShieldCheck,
   Terminal,
   User,
@@ -42,9 +41,8 @@ import { ProductSideNav, type NavBadge, type NavSection } from "@/components/she
 import { SahayakWordmark, SamparkMark } from "@/components/shell/brand"
 import { useNavAccess } from "@/components/shell/use-nav-access"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { samparkEntryPath, samparkUrl, isExternalUrl } from "@/lib/products"
+import { samparkEntryUrl, isExternalUrl } from "@/lib/products"
 import { pressVidyaEntry } from "@/lib/vidya-entry"
-import { cn } from "@/lib/utils"
 import type { UserProfile } from "@/types"
 
 /**
@@ -59,7 +57,8 @@ import type { UserProfile } from "@/types"
  *             internal dashboards only for staff / labsNav beta testers
  *   footer    the one SamparkAI entry (every signed-in user; it opens the
  *             SamparkAI workspace's school picker, and the SamparkAI APIs
- *             admit school admins only), then the teacher's account
+ *             admit school admins only). The account (profile, classes,
+ *             settings, sign out) lives in the header avatar menu only.
  *
  * Layout and states live in ProductSideNav (rail 768–1023px, sidebar from
  * 1024px, foldable). The phone uses the TabBar and this same sidebar inside
@@ -70,12 +69,6 @@ import type { UserProfile } from "@/types"
 function countBadge(count: number, label: string, tone: NavBadge["tone"], testId?: string): NavBadge | null {
   if (count <= 0) return null
   return { text: count > 9 ? "9+" : String(count), label, tone, testId }
-}
-
-function initialsOf(name: string | null | undefined): string {
-  const words = (name ?? "").trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return ""
-  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase()
 }
 
 interface AppSidebarProps {
@@ -96,7 +89,6 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
   const [isNewUser, setIsNewUser] = useState(false)
   const [spotlightsSeen, setSpotlightsSeen] = useState<string[]>([])
   const [sidebarUserId, setSidebarUserId] = useState<string | null>(null)
-  const [account, setAccount] = useState<{ name: string | null; photoURL: string | null }>({ name: null, photoURL: null })
   const access = useNavAccess(sidebarUserId)
 
   const handleSpotlightDismiss = useCallback((id: string) => {
@@ -127,20 +119,15 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
         setUnreadNotifications(0)
         setShowCommunityNew(false)
         setSidebarUserId(null)
-        setAccount({ name: null, photoURL: null })
         return
       }
 
       setSidebarUserId(user.uid)
-      setAccount({ name: user.displayName ?? null, photoURL: user.photoURL ?? null })
       getDoc(doc(db, "users", user.uid)).then((snap) => {
         const data = snap.data()
         setShowCommunityNew(data?.communityIntroState === 'ready')
         setIsNewUser(checkIsNewUser(data as Partial<UserProfile>))
         setSpotlightsSeen(data?.featureSpotlightsSeen ?? [])
-        if (typeof data?.displayName === "string" && data.displayName) {
-          setAccount((a) => ({ ...a, name: data.displayName }))
-        }
       }).catch(() => {})
 
       const convQ = query(
@@ -244,7 +231,8 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       label: t("Class"),
       tier: "secondary",
       items: [
-        { key: "attendance", label: t("Attendance"), shortLabel: t("Class"), icon: ClipboardList, href: "/attendance", active: starts("/attendance") },
+        // Attendance and parent calls live in SamparkAI: the same destination as the SamparkAI entry.
+        { key: "attendance", label: t("Attendance"), shortLabel: t("Class"), icon: ClipboardList, href: samparkEntryUrl(), active: starts("/attendance") },
       ],
     },
     {
@@ -252,7 +240,7 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       key: "training",
       tier: "secondary",
       items: [
-        { key: "teacher-training", label: t("Teacher Training"), shortLabel: t("Training"), icon: GraduationCap, href: "/teacher-training", active: starts("/teacher-training") },
+        { key: "teacher-training", label: t("AI Coach"), shortLabel: t("AI Coach"), icon: GraduationCap, href: "/teacher-training", active: starts("/teacher-training") },
       ],
     },
   ]
@@ -339,7 +327,7 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
   // configured SamparkAI origin (NEXT_PUBLIC_SAMPARK_URL, e.g.
   // https://sampark.sahayakai.com) or, unset, /sampark on this origin;
   // samparkEntryPath() opens the demo school on a demo deployment.
-  const samparkHref = samparkUrl(samparkEntryPath())
+  const samparkHref = samparkEntryUrl()
   // Returns the element itself (not a component) so TooltipTrigger asChild can
   // attach its ref and handlers to the <a>.
   const samparkLink = ({ className, children, label }: { className: string; children: React.ReactNode; label?: string }) =>
@@ -349,19 +337,10 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       <Link href={samparkHref} className={className} aria-label={label} onClick={onNavigate} data-testid="sampark-entry">{children}</Link>
     )
 
-  const initials = initialsOf(account.name)
-  const avatar = (
-    <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-pill bg-milk-400 font-display text-tile font-semibold text-ink-900">
-      {account.photoURL ? (
-        <img src={account.photoURL} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-      ) : initials ? initials : (
-        <User strokeWidth={1.7} className="h-4 w-4 text-ink-500" />
-      )}
-    </span>
-  )
-
   // The SamparkAI entry shows signed in or out (SamparkAI's workspace has its
-  // own sign-in gate); the account row only for a signed-in teacher.
+  // own sign-in gate). The teacher's account (profile, classes, settings,
+  // sign out) is not repeated here: its one entry is the header avatar menu
+  // (AuthButton), plus the Profile destination above.
   const footer = (mode: "full" | "rail") => {
     if (mode === "rail") {
       return (
@@ -385,11 +364,6 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {sidebarUserId && (
-            <Link href="/my-profile" onClick={onNavigate} aria-label={t("Profile")} className="focus-ring flex h-11 w-11 items-center justify-center rounded-pill">
-              {avatar}
-            </Link>
-          )}
         </div>
       )
     }
@@ -408,36 +382,6 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
             </>
           ),
         })}
-        {sidebarUserId && (
-          <div className="flex items-center gap-1">
-            <Link
-              href="/my-profile"
-              onClick={onNavigate}
-              className={cn(
-                "focus-ring flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-pill px-1.5 py-1 transition-colors duration-small ease-standard hover:bg-tint-subtle",
-              )}
-            >
-              {avatar}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-tile font-semibold leading-tight text-ink-900">{account.name ?? t("Your account")}</span>
-                <span className="block text-xs leading-tight text-ink-500">{t("Profile and classes")}</span>
-              </span>
-            </Link>
-            <Link
-              href="/settings"
-              onClick={onNavigate}
-              aria-label={t("Settings")}
-              title={t("Settings")}
-              aria-current={starts("/settings") ? "page" : undefined}
-              className={cn(
-                "focus-ring inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-pill transition-colors duration-small ease-standard",
-                starts("/settings") ? "bg-milk-400 text-saffron-600" : "text-ink-500 hover:bg-tint-subtle hover:text-ink-900",
-              )}
-            >
-              <Settings aria-hidden="true" strokeWidth={1.7} className="h-[18px] w-[18px]" />
-            </Link>
-          </div>
-        )}
       </div>
     )
   }
