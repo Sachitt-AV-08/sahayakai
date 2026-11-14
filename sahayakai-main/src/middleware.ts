@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, importX509, createRemoteJWKSet } from 'jose';
-import { CHOOSER_SEGMENT, needsProviderChoice, parseProviderChoice, PROVIDER_COOKIE, skipChooserTarget } from '@/lib/sampark/provider-choice';
+import { CHOOSER_SEGMENT, needsProviderChoice, parseProviderChoice, PROVIDER_COOKIE } from '@/lib/sampark/provider-choice';
 import {
     PROFILE_COMPLETE_COOKIE,
     verifyProfileCompleteCookie,
@@ -506,20 +506,10 @@ export async function middleware(request: NextRequest) {
     // comes back afterwards. Pages only; the APIs read the same cookie server-side.
     if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next') && !/\.[a-z0-9]+$/i.test(pathname)) {
         const samparkPath = samparkRewrite ? samparkRewrite.pathname : pathname;
-        // Already chose this browser session (and not an explicit "Switch"): go straight on
-        // instead of asking again. Built from the browser's own Host + scheme, so neither the
-        // dev port is dropped nor Cloud Run's internal :8080 leaks (see the Attendance redirect).
-        if (request.method === 'GET' && samparkPath === `${SAMPARK_PREFIX}/${CHOOSER_SEGMENT}`) {
-            const target = skipChooserTarget(
-                request.nextUrl.searchParams,
-                parseProviderChoice(request.cookies.get(PROVIDER_COOKIE)?.value),
-            );
-            if (target) {
-                const proto = request.headers.get('x-forwarded-proto')?.split(',')[0].trim() || request.nextUrl.protocol.replace(':', '');
-                const origin = host ? `${proto}://${host}` : request.nextUrl.origin;
-                return NextResponse.redirect(new URL(target, origin), 307);
-            }
-        }
+        // Entering SamparkAI from SahayakAI (sidebar, Attendance, command palette) always
+        // lands on the chooser page — ElevenLabs Calls or Vobiz Calls — even when a choice
+        // is already stored; the page marks the one "Used last". Deep links inside SamparkAI
+        // only go through it when no choice exists yet (below).
         if (needsProviderChoice(samparkPath) && !parseProviderChoice(request.cookies.get(PROVIDER_COOKIE)?.value)) {
             const chooser = request.nextUrl.clone();
             chooser.pathname = samparkRewrite ? `/${CHOOSER_SEGMENT}` : `${SAMPARK_PREFIX}/${CHOOSER_SEGMENT}`;

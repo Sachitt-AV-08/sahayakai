@@ -20,7 +20,6 @@ import {
     providerChoiceFromCookieHeader,
     PROVIDER_COOKIE,
     safeNext,
-    skipChooserTarget,
     switchProviderHref,
 } from '@/lib/sampark/provider-choice';
 import { createMemorySamparkRepo } from '@/lib/sampark/repo/memory';
@@ -68,23 +67,15 @@ describe('which pages need a provider choice', () => {
     });
 });
 
-describe('the chooser does not re-ask an answered question', () => {
-    const q = (s: string) => new URLSearchParams(s);
-    it('no stored choice → the chooser shows', () => {
-        expect(skipChooserTarget(q('next=%2Fsampark%2Fdemo%2Fteacher'), null)).toBeNull();
+describe('the provider page shows on every SahayakAI → SamparkAI entry', () => {
+    it('the middleware never skips the chooser page because a choice is stored', () => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const src: string = require('node:fs').readFileSync(require('node:path').join(process.cwd(), 'src/middleware.ts'), 'utf8');
+        expect(src).not.toMatch(/skipChooserTarget/);
+        expect(src).not.toMatch(/samparkPath === `\$\{SAMPARK_PREFIX\}\/\$\{CHOOSER_SEGMENT\}`/);
     });
-    it('stored choice → continue straight to next (query kept)', () => {
-        expect(skipChooserTarget(q('next=%2Fsampark%2Fdemo%2Fteacher%3Ffrom%3Dsahayak'), 'vobiz')).toBe('/sampark/demo/teacher?from=sahayak');
-    });
-    it('explicit Switch always shows the cards', () => {
-        expect(skipChooserTarget(q('next=%2Fsampark%2Fdemo&switch=1'), 'elevenlabs')).toBeNull();
+    it('Switch links point at the chooser and return here', () => {
         expect(switchProviderHref('/sampark/choose-provider', '/sampark/demo')).toBe('/sampark/choose-provider?next=%2Fsampark%2Fdemo&switch=1');
-    });
-    it('never redirects off-origin or back into the chooser', () => {
-        expect(skipChooserTarget(q('next=%2F%2Fevil.example'), 'vobiz')).toBeNull();
-        expect(skipChooserTarget(q('next=https%3A%2F%2Fevil.example'), 'vobiz')).toBeNull();
-        expect(skipChooserTarget(q('next=%2Fsampark%2Fchoose-provider%3Fnext%3D%2Fx'), 'vobiz')).toBeNull();
-        expect(skipChooserTarget(q(''), 'vobiz')).toBeNull();
     });
 });
 

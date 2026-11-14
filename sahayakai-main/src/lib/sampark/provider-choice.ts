@@ -51,24 +51,6 @@ export function safeNext(next: string | null | undefined, fallback: string): str
 /** Query flag that asks the chooser to show even when a choice is already stored ("Switch"). */
 export const SWITCH_PARAM = 'switch';
 
-/**
- * Entering SamparkAI again in the same browser session should not re-ask a question the
- * person already answered. When the chooser is opened with a stored choice and without an
- * explicit `?switch=1`, this returns the (safe, relative) path to continue to; otherwise null
- * and the chooser renders. Never returns the chooser itself, so it cannot loop.
- */
-export function skipChooserTarget(
-    search: URLSearchParams,
-    storedChoice: ProviderChoice | null,
-): string | null {
-    if (!storedChoice || search.has(SWITCH_PARAM)) return null;
-    const next = safeNext(search.get('next'), '');
-    if (!next) return null;
-    const nextPath = next.split('?')[0];
-    if (nextPath.endsWith(`/${CHOOSER_SEGMENT}`)) return null;
-    return next;
-}
-
 /** The chooser URL used by "Switch provider" links: always shows the cards. */
 export function switchProviderHref(chooserPath: string, here: string): string {
     return `${chooserPath}?next=${encodeURIComponent(here)}&${SWITCH_PARAM}=1`;
