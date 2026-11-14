@@ -549,7 +549,10 @@ const lessonPlanFlow = ai.defineFlow(
         });
 
         // BUG FIX #2: Audit materials consistency
-        try {
+        // LESSON_PLAN_MATERIALS_AUDIT=off (the local demo launcher sets it): skip this optional
+        // second model call. Locally it ran for up to ~2 min AFTER the 12 s cut-off, and a burst of
+        // plans left many of them running, which exhausted the model quota for every other tool.
+        if (process.env.LESSON_PLAN_MATERIALS_AUDIT !== 'off') try {
           // Time-boxed: the audit is an optional second model call. When it stalls (seen
           // locally: >40 s with no answer) it must not push the whole request past the
           // route's 60 s budget and throw away a plan that was already generated.

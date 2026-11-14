@@ -563,6 +563,9 @@ async function main() {
     // Demo speed (src/lib/demo-answer-cache.ts): an exact repeat of an earlier generation — every
     // on-screen template once warmed — is answered at once. Kept outside the repository.
     appEnv.SAHAYAK_DEMO_ANSWER_CACHE = 'true';
+    // The optional lesson-plan materials audit outlived its 12 s budget by minutes here and, in a
+    // burst, exhausted the model quota for every other tool. Off for the local demo.
+    appEnv.LESSON_PLAN_MATERIALS_AUDIT = 'off';
     appEnv.SAHAYAK_DEMO_ANSWER_CACHE_FILE = join(PERSIST_DIR, 'demo-answers.json');
     appEnv.SAMPARK_SARGVISION_ROSTER = 'true';
     delete appEnv.GOOGLE_APPLICATION_CREDENTIALS;
