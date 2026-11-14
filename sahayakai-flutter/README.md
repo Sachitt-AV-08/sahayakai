@@ -1,54 +1,31 @@
-# SahayakAI Flutter App (Phase T scaffolding)
+# sahayakai
 
-This is the offline-capable mobile app rebuild. Uses the Firebase AI Logic
-Dart SDK (`firebase_ai`). The intent is `useHybridInference: true` so
-Gemini Nano runs on-device when no connectivity. **As of `firebase_ai`
-2.3.0 (April 2026), the hybrid inference flag is not yet exposed by the
-public Dart SDK.** The wrapper at `lib/services/sahayakai_ai.dart` ships
-with the toggle wired through a constant (`_hybridInferenceAvailable`)
-and a clearly marked spot to flip the flag the day it lands.
+SahayakAI — native Android app (SARGVISION Intelligence)
 
-## Hybrid agents (Phase T)
+## Choosing a backend
 
-- instant-answer — runs on-device for cached topics, cloud for fresh.
-- vidya intent classifier — on-device for the 11-way classifier.
-- voice-to-text — on-device for short utterances, cloud for long.
+The app talks to the production API (`https://sahayakai.com`) by default. Point a
+build or run at another tier — UAT, a preview, or a local server — with a
+`--dart-define`, no code change needed:
 
-## Cloud-only agents (still hit sidecar)
-
-- All 9 routable flows (lesson-plan, quiz, etc.) — too complex for Nano.
-- Image gen (visual-aid, avatar) — too compute-heavy.
-
-## Setup
-
-1. `cd sahayakai-flutter && flutter pub get`
-2. `flutterfire configure --project=sahayakai-b4248` to wire the GCP
-   project and generate `firebase_options.dart`. (Requires the FlutterFire
-   CLI: `dart pub global activate flutterfire_cli`.)
-3. `flutter run` (Android emulator preferred for Nano support).
-
-## Migration plan
-
-- **Phase T.1** (this commit): scaffolding — 3 agents wired to the SDK,
-  hybrid toggle staged behind `_hybridInferenceAvailable`.
-- **Phase T.2**: parity tests — run a 100-prompt set on emulator,
-  compare on-device vs cloud results.
-- **Phase T.3**: rollout — flag-gated by feature flags, mirroring the
-  sidecar ramp pattern.
-
-## Project layout
-
+```bash
+flutter run        --dart-define=API_BASE_URL=https://<your-uat-host>
+flutter build apk  --dart-define=API_BASE_URL=https://<your-uat-host>
 ```
-sahayakai-flutter/
-  pubspec.yaml             firebase_core, firebase_app_check, firebase_ai,
-                           record, path_provider
-  lib/
-    main.dart              Firebase init + home shell
-    services/
-      sahayakai_ai.dart    GenerativeModel handles + hybrid toggle
-    screens/
-      instant_answer_screen.dart
-      vidya_classifier_screen.dart
-      voice_to_text_screen.dart
-  test/widget_test.dart    Phase T.1 placeholder
-```
+
+Omit the flag to use production. A trailing slash on the URL is trimmed
+automatically. See `lib/core/network/dio_config.dart`.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
+- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
