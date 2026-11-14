@@ -551,6 +551,10 @@ async function main() {
     // opens the demo school's role picker (principal Meera Ghosh / the teachers, Sargvision Class
     // under Anjali Rai) after the provider page — not the bare school workspace.
     appEnv.NEXT_PUBLIC_SAMPARK_DEMO_ENABLED = 'true';
+    // Demo speed (src/lib/demo-answer-cache.ts): an exact repeat of an earlier generation — every
+    // on-screen template once warmed — is answered at once. Kept outside the repository.
+    appEnv.SAHAYAK_DEMO_ANSWER_CACHE = 'true';
+    appEnv.SAHAYAK_DEMO_ANSWER_CACHE_FILE = join(PERSIST_DIR, 'demo-answers.json');
     appEnv.SAMPARK_SARGVISION_ROSTER = 'true';
     delete appEnv.GOOGLE_APPLICATION_CREDENTIALS;
     delete appEnv.FIREBASE_SERVICE_ACCOUNT_KEY;
