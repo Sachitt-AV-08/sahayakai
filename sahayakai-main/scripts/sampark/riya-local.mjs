@@ -547,6 +547,10 @@ async function main() {
     // --real-call: simulated calls only.
     appEnv.SAMPARK_FIRESTORE_DATABASE = 'sampark-nonprod';
     appEnv.SAMPARK_DEMO_ENABLED = 'true';
+    // The browser-side switch for the same demo: SahayakAI's SamparkAI entry (sidebar, Attendance)
+    // opens the demo school's role picker (principal Meera Ghosh / the teachers, Sargvision Class
+    // under Anjali Rai) after the provider page — not the bare school workspace.
+    appEnv.NEXT_PUBLIC_SAMPARK_DEMO_ENABLED = 'true';
     appEnv.SAMPARK_SARGVISION_ROSTER = 'true';
     delete appEnv.GOOGLE_APPLICATION_CREDENTIALS;
     delete appEnv.FIREBASE_SERVICE_ACCOUNT_KEY;

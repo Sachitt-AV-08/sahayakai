@@ -25,3 +25,10 @@ describe('riya-local launcher workflows', () => {
         for (const u of uses) expect(u).toBe('RIYA_ALL_PURPOSES');
     });
 });
+
+describe('riya-local launcher opens the demo school after the provider page', () => {
+    it('sets both the server and the browser demo flags', () => {
+        expect(SRC).toMatch(/appEnv\.SAMPARK_DEMO_ENABLED = 'true';/);
+        expect(SRC).toMatch(/appEnv\.NEXT_PUBLIC_SAMPARK_DEMO_ENABLED = 'true';/);
+    });
+});
