@@ -566,6 +566,9 @@ async function main() {
     // The optional lesson-plan materials audit outlived its 12 s budget by minutes here and, in a
     // burst, exhausted the model quota for every other tool. Off for the local demo.
     appEnv.LESSON_PLAN_MATERIALS_AUDIT = 'off';
+    // A demo clicks through many templates in minutes; the per-teacher limit (15 per 10 min) would
+    // block it. Development only (src/lib/safety.ts).
+    appEnv.NEXT_PUBLIC_SAHAYAK_RATE_LIMIT_PER_WINDOW = '200';
     appEnv.SAHAYAK_DEMO_ANSWER_CACHE_FILE = join(PERSIST_DIR, 'demo-answers.json');
     appEnv.SAMPARK_SARGVISION_ROSTER = 'true';
     delete appEnv.GOOGLE_APPLICATION_CREDENTIALS;
