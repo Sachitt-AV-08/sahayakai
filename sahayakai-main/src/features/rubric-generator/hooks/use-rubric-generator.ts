@@ -236,19 +236,9 @@ export function useRubricGenerator() {
             const normalisedLang = normaliseVidyaLanguage(languageParam);
             if (normalisedLang) form.setValue("language", normalisedLang, SET_OPTS);
             // ────────────────────────────────────────────────────────────────────
-            // A second deep link arriving inside these 300 ms would otherwise
-            // leave the first timer pending: both then fire against the form's
-            // newer values, so the second request generates twice and the first
-            // is dropped. Reachable because OmniOrb renders a compound request
-            // as one-shot chips (omni-orb.tsx:738-744) and survives the
-            // client-side navigation. Cancel any superseded timer here rather
-            // than in an effect cleanup — the effect re-runs on `form`/`toast`
-            // identity and the per-query guard then declines to reschedule, so
-            // a blanket cleanup cancels the auto-submit outright.
+            // Pre-fill ONLY. Generation starts when the teacher presses "Generate Rubric":
+            // they may still want to change the criteria, grade or language first.
             clearTimeout(autoSubmitTimerRef.current);
-            autoSubmitTimerRef.current = setTimeout(() => {
-                form.handleSubmit(onSubmit)();
-            }, 300);
         }
          
     }, [user, searchParams, form, toast]);

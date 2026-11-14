@@ -23,8 +23,14 @@ describe('VIDYA colours and size follow the design system', () => {
         expect(src).not.toMatch(/var\(--orb-live-speaking\)/);
     });
 
-    it('the teacher home renders VidyaPresence at size="workspace" for live voice', () => {
+    it('VIDYA on Home has one fixed size in every state', () => {
         const src = read('src/components/dashboard/dashboard-home.tsx');
-        expect(src).toMatch(/<VidyaPresence\s+size="workspace"/);
+        expect(src).toMatch(/data-testid="vidya-home-live"[\s\S]{0,200}className="focus-ring relative h-40 w-40 shrink-0 rounded-pill md:h-52 md:w-52"/);
+    });
+
+    it('VIDYA never moves when the messages panel opens or closes (wide-screen column always reserved)', () => {
+        const src = read('src/components/dashboard/dashboard-home.tsx');
+        expect(src).toMatch(/"xl:pr-\[384px\]",\n\s+messagesOpen && "pb-/);
+        expect(src).not.toMatch(/messagesOpen && "[^"]*xl:pr-/);
     });
 });

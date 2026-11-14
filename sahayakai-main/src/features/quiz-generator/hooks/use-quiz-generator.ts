@@ -202,9 +202,8 @@ export function useQuizGenerator() {
             const normalisedLang = normaliseVidyaLanguage(languageParam);
             if (normalisedLang) form.setValue("language", normalisedLang, SET_OPTS);
             // ────────────────────────────────────────────────────────────────────
-            setTimeout(() => {
-                form.handleSubmit(onSubmit)();
-            }, 300);
+            // Pre-fill ONLY. Generation starts when the teacher presses "Generate Quiz":
+            // they may still want to change the question types, count or difficulty.
         }
          
     }, [searchParams, form, toast]);
