@@ -24,7 +24,16 @@ $ElCred = 'E:\sargvision\Sampark_details.txt'
 $AllContacts = 'sv-abhishek,sv-nischay,sv-nandini,sv-shivadeth,sv-varunesh,sv-yash,sv-sachitt,sv-shree,sv-alyssa'
 
 function Step($s) { Write-Host "`n== $s" -ForegroundColor Cyan }
-function Fail($s) { Write-Host "`nSTOPPED: $s" -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
+function Fail($s) {
+  Write-Host "`nSTOPPED: $s" -ForegroundColor Red
+  # Never leave half a stack behind: stop the bridge, gateway and tunnels this run started.
+  if (Test-Path $ExtraPids) {
+    foreach ($x in (Get-Content $ExtraPids | ConvertFrom-Json)) { try { Stop-Process -Id $x.pid -Force -ErrorAction Stop } catch {} }
+    Remove-Item $ExtraPids -Force -ErrorAction SilentlyContinue
+  }
+  Write-Host 'Nothing is left running. Fix the problem above and double-click Start-Sahayak-RealCalls.cmd again.'
+  exit 1
+}
 function Read-KV($path, $pattern) {
   foreach ($l in Get-Content $path) { if ($l -match $pattern) { return $Matches[1].Trim().Trim('"').Trim("'") } }
   return $null
@@ -77,15 +86,21 @@ Write-Host '   bridge up (GET /healthz 200); gateway forwarding webhook paths on
 
 Step '4. Public https tunnels (cloudflared quick tunnels)'
 function Start-Tunnel($name, $port) {
-  $log = Join-Path $State "$name.log"
-  Remove-Item "$log", "$log.err" -ErrorAction SilentlyContinue
-  Start-Bg $name $Cloudflared @('tunnel', '--no-autoupdate', '--url', "http://127.0.0.1:$port") $log @{} | Out-Null
-  for ($i = 0; $i -lt 60; $i++) {
-    $t = (Get-Content "$log.err" -Raw -ErrorAction SilentlyContinue) + (Get-Content $log -Raw -ErrorAction SilentlyContinue)
-    if ($t -match '(https://[a-z0-9-]+\.trycloudflare\.com)') { return $Matches[1] }
-    Start-Sleep 1
+  # Quick tunnels sometimes take a while (or fail) to register: wait up to 2 min, retry once.
+  for ($attempt = 1; $attempt -le 2; $attempt++) {
+    $log = Join-Path $State "$name-$attempt.log"
+    Remove-Item "$log", "$log.err" -ErrorAction SilentlyContinue
+    $p = Start-Bg $name $Cloudflared @('tunnel', '--no-autoupdate', '--url', "http://127.0.0.1:$port") $log @{}
+    for ($i = 0; $i -lt 120; $i++) {
+      $t = "$(Get-Content "$log.err" -Raw -ErrorAction SilentlyContinue)$(Get-Content $log -Raw -ErrorAction SilentlyContinue)"
+      if ($t -match '(https://[a-z0-9-]+\.trycloudflare\.com)') { return $Matches[1] }
+      if ($p.HasExited) { break }
+      Start-Sleep 1
+    }
+    try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch {}
+    Write-Host "   the $name tunnel did not come up on attempt $attempt; retrying…"
   }
-  Fail "the $name tunnel did not come up (log: $log.err)"
+  Fail "the $name tunnel did not come up after two attempts (logs: $State\$name-*.log.err). Check the internet connection."
 }
 $PublicBase = Start-Tunnel 'tunnel-app' 3010
 $BridgeBase = Start-Tunnel 'tunnel-bridge' 8092
