@@ -186,6 +186,15 @@ function start(name, cmd, args, env, logFile) {
     child.stderr.on('data', onData);
     children.push({ name, child });
     savePids();
+    // A child that ends (a finished warm-up, a crash) leaves the record at once: its PID may be
+    // reused by an unrelated program, which --stop must never kill.
+    child.once('exit', () => {
+        const i = children.findIndex((c) => c.child === child);
+        if (i >= 0) {
+            children.splice(i, 1);
+            savePids();
+        }
+    });
     return { child, log };
 }
 
@@ -810,6 +819,11 @@ async function main() {
     say(sv.out.replace(/^/gm, '   '));
     say(`   Teacher: ${base}/sampark/demo/teacher/classes (Anjali Rai → Sargvision) · Principal: ${base}/sampark/demo/admin/classes · Console: ${base}/sampark/sargvision-local/riya`);
     if (!has('no-warm')) warmUp(base);
+    // Demo speed: pre-generate every on-screen example once (instant afterwards; cached ones skip).
+    if (!has('no-warm') && appEnv.SAHAYAK_DEMO_ANSWER_CACHE === 'true') {
+        start('demo-answers', NODE, ['scripts/warm-demo-answers.mjs', '--base', base], appEnv, join(STATE_DIR, 'demo-answers.log'));
+        say(`   Pre-generating the on-screen examples in the background (log: ${join(STATE_DIR, 'demo-answers.log')}).`);
+    }
 
     if (has('ticker')) {
         start('ticker', NODE, tsx('scripts/sampark/ticker.ts', '--interval', '30'), { ...appEnv, SAMPARK_BASE_URL: base }, join(STATE_DIR, 'ticker.log'));
