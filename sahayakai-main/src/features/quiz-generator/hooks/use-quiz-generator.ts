@@ -10,6 +10,7 @@
  * prefill + 300ms auto-submit, and the `first-quiz` checklist mark.
  */
 
+import { gradeFromExamplePrompt } from "@/lib/example-grade";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -212,6 +213,12 @@ export function useQuizGenerator() {
 
     const handlePromptClick = (prompt: string) => {
         form.setValue("topic", prompt);
+        // An example names its class ("for Grade 5", "for 1st graders"); with no class chosen yet,
+        // pick that (else Class 6) so the example is ready to generate. Still editable before Generate.
+        const pickedGrade = form.getValues("gradeLevel");
+        const exampleGrade = gradeFromExamplePrompt(prompt);
+        if (exampleGrade) form.setValue("gradeLevel", exampleGrade, { shouldDirty: true, shouldValidate: true });
+        else if (!pickedGrade) form.setValue("gradeLevel", "Class 6", { shouldDirty: true, shouldValidate: true });
         form.trigger("topic");
     };
 

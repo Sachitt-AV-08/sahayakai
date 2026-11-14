@@ -24,14 +24,20 @@ export function demoAnswerCacheEnabled(env: NodeJS.ProcessEnv = process.env): bo
     return env.NODE_ENV === 'development' && env.SAHAYAK_DEMO_ANSWER_CACHE === 'true';
 }
 
-/** Same JSON regardless of key order or whitespace. */
+/**
+ * Per-request identifiers the client mints fresh on every click (e.g. the lesson plan's
+ * `contentId`): they say nothing about WHAT is asked, so they never take part in the match.
+ */
+export const VOLATILE_KEYS = new Set(['contentId', 'requestId', 'idempotencyKey', 'clientRequestId', 'sessionId', 'timestamp', 'nonce']);
+
+/** Same JSON regardless of key order, whitespace or per-request ids. */
 export function canonicalBody(text: string): string {
     try {
         const sort = (v: unknown): unknown =>
             Array.isArray(v)
                 ? v.map(sort)
                 : v && typeof v === 'object'
-                  ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, sort((v as Record<string, unknown>)[k])]))
+                  ? Object.fromEntries(Object.keys(v as object).filter((k) => !VOLATILE_KEYS.has(k)).sort().map((k) => [k, sort((v as Record<string, unknown>)[k])]))
                   : typeof v === 'string'
                     ? v.trim()
                     : v;

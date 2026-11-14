@@ -27,6 +27,10 @@ describe('demo answer cache (local demo only)', () => {
         expect(demoAnswerKey('quiz', '{"topic":"Fractions"}')).not.toBe(demoAnswerKey('quiz', '{"topic":"Decimals"}'));
     });
 
+    it('ignores the fresh per-click ids (the lesson plan sends a new contentId every time)', () => {
+        expect(demoAnswerKey('lesson-plan', '{"topic":"Water Cycle","contentId":"a1"}')).toBe(demoAnswerKey('lesson-plan', '{"contentId":"b2","topic":"Water Cycle"}'));
+    });
+
     it('never serves library identity from someone else’s generation', () => {
         expect(sanitizeDemoAnswer({ id: 'x', isSaved: true, title: 'T' })).toEqual({ title: 'T' });
     });
