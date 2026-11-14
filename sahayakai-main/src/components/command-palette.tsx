@@ -1,6 +1,6 @@
 "use client";
 
-import { isExternalUrl, samparkUrl } from "@/lib/products";
+import { isExternalUrl, samparkEntryUrl } from "@/lib/products";
 import {
   useEffect,
   useState,
@@ -72,13 +72,13 @@ const ROUTES: Route[] = [
   { href: "/quiz-generator", label: "Quiz Generator", i18nKey: "Quiz Generator", keywords: "quiz test assessment mcq", group: "Assess", icon: FileSignature },
   { href: "/rubric-generator", label: "Rubric Generator", i18nKey: "Rubric Generator", keywords: "rubric grade score marking", group: "Assess", icon: ClipboardCheck },
   { href: "/exam-paper", label: "Exam Paper", i18nKey: "Exam Paper", keywords: "exam paper board question", group: "Assess", icon: FileText },
-  { href: "/attendance", label: "Attendance", i18nKey: "Attendance", keywords: "attendance roll call marks", group: "Assess", icon: ClipboardList },
-  { href: samparkUrl("/workspace"), label: "SamparkAI · School calls", i18nKey: "SamparkAI · School calls", keywords: "school calls parents families ptm event closure notice sampark samparkai", group: "Assess", icon: PhoneCall },
+  { href: samparkEntryUrl(), label: "Attendance", i18nKey: "Attendance", keywords: "attendance roll call marks", group: "Assess", icon: ClipboardList },
+  { href: samparkEntryUrl("/workspace"), label: "SamparkAI · School calls", i18nKey: "SamparkAI · School calls", keywords: "school calls parents families ptm event closure notice sampark samparkai", group: "Assess", icon: PhoneCall },
 
   // Engage
   { href: "/video-storyteller", label: "Video Storyteller", i18nKey: "Video Storyteller", keywords: "video storyteller youtube recommend", group: "Labs", icon: Video },
   { href: "/virtual-field-trip", label: "Virtual Field Trip", i18nKey: "Virtual Field Trip", keywords: "virtual field trip explore visit", group: "Labs", icon: Globe2 },
-  { href: "/teacher-training", label: "Teacher Training", i18nKey: "Teacher Training", keywords: "teacher training professional development cpd", group: "Engage", icon: GraduationCap },
+  { href: "/teacher-training", label: "AI Coach", i18nKey: "AI Coach", keywords: "ai coach teaching coach teacher training professional development cpd classroom strategies", group: "Engage", icon: GraduationCap },
   { href: "/community", label: "Community", i18nKey: "Community", keywords: "community teachers chat discover", group: "Engage", icon: Library },
 
   // Ask

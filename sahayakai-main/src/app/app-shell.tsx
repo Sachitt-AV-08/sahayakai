@@ -33,6 +33,9 @@ import { SahayakWordmark } from "@/components/shell/brand";
 import { useCollapsedNav } from "@/components/shell/use-collapsed";
 import { VidyaLiveProvider } from "@/components/vidya/vidya-live-provider";
 import { useLanguage } from "@/context/language-context";
+import { CommunityMessagesProvider } from "@/components/community/community-messages-context";
+import { CommunityMessagesPanel } from "@/components/community/community-messages-panel";
+import { MessagesHeaderButton } from "@/components/community/messages-header-button";
 // GlobalVoiceInterface (voice input for unauthenticated visitors) is loaded
 // client-side only on the landing page to avoid adding its dependencies to
 // the initial bundle unnecessarily. Its action/prefill contracts are unchanged.
@@ -110,6 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // route changes (VIDYA's tools navigate); every VIDYA surface is a view of it.
   return (
     <VidyaLiveProvider>
+      <CommunityMessagesProvider>
       <div className="flex min-h-svh w-full bg-wash-screen">
         <AppSidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
 
@@ -148,12 +152,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Search aria-hidden="true" strokeWidth={1.7} className="h-5 w-5" />
               </button>
+              {/* Search | Messages | Language | Profile (the one account entry) */}
+              <MessagesHeaderButton />
               <LanguagePill />
               <AuthButton />
             </div>
           </header>
 
-          <main className="flex w-full max-w-full flex-1 flex-col items-center overflow-x-hidden px-3 pb-[calc(96px+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:px-8 md:pb-24 md:pt-8">
+          <main className="flex w-full max-w-full flex-1 flex-col items-center overflow-x-clip px-3 pb-[calc(96px+env(safe-area-inset-bottom))] pt-4 sm:px-4 md:px-8 md:pb-24 md:pt-8">
             {/* Self-hides on non-Labs routes; parked pages need no edits. */}
             <LabsBanner />
             <ErrorBoundary>
@@ -181,6 +187,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MobileBottomNav />
       <PWAInstallPrompt />
       <VoiceQuotaToastListener />
+      <CommunityMessagesPanel />
+      </CommunityMessagesProvider>
     </VidyaLiveProvider>
   );
 }

@@ -11,7 +11,7 @@
  *              16 s turn, a breathing sheen, a soft halo
  *   listening  the same sphere, brighter, its halo breathing (2.4 s)
  *   thinking   "working": the indigo sphere inside a turning indigo arc (2.6 s)
- *   speaking   the leaf sphere with two rings breathing out of step (1.5 s)
+ *   speaking   the saffron sphere with two rings breathing out of step (1.5 s)
  *   error      "failed": the resting sphere desaturated and still — never red
  *
  * The sphere is lit like the design system's: a light from the upper left
@@ -51,13 +51,16 @@ interface Look {
 // --vidya-speaking-*; the same stops as --orb-live, --orb-live-working, --orb-live-speaking).
 const SAFFRON: Palette = { vars: ["--vidya-live-0", "--vidya-live-1", "--vidya-live-2", "--vidya-live-3", "--vidya-live-4"], at: [0.22, 0.48, 0.68] };
 const INDIGO: Palette = { vars: ["--vidya-working-0", "--vidya-working-1", "--vidya-working-2", "--vidya-working-3", "--vidya-working-4"], at: [0.17, 0.34, 0.72] };
-const LEAF: Palette = { vars: ["--vidya-speaking-0", "--vidya-speaking-1", "--vidya-speaking-2", "--vidya-speaking-3", "--vidya-speaking-4"], at: [0.16, 0.32, 0.74] };
+// Design system §5.12 (VidyaPresence): VIDYA is saffron while listening AND speaking; only
+// connecting/thinking turn indigo. The leaf speaking palette was the recorded inconsistency #9.
+
+export const VIDYA_SPHERE_PALETTES = { idle: "saffron", listening: "saffron", thinking: "indigo", speaking: "saffron", error: "saffron" } as const;
 
 const LOOKS: Record<VidyaOrbState, Look> = {
     idle: { palette: SAFFRON, haloAlpha: 0.16, accent: 0, energy: 0.45, saturation: 1, still: false },
     listening: { palette: SAFFRON, haloAlpha: 0.22, accent: 0, energy: 1, saturation: 1.05, still: false },
     thinking: { palette: INDIGO, haloAlpha: 0.2, accent: 1, energy: 0.8, saturation: 1, still: false },
-    speaking: { palette: LEAF, haloAlpha: 0.18, accent: 2, energy: 1, saturation: 1, still: false },
+    speaking: { palette: SAFFRON, haloAlpha: 0.2, accent: 2, energy: 1, saturation: 1.05, still: false },
     error: { palette: SAFFRON, haloAlpha: 0.08, accent: 0, energy: 0.1, saturation: 0.32, still: true },
 };
 
@@ -256,7 +259,7 @@ const CSS_SPHERE: Record<VidyaOrbState, { background: string; shadow: string; fi
     idle: { background: "var(--orb-live)", shadow: "var(--shadow-orb-live)" },
     listening: { background: "var(--orb-live)", shadow: "var(--shadow-orb-live-listening)" },
     thinking: { background: "var(--orb-live-working)", shadow: "var(--shadow-orb-live-working)" },
-    speaking: { background: "var(--orb-live-speaking)", shadow: "var(--shadow-orb-live-speaking)" },
+    speaking: { background: "var(--orb-live)", shadow: "var(--shadow-orb-live-listening)" },
     error: { background: "var(--orb-live)", shadow: "var(--shadow-orb-live-failed)", filter: "saturate(.32) brightness(1.04)" },
 };
 

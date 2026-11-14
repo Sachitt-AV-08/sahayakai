@@ -23,7 +23,7 @@ import { buildVidyaAppContext, subscribeVidyaAppContext } from "@/lib/vidya/app-
 import { buildLiveAppContextFrame, liveToolCallToAppAction, LIVE_APP_TOOL_NAMES } from "@/lib/vidya/live-app-context";
 import { validateAppAction, type VidyaAppAction } from "@/lib/vidya/app-context-contract";
 import { runAppAction } from "@/lib/vidya/run-app-action";
-import { normaliseVidyaLanguage } from "@/lib/vidya-action-normalizer";
+import { vidyaFlowTargetUrl } from "@/lib/vidya-action-normalizer";
 import { logger } from '@/lib/client-logger';
 import { VidyaLiveOrb } from "@/components/vidya-live-orb";
 import { useVidyaLiveSession } from "@/components/vidya/vidya-live-provider";
@@ -86,7 +86,7 @@ const FLOW_LABEL: Record<VidyaAction['flow'], string> = {
     'visual-aid-designer': 'Visual aid',
     'worksheet-wizard': 'Worksheet',
     'virtual-field-trip': 'Field trip',
-    'teacher-training': 'Training',
+    'teacher-training': 'AI Coach',
     'rubric-generator': 'Rubric',
     'exam-paper': 'Exam paper',
     'video-storyteller': 'Video',
@@ -760,6 +760,10 @@ export function OmniOrb() {
         // when params lack topic. Optional: chip taps replay the same
         // logic from the existing chatHistory closure.
         _originalTranscript?: string,
+        // Live voice: the model passes `topic` itself when the teacher gave one. The
+        // stored chat history may hold an old turn (or VIDYA's own words heard back
+        // through the speakers), which must never land in the destination form.
+        { topicFallback = true }: { topicFallback?: boolean } = {},
     ) => {
         // Learn teacher preferences from agentic actions.
         //
@@ -792,37 +796,16 @@ export function OmniOrb() {
         syncSessionTurn(updatedMessages, { flow: action.flow, params: action.params });
 
         // If VIDYA couldn't extract a topic (vague follow-up like "those locations"),
-        // fall back to the last user message from chatHistory as context.
-        // Cast to writable shape for the local fallback patch — `params` is
-        // bound to the supervisor's emitted object, so editing it here only
-        // affects the route hand-off below, not the persisted record above.
+        // the text path falls back to the teacher's last message. Language is
+        // normalised to ISO-2 inside (the destination <LanguageSelector> rejects
+        // display names — the "form shows English, output Hindi" bug).
         const params = action.params as Record<string, string | undefined | null>;
-        if (!params.topic && !params.question && !params.prompt) {
-            const lastUserMsg = [...chatHistory].reverse().find(m => m.role === "user");
-            if (lastUserMsg) {
-                params.topic = lastUserMsg.parts.map((p: { text: string }) => p.text).join("").trim();
-            }
-        }
-
-        // Normalise language to an ISO-2 code BEFORE it lands in the URL.
-        // The destination forms (lesson-plan, quiz-generator, …) drive
-        // <LanguageSelector> with ISO values ("en", "hi"). VIDYA's
-        // supervisor sometimes emits the display name ("English") which
-        // the selector then rejects and falls back to the default — that
-        // is the second half of the "form shows English, output Hindi"
-        // bug. Shared with the destination forms via
-        // `@/lib/vidya-action-normalizer` so both ends agree.
-        const queryParams = new URLSearchParams();
-        if (params.topic) queryParams.set("topic", params.topic);
-        if (params.question) queryParams.set("question", params.question);
-        if (params.assignmentDescription) queryParams.set("assignmentDescription", params.assignmentDescription);
-        if (params.prompt) queryParams.set("prompt", params.prompt);
-        if (params.subject) queryParams.set("subject", params.subject);
-        if (params.gradeLevel) queryParams.set("gradeLevel", params.gradeLevel);
-        const normalisedLang = normaliseVidyaLanguage(params.language);
-        if (normalisedLang) queryParams.set("language", normalisedLang);
-
-        const targetUrl = `/${action.flow}?${queryParams.toString()}`;
+        const lastUserMsg = topicFallback ? [...chatHistory].reverse().find(m => m.role === "user") : undefined;
+        const targetUrl = vidyaFlowTargetUrl(
+            action.flow,
+            params,
+            lastUserMsg ? lastUserMsg.parts.map((p: { text: string }) => p.text).join("") : null,
+        );
         logger.info('navigating to', 'VIDYA OmniOrb', { targetUrl });
 
         // ── Make the navigation VISIBLE ──────────────────────────────────
@@ -929,7 +912,7 @@ export function OmniOrb() {
         }
         // Voice session stays open across the navigation: OmniOrb lives in the
         // app shell, which persists over client-side route changes.
-        executeAction(action, chatHistory);
+        executeAction(action, chatHistory, undefined, { topicFallback: false });
     }, [executeAction, executeAppAction, syncSessionTurn, chatHistory, toast, t]);
 
     // Hand the guarded executor + teacher context to the app-wide live session

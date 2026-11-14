@@ -294,6 +294,8 @@ export default {
       },
       maxWidth: {
         web: '1220px',
+        // A printed A4 sheet (exam paper, worksheet) previewed at its real width.
+        paper: '210mm',
       },
       width: {
         sidebar: 'var(--sidebar-w)',

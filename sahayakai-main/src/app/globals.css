@@ -211,9 +211,9 @@
      PHASE 1 — CONTAINER GRAMMAR (2026-04-24)
      Three widths only. No more arbitrary max-w-* across pages.
      ======================================== */
-  .container-narrow  { @apply max-w-2xl mx-auto px-4 md:px-6; }
-  .container-default { @apply max-w-5xl mx-auto px-4 md:px-8; }
-  .container-wide    { @apply max-w-7xl mx-auto px-4 md:px-10; }
+  .container-narrow  { @apply w-full max-w-2xl mx-auto px-4 md:px-6; }
+  .container-default { @apply w-full max-w-5xl mx-auto px-4 md:px-8; }
+  .container-wide    { @apply w-full max-w-7xl mx-auto px-4 md:px-10; }
 
   /* ========================================
      FORCE-LIGHT — MARKETING / PUBLIC PAGES (2026-05-28)
@@ -965,9 +965,9 @@ body[data-nav-sheet-open] [data-vidya-entry="orb"] { visibility: hidden; }
    or active. Colour comes from meaning, not decoration: peach for live work and
    things that need a person, pale indigo for notices, leaf for done, rose for
    complaints. Tokens live on :root (bg-sampark-peach, text-sampark-indigo …);
-   `.theme-sampark` (SamparkAI pages and their portals) re-points the shared
-   tokens so every shared component — side rail, buttons, cards, pills — takes
-   the console look without per-page styling. Light theme only. */
+   `.theme-sampark` (SamparkAI pages and their portals) only warms Sampark's
+   fixed console values (see below): every shared component keeps the
+   SahayakAI look. Light theme only. */
 :root {
   --sampark-saffron: 24.6 66.8% 47.3%;          /* #C96A28 */
   --sampark-saffron-strong: 24.7 70.1% 38%;     /* #A5551D */
@@ -989,39 +989,54 @@ body[data-nav-sheet-open] [data-vidya-entry="orb"] { visibility: hidden; }
   --shadow-sampark-raised: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -16px rgba(16, 24, 40, 0.18);
 }
 
+/* 2026-11: SamparkAI is part of SahayakAI, not a separate console. It keeps
+   SahayakAI's own warm ground (milk surfaces, ink text, warm hairlines and
+   shadows — the shared tokens are NOT re-pointed any more); only Sampark's
+   fixed console values follow them, and the meaning colours above (peach,
+   indigo, leaf, rose) stay. Cards stay crisp white on the milk ground so
+   rosters and call logs read as tables. */
 html:not(.dark) .theme-sampark {
-  --background: 60 33% 99.4%;
   --card: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --muted: 210 40% 98%;
-  --muted-foreground: 215 16% 47%;
-  --border: 220 17% 93%;
-  --input: 220 14% 88%;
+  --sampark-slate: 25.7 17.9% 7.6%;       /* = --ink-900 */
+  --sampark-slate-soft: 36.9 61.9% 95.9%; /* = --milk-300 inner tiles */
+  --sampark-line: 37.5 12.9% 87.8%;       /* = --border */
+  --shadow-sampark-card: 0 1px 2px rgba(23, 19, 16, 0.04);
+  --shadow-sampark-raised: 0 1px 2px rgba(23, 19, 16, 0.05), 0 12px 32px -18px rgba(23, 19, 16, 0.22);
+}
 
-  --milk-50: 0 0% 100%;
-  --milk-100: 0 0% 99.6%;
-  --milk-200: 60 33% 99.4%;   /* page #FEFEFD */
-  --milk-300: 210 40% 96%;    /* hover #F1F5F9 */
-  --milk-400: 28 86% 95%;     /* active rail item: peach #FDF1E7 */
-  --milk-500: 0 0% 98%;       /* #FAFAFA */
-  --ink-400: 215 20% 65%;     /* #94A3B8 */
-  --ink-500: 215 16% 47%;     /* #64748B */
-  --ink-600: 215 19% 35%;     /* #475569 */
-  --ink-800: 217 33% 17%;     /* #1E293B */
-  --ink-900: 222 47% 11%;     /* #0F172A */
-
-  --surface-glass: #ffffff;
-  --surface-glass-soft: rgba(255, 255, 255, 0.86);
-  --surface-glass-strong: #ffffff;
-  --surface-chrome: #fafafa;
-  --surface-capsule: #ffffff;
-  --surface-float: #ffffff;
-  --border-glass: #eaecf0;
-  --border-hairline: #eaecf0;
-  --border-row: #eaecf0;
-  --border-control: #d0d5dd;
-  --fill-quiet: rgba(15, 23, 42, 0.05);
-  --fill-subtle: rgba(15, 23, 42, 0.035);
-  --shadow-card: var(--shadow-sampark-card);
-  --shadow-soft: var(--shadow-sampark-card);
+/* 2026-11: printed documents (exam paper, worksheet, quiz print copy). A sheet
+   is always paper — white, ink text, serif body for the document's own words —
+   in light and dark mode alike, because it is a preview of what prints. The
+   app chrome around it stays in the UI faces. Indic scripts fall back through
+   the self-hosted Noto families, as everywhere else. */
+.paper-sheet {
+  --paper-ink: 25.7 17.9% 7.6%;
+  --paper-muted: 30 9% 38%;
+  --paper-rule: 36 18% 82%;
+  background: #fff;
+  color: hsl(var(--paper-ink));
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", var(--font-noto-devanagari),
+    var(--font-noto-tamil), var(--font-noto-kannada), var(--font-noto-telugu),
+    var(--font-noto-bengali), var(--font-noto-gujarati), var(--font-noto-gurmukhi),
+    var(--font-noto-malayalam), var(--font-noto-oriya), serif;
+  font-feature-settings: "onum" 0, "lnum" 1;
+}
+.paper-sheet .paper-ui {
+  font-family: var(--font-ui), var(--font-noto-devanagari), sans-serif;
+}
+.paper-sheet .paper-muted { color: hsl(var(--paper-muted)); }
+.paper-sheet .paper-rule { border-color: hsl(var(--paper-rule)); }
+/* Ruled writing lines: n lines of 2rem, drawn as a background so they print. */
+.paper-lines {
+  background-image: linear-gradient(to bottom, transparent calc(2rem - 1px), hsl(36 18% 78%) calc(2rem - 1px));
+  background-size: 100% 2rem;
+}
+/* A page break inside an on-screen sheet: a dashed seam with a label. */
+.paper-break {
+  border-top: 1px dashed hsl(36 18% 78%);
+}
+@media print {
+  .paper-break { border: 0; break-before: page; }
+  .paper-break-label { display: none; }
+  .paper-question { break-inside: avoid; }
 }

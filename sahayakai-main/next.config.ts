@@ -24,6 +24,25 @@ const nextConfig: NextConfig = {
   // *.firebaseapp.com, which made getRedirectResult() return null and left
   // teachers stranded back on the landing page after Google sign-in.
   // See: https://firebase.google.com/docs/auth/web/redirect-best-practices
+  // Links that the marketing pages, blog articles and the try-call page carry
+  // but that have no page of their own. Without these every one is a 404.
+  // Gate: src/__tests__/app/internal-links-resolve.test.ts.
+  async redirects() {
+    return [
+      // Articles that are linked from the published ones but not written yet,
+      // and the "all articles" link: the Hindi explainer is the entry article.
+      { source: '/blog', destination: '/blog/sahayak-ai-kya-hai', permanent: false },
+      { source: '/blog/teaching-assistant-app-indian-languages', destination: '/blog/sahayak-ai-kya-hai', permanent: false },
+      { source: '/blog/ai-lesson-plan-generator-india', destination: '/lesson-plan', permanent: false },
+      { source: '/blog/ncert-lesson-plan-tool', destination: '/lesson-plan', permanent: false },
+      { source: '/blog/offline-teaching-app-india', destination: '/blog/sahayakai-vs-chatgpt', permanent: false },
+      // The Hindi landing page is the Hindi article until /hi has its own page.
+      { source: '/hi', destination: '/blog/sahayak-ai-kya-hai', permanent: false },
+      { source: '/worksheet', destination: '/worksheet-wizard', permanent: false },
+      // Sign-up is the sign-in dialog on the home page.
+      { source: '/signup', destination: '/', permanent: false },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [

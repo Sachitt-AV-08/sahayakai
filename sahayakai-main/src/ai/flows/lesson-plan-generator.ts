@@ -119,6 +119,9 @@ export type LessonPlanOutput = z.infer<typeof LessonPlanOutputSchema>;
  * Audits materials list against activities to ensure consistency.
  * Returns merged materials list that includes items mentioned in activities.
  */
+/** Upper bound for the optional materials audit; on expiry the plan keeps its own materials list. */
+export const MATERIALS_AUDIT_BUDGET_MS = 12_000;
+
 async function auditMaterials(output: LessonPlanOutput, language?: string): Promise<string[]> {
   try {
     const activitiesText = output.activities
@@ -546,8 +549,19 @@ const lessonPlanFlow = ai.defineFlow(
         });
 
         // BUG FIX #2: Audit materials consistency
-        try {
-          const auditedMaterials = await auditMaterials(output, normalizedInput.language);
+        // LESSON_PLAN_MATERIALS_AUDIT=off (the local demo launcher sets it): skip this optional
+        // second model call. Locally it ran for up to ~2 min AFTER the 12 s cut-off, and a burst of
+        // plans left many of them running, which exhausted the model quota for every other tool.
+        if (process.env.LESSON_PLAN_MATERIALS_AUDIT !== 'off') try {
+          // Time-boxed: the audit is an optional second model call. When it stalls (seen
+          // locally: >40 s with no answer) it must not push the whole request past the
+          // route's 60 s budget and throw away a plan that was already generated.
+          const { withTimeout } = await import('@/lib/sidecar/with-timeout');
+          const auditedMaterials = await withTimeout(
+            auditMaterials(output, normalizedInput.language),
+            MATERIALS_AUDIT_BUDGET_MS,
+            'lesson-plan materials audit',
+          );
           if (auditedMaterials.length > output.materials.length) {
             StructuredLogger.info('Materials audit detected missing items', {
               service: 'lesson-plan-flow',
