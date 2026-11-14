@@ -32,6 +32,7 @@ import { z } from "zod";
 import { MicrophoneInput, type MicStatus } from "@/components/microphone-input";
 import { greetingFirstName } from "@/lib/teacher-name";
 import { VidyaSphere, type VidyaOrbState } from "@/components/vidya/vidya-sphere";
+import { VidyaPresence } from "@/components/vidya/vidya-presence";
 import { useVidyaLiveSession, VIDYA_LIVE_VOICE_ENABLED } from "@/components/vidya/vidya-live-provider";
 import { vidyaStatusKey } from "@/lib/vidya-live/use-vidya-live";
 import { deriveOrbState } from "@/components/vidya/orb-state";
@@ -345,18 +346,19 @@ export function DashboardHome() {
               // she answers the speaker, not the room. Same session as the compact
               // orb on tool pages (VidyaLiveProvider); tap again to end.
               <div className="flex flex-col items-center gap-3" data-vidya-entry="home" data-vidya-state={liveOrbState}>
-                <button
-                  type="button"
-                  onClick={live.error ? () => { live.dismissError(); void live.start(); } : live.toggle}
-                  aria-label={live.active ? t("End voice conversation") : t("Talk to VIDYA")}
-                  aria-pressed={live.active}
-                  data-microphone="true"
-                  data-testid="vidya-home-live"
-                  // relative: VidyaSphere fills its nearest positioned box (absolute inset-0).
-                  className="focus-ring relative h-40 w-40 shrink-0 rounded-pill md:h-52 md:w-52"
-                >
-                  <VidyaSphere state={liveOrbState} reducedMotion={reducedMotion} />
-                </button>
+                {/* Design system §5.12: the teacher home shows VidyaPresence at size="workspace"
+                    (saffron orb + breathing ring driven by the real voice level; indigo while
+                    connecting/thinking; desaturated on error). The orb IS the control, and its
+                    button carries data-microphone so the sidebar's "Talk to VIDYA" presses it. */}
+                <div data-testid="vidya-home-live" className="w-full max-w-[420px]">
+                  <VidyaPresence
+                    size="workspace"
+                    state={live.state}
+                    getLevel={live.getLevel}
+                    onActivate={live.error ? () => { live.dismissError(); void live.start(); } : live.toggle}
+                    label={live.active ? t("End voice conversation") : t("Talk to VIDYA")}
+                  />
+                </div>
                 <div role="status" aria-live="polite" data-state={live.state} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="indic-text">{live.error ? t(live.error) : t(vidyaStatusKey(live.state, live.hasAnswered))}</span>
                   {live.active && (
