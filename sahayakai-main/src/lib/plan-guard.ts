@@ -119,6 +119,9 @@ export function withPlanCheck(feature: GatedFeature) {
                 if (hit !== undefined) {
                     return NextResponse.json(hit, { status: 200, headers: { 'x-sahayak-demo-cache': 'hit' } });
                 }
+                // Development only: the request shape, so the launcher can pre-generate the
+                // on-screen templates with exactly what the page sends.
+                console.info(`[demo-answer-cache] miss ${feature} ${demoBody}`);
             }
             const gate = await reservePlanQuota(request, feature);
             if (!gate.ok) {

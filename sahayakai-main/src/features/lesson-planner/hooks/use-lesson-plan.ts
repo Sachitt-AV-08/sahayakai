@@ -27,6 +27,7 @@ import { useJarvisStore } from "@/store/jarvisStore";
 import { useLimitGuard } from "@/hooks/use-limit-guard";
 import { useVidyaScreenContext } from "@/hooks/use-vidya-app-context";
 import { normaliseVidyaLanguage, normaliseVidyaGradeLevel } from "@/lib/vidya-action-normalizer";
+import { gradeFromExamplePrompt } from "@/lib/example-grade";
 
 export function useLessonPlan() {
     const { requireAuth, openAuthModal } = useAuth();
@@ -597,21 +598,30 @@ export function useLessonPlan() {
         form.trigger("topic");
     };
 
+    // On-screen templates and quick ideas are one tap: they fill the form with a VALID class
+    // (the picker's "Class N" — a template's "5th Grade" failed validation and could never
+    // generate) and start the plan straight away.
+    const SET = { shouldDirty: true, shouldValidate: true } as const;
+
     const handlePromptClick = (prompt: string) => {
-        form.setValue("topic", prompt);
-        form.trigger("topic");
+        form.setValue("topic", prompt, SET);
+        const named = gradeFromExamplePrompt(prompt);
+        const current = form.getValues("gradeLevels") ?? [];
+        if (named) form.setValue("gradeLevels", [named], SET);
+        else if (current.length === 0) form.setValue("gradeLevels", ["Class 6"], SET);
+        setSelectedChapter(null);
+        void form.handleSubmit(onSubmit)();
     };
 
     const handleTemplateSelect = (template: QuickTemplate) => {
-        form.setValue("topic", template.topic);
-        form.setValue("gradeLevels", [template.gradeLevel]);
+        form.setValue("topic", template.topic, SET);
+        form.setValue("gradeLevels", [normaliseVidyaGradeLevel(template.gradeLevel) ?? template.gradeLevel], SET);
         setSelectedChapter(null);
-        form.trigger("topic");
-
         toast({
             title: "Template Selected",
             description: `Loaded template: ${template.title}`,
         });
+        void form.handleSubmit(onSubmit)();
     };
 
     // VIDYA: which tool this is, where the generation stands, and whether
