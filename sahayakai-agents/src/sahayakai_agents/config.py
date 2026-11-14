@@ -16,6 +16,7 @@ Review trace:
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -42,7 +43,13 @@ class Settings(BaseSettings):
     )
 
     # --- Runtime ---
-    env: Environment = Field(default="development", alias="SAHAYAKAI_AGENTS_ENV")
+    # REQUIRED — deliberately no default. `development` skips EVERY auth gate
+    # (see `auth.authenticate_request`), so a deploy path that forgets to set
+    # SAHAYAKAI_AGENTS_ENV used to serve wide open and silently. Without a
+    # default, a missing value raises at `Settings()` construction, the
+    # startup probe fails, and the revision crash-loops instead of shipping
+    # an unauthenticated sidecar.
+    env: Environment = Field(alias="SAHAYAKAI_AGENTS_ENV")
     port: int = Field(default=8080, alias="SAHAYAKAI_AGENTS_PORT")
     log_level: str = Field(default="INFO", alias="SAHAYAKAI_AGENTS_LOG_LEVEL")
 
@@ -182,23 +189,36 @@ class Settings(BaseSettings):
                 "use a 256-bit random value."
             )
 
-        if not self.audience:
-            errors.append(
-                "SAHAYAKAI_AGENTS_AUDIENCE is empty (Round-2 P0-2). "
-                "Every ID-token verification will 401. "
-                "Set it to the Cloud Run service URL after first deploy."
-            )
-        elif "${" in self.audience:
-            errors.append(
-                f"SAHAYAKAI_AGENTS_AUDIENCE contains an unresolved placeholder: "
-                f"{self.audience!r}. Substitution failed at deploy time."
-            )
+        # The audience and invoker invariants both exist to protect routes that
+        # authenticate callers with a Google ID token. The telephony deployment
+        # serves no such route — its only endpoint is a carrier WebSocket gated
+        # by a signed, single-use, domain-scoped token, and its peer is a
+        # telephony provider that cannot mint a Google token at all. Demanding
+        # these two values there would force us to invent a fake audience and a
+        # fake invoker list, which is strictly worse than saying plainly that
+        # the checks do not apply. Every other invariant above still binds.
+        telephony_only = os.environ.get(
+            "SAHAYAKAI_TELEPHONY_ONLY", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
 
-        if not self.allowed_invokers:
-            errors.append(
-                "SAHAYAKAI_AGENTS_ALLOWED_INVOKERS is empty; no caller can "
-                "invoke this service."
-            )
+        if not telephony_only:
+            if not self.audience:
+                errors.append(
+                    "SAHAYAKAI_AGENTS_AUDIENCE is empty (Round-2 P0-2). "
+                    "Every ID-token verification will 401. "
+                    "Set it to the Cloud Run service URL after first deploy."
+                )
+            elif "${" in self.audience:
+                errors.append(
+                    f"SAHAYAKAI_AGENTS_AUDIENCE contains an unresolved placeholder: "
+                    f"{self.audience!r}. Substitution failed at deploy time."
+                )
+
+            if not self.allowed_invokers:
+                errors.append(
+                    "SAHAYAKAI_AGENTS_ALLOWED_INVOKERS is empty; no caller can "
+                    "invoke this service."
+                )
 
         # On Vertex there is no key to validate — ADC is the credential, and a
 
@@ -228,6 +248,12 @@ def get_settings() -> Settings:
     Exception: tests that need to override should set env vars BEFORE the first
     call, or call `get_settings.cache_clear()` between cases.
     """
-    settings = Settings()
+    # `env` is required and has no default, so mypy (which synthesises
+    # `__init__` from the field list via `dataclass_transform`) sees a missing
+    # named argument. At runtime pydantic-settings supplies it from
+    # SAHAYAKAI_AGENTS_ENV — and raises `ValidationError` when it is absent,
+    # which is exactly the crash-loop we want. See
+    # tests/unit/test_config_env_required.py.
+    settings = Settings()  # type: ignore[call-arg]
     settings.assert_prod_invariants()
     return settings
