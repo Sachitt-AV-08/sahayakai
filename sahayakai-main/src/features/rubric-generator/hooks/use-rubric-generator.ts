@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { gradeFromExamplePrompt } from "@/lib/example-grade";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSearchParams } from "next/navigation";
@@ -245,6 +246,9 @@ export function useRubricGenerator() {
 
     const handlePromptClick = (prompt: string) => {
         form.setValue("assignmentDescription", prompt);
+        // An example that names its class ("for 8th grade students") sets that class.
+        const exampleGrade = gradeFromExamplePrompt(prompt);
+        if (exampleGrade) form.setValue("gradeLevel", exampleGrade, { shouldDirty: true, shouldValidate: true });
         form.trigger("assignmentDescription");
     };
 
