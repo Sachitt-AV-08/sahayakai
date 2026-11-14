@@ -19,11 +19,12 @@ import { getDb } from '@/lib/firebase-admin';
 import { logger } from '@/lib/logger';
 import { dbAdapter } from '@/lib/db/adapter';
 import type {
-    ClassRecord, Student, DailyAttendanceRecord,
+    ClassRecord, Student, RosterStudent, DailyAttendanceRecord,
     ParentOutreach, StudentAttendanceSummary, AttendanceStatus, OutreachReason,
 } from '@/types/attendance';
 import type { Language, GradeLevel, Subject } from '@/types';
 import { hasAdvancedPlan } from '@/lib/plan-utils';
+import { isValidE164 } from '@/lib/twilio-validate';
 
 // ── Plan guard ────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ const VALIDATION_PATTERNS: RegExp[] = [
     /^Too many attendance entries/,
     /^Unknown student in attendance records/,
     /^Invalid attendance status/,
+    /^Student has no valid parent phone on record$/,
 ];
 
 export function attendanceErrorStatus(err: unknown): { message: string; status: number } {
@@ -306,6 +308,42 @@ export async function getStudents(uid: string, classId: string): Promise<Student
     }
 }
 
+/**
+ * Masked roster projection — `GET .../students?projection=roster`.
+ *
+ * PII gate. `getStudents` returns the whole student document, full E.164
+ * `parentPhone` included; that shape is fine for the teacher's own browser
+ * (which already owns the class and needs the number to edit it) but must not
+ * be handed to a mobile client, where it would put every parent's phone number
+ * on every teacher's handset.
+ *
+ * The masking is done HERE, on the server, not by asking the caller to drop
+ * fields: the full number never leaves the process on this path. The projection
+ * is built by naming each of the six fields explicitly — never by spreading the
+ * student and deleting `parentPhone`, which silently leaks any PII field added
+ * to `Student` later.
+ *
+ * Auth, ownership (`teacherUid`) and ordering are inherited verbatim by
+ * delegating to `getStudents`, so the two projections can never drift apart on
+ * who is allowed to see what.
+ */
+export function toRosterStudent(student: Student): RosterStudent {
+    const digits = (student.parentPhone ?? '').replace(/\D/g, '');
+    return {
+        id: student.id,
+        name: student.name,
+        rollNumber: student.rollNumber,
+        parentLanguage: student.parentLanguage,
+        hasParentPhone: digits.length > 0,
+        parentPhoneLast4: digits.length >= 4 ? digits.slice(-4) : '',
+    };
+}
+
+export async function getStudentRoster(uid: string, classId: string): Promise<RosterStudent[]> {
+    const students = await getStudents(uid, classId);
+    return students.map(toRosterStudent);
+}
+
 export async function updateStudent(uid: string, classId: string, studentId: string, data: {
     name?: string;
     rollNumber?: number;
@@ -529,16 +567,25 @@ export async function getStudentSummaries(
         let presentDays = 0;
         let absentDays = 0;
         let lateDays = 0;
-        let consecutiveAbsences = 0;
-        let currentStreak = 0;
+        // Two different numbers, deliberately kept apart. `currentAbsenceStreak`
+        // is a running counter: because sortedDates is ascending and every
+        // present/late day zeroes it, whatever it holds after the last marked
+        // day IS the trailing run — the child is still absent. `longestAbsenceStreak`
+        // is the high-water mark over the whole month and is history, not status.
+        let currentAbsenceStreak = 0;
+        let longestAbsenceStreak = 0;
 
         const sortedDates = Object.keys(attendanceMap).sort();
         for (const date of sortedDates) {
             const status = attendanceMap[date].records[student.id];
             if (!status) continue;
-            if (status === 'present') { presentDays++; currentStreak = 0; }
-            else if (status === 'absent') { absentDays++; currentStreak++; consecutiveAbsences = Math.max(consecutiveAbsences, currentStreak); }
-            else if (status === 'late') { lateDays++; currentStreak = 0; }
+            if (status === 'present') { presentDays++; currentAbsenceStreak = 0; }
+            else if (status === 'absent') {
+                absentDays++;
+                currentAbsenceStreak++;
+                longestAbsenceStreak = Math.max(longestAbsenceStreak, currentAbsenceStreak);
+            }
+            else if (status === 'late') { lateDays++; currentAbsenceStreak = 0; }
         }
 
         const totalDays = presentDays + absentDays + lateDays;
@@ -553,7 +600,8 @@ export async function getStudentSummaries(
             absentDays,
             lateDays,
             attendanceRate,
-            consecutiveAbsences,
+            currentAbsenceStreak,
+            longestAbsenceStreak,
         };
     });
 
@@ -571,7 +619,8 @@ export async function saveOutreachRecord(uid: string, data: {  // premium gate e
     className: string;
     studentId: string;
     studentName: string;
-    parentPhone: string;
+    /** Ignored. The destination always comes from the student record (see below). */
+    parentPhone?: string;
     parentLanguage: Language;
     reason: OutreachReason;
     teacherNote?: string;
@@ -596,6 +645,17 @@ export async function saveOutreachRecord(uid: string, data: {  // premium gate e
         .collection('students').doc(data.studentId).get();
     if (!studentDoc.exists) throw new Error('Student not found in this class');
 
+    // The parent's phone comes from the student record the teacher maintains,
+    // NEVER from the request. This writer used to store `data.parentPhone`
+    // verbatim, and /api/attendance/call dials whatever the outreach doc holds,
+    // so any gold/premium teacher could make the platform ring an arbitrary
+    // number. Same rule as F9-001 in /api/attendance/outreach.
+    const storedPhone: unknown = studentDoc.data()?.parentPhone;
+    const parentPhone = typeof storedPhone === 'string' ? storedPhone : '';
+    if (data.deliveryMethod === 'twilio_call' && !isValidE164(parentPhone)) {
+        throw new Error('Student has no valid parent phone on record');
+    }
+
     const now = new Date().toISOString();
     const ref = db.collection('parent_outreach').doc();
 
@@ -606,7 +666,7 @@ export async function saveOutreachRecord(uid: string, data: {  // premium gate e
         className: data.className,
         studentId: data.studentId,
         studentName: data.studentName,
-        parentPhone: data.parentPhone,
+        parentPhone, // server-trusted, from classes/{classId}/students/{studentId}
         parentLanguage: data.parentLanguage,
         reason: data.reason,
         generatedMessage: data.generatedMessage,
