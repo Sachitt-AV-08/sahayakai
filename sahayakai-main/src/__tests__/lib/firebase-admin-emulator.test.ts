@@ -54,6 +54,20 @@ describe('emulatorAdminOptions', () => {
         expect(emulatorAdminOptions({ NODE_ENV: 'test', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' })).toBeNull();
         expect(() => emulatorAdminOptions({ NODE_ENV: 'development', FIRESTORE_EMULATOR_HOST: 'firestore.googleapis.com:443' })).toThrow(/local address/);
     });
+    it('names the emulator bucket only when a local Storage emulator is given', async () => {
+        const { emulatorAdminOptions } = await load();
+        const base = { NODE_ENV: 'development', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' };
+        // No Storage emulator: no bucket is invented (and never the production one).
+        expect(emulatorAdminOptions(base)).toEqual({ projectId: 'demo-sahayakai' });
+        expect(emulatorAdminOptions({ ...base, FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199' })).toEqual({
+            projectId: 'demo-sahayakai',
+            storageBucket: 'demo-sahayakai.appspot.com',
+        });
+        expect(() => emulatorAdminOptions({ ...base, FIREBASE_STORAGE_EMULATOR_HOST: 'storage.googleapis.com:443' })).toThrow(/local address/);
+        // A Storage emulator host alone never switches the emulator path on.
+        expect(emulatorAdminOptions({ NODE_ENV: 'development', FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199' })).toBeNull();
+        expect(emulatorAdminOptions({ NODE_ENV: 'production', ...{ FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199' } })).toBeNull();
+    });
     it('never defaults to the production project id', async () => {
         const { emulatorAdminOptions } = await load();
         const opts = emulatorAdminOptions({ NODE_ENV: 'development', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'sahayakai-b4248' });

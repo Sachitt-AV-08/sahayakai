@@ -24,14 +24,25 @@ const LOCAL_EMULATOR_HOST = /^(localhost|127\.0\.0\.1|\[::1\]):\d{2,5}$/;
  * Firestore traffic somewhere unexpected. The project id comes from GCLOUD_PROJECT, else a
  * `demo-` id; it never falls back to the production project id.
  */
-export function emulatorAdminOptions(env: Record<string, string | undefined> = process.env): { projectId: string } | null {
+export function emulatorAdminOptions(env: Record<string, string | undefined> = process.env): { projectId: string; storageBucket?: string } | null {
   if (env.NODE_ENV !== 'development') return null;
   const host = env.FIRESTORE_EMULATOR_HOST?.trim();
   if (!host) return null;
   if (!LOCAL_EMULATOR_HOST.test(host)) {
     throw new Error('FIRESTORE_EMULATOR_HOST must be a local address (localhost/127.0.0.1/[::1]:port) in development');
   }
-  return { projectId: env.GCLOUD_PROJECT?.trim() || EMULATOR_DEFAULT_PROJECT_ID };
+  const projectId = env.GCLOUD_PROJECT?.trim() || EMULATOR_DEFAULT_PROJECT_ID;
+  // The Library saves every generated artifact as a Storage file. With only Firestore emulated
+  // there was no bucket at all, so each save threw "Bucket name not specified" and nothing a
+  // teacher generated locally reached the Library. When a local Storage emulator is running
+  // (FIREBASE_STORAGE_EMULATOR_HOST, which the Admin SDK honours by itself) name its bucket.
+  // Like the Firestore host it must be local; no production bucket is ever named here.
+  const storageHost = env.FIREBASE_STORAGE_EMULATOR_HOST?.trim();
+  if (!storageHost) return { projectId };
+  if (!LOCAL_EMULATOR_HOST.test(storageHost)) {
+    throw new Error('FIREBASE_STORAGE_EMULATOR_HOST must be a local address (localhost/127.0.0.1/[::1]:port) in development');
+  }
+  return { projectId, storageBucket: `${projectId}.appspot.com` };
 }
 
 export async function initializeFirebase() {
@@ -43,7 +54,7 @@ export async function initializeFirebase() {
         const emulator = emulatorAdminOptions();
         if (emulator) {
           // Firestore calls go to FIRESTORE_EMULATOR_HOST; no credentials are read or fetched.
-          admin.initializeApp({ projectId: emulator.projectId });
+          admin.initializeApp(emulator);
           logger.info("Initialized for the local Firestore emulator (development only).", "FirebaseAdmin", { projectId: emulator.projectId });
           return;
         }
