@@ -37,6 +37,7 @@ import { isFeatureEnabled } from '@/lib/feature-flags';
 import { withPlanCheck } from '@/lib/plan-guard';
 import { dbAdapter } from '@/lib/db/adapter';
 import { dispatchAssessmentScanner } from '@/lib/sidecar/assessment-scanner-dispatch';
+import { isGradedResult } from '@/ai/schemas/assessment-scanner-utils';
 
 // Allow up to 120s for AI scanning (multi-page OCR + grading can be slow)
 export const maxDuration = 120;
@@ -74,7 +75,38 @@ async function _handler(request: Request) {
             );
         }
 
-        const rawJson = await request.json();
+        // Read + parse the body defensively. When pages are sent as inline base64
+        // (local upload mode) a large multi-page scan can exceed the request-body
+        // ceiling (experimental.middlewareClientMaxBodySize); Next then truncates
+        // the body and request.json() throws a SyntaxError ("Unterminated string
+        // in JSON at position N"). Surface that as a clean 413 the UI can act on,
+        // rather than a generic 500 that reads as an AI/grading failure.
+        //
+        // BUT an empty or small malformed body throws the SAME SyntaxError class
+        // ("Unexpected end of JSON input" / "Unexpected token …") — that's a
+        // client bug, NOT a size problem, and must be a 400. Distinguish by the
+        // truncation signature: a cut base64 string reports "Unterminated string"
+        // deep into the payload, so require either that phrasing or a large byte
+        // position; anything else (empty body, position 0) falls through to 400.
+        let rawJson: unknown;
+        try {
+            rawJson = await request.json();
+        } catch (parseErr) {
+            const truncated =
+                parseErr instanceof SyntaxError &&
+                (/unterminated/i.test(parseErr.message) ||
+                    Number(/position (\d+)/i.exec(parseErr.message)?.[1] ?? 0) > 100_000);
+            return NextResponse.json(
+                {
+                    error: truncated ? 'PAYLOAD_TOO_LARGE' : 'INVALID_INPUT',
+                    message: truncated
+                        ? 'Your upload is too large. Please scan fewer pages at once or reduce the image quality, then try again.'
+                        : 'The request body could not be read. Please try again.',
+                    code: truncated ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST_BODY',
+                },
+                { status: truncated ? 413 : 400 },
+            );
+        }
         const normalised = normalisePagePayload(rawJson);
         if (normalised && typeof normalised === 'object') {
             assessmentId =
@@ -121,7 +153,7 @@ async function _handler(request: Request) {
             );
         }
         // Feature flag: assessmentScannerDemoMode
-        //   ENABLED (default) — cap at ASSESSMENT_DEMO_PAGE_CAP (3, demo)
+        //   ENABLED (default) — cap at ASSESSMENT_DEMO_PAGE_CAP (10, demo)
         //   DISABLED          — cap at ASSESSMENT_MAX_PAGES (15, schema)
         // Flip in Firestore: system_config/feature_flags.features
         //   .assessmentScannerDemoMode.enabled = false
@@ -168,6 +200,21 @@ async function _handler(request: Request) {
         // parity scoring. The flag is flipped per-rollout-step from the
         // Firestore feature_flags doc.
         const result = await dispatchAssessmentScanner(body);
+        // Failed-scan gate (migrated from prod). A scan that graded nothing —
+        // status 'failed' or an empty question array — must NOT be returned as a
+        // 2xx result: a 0% "score" reads as a real failing grade downstream. Gate
+        // it to 422 EMPTY_EXTRACTION, mirroring the thrown-error path below.
+        if (!isGradedResult(result)) {
+            return NextResponse.json(
+                {
+                    error: 'empty_extraction',
+                    code: 'EMPTY_EXTRACTION',
+                    message:
+                        'We could not read any questions or answers from the uploaded pages. Please re-upload clearer photos and try again.',
+                },
+                { status: 422 },
+            );
+        }
         return NextResponse.json(result);
     } catch (error) {
         // BUG #3 hardening: map KNOWN, user-fixable failure causes to a
@@ -187,6 +234,25 @@ async function _handler(request: Request) {
                         (error as { message?: string }).message ??
                         'One of the uploaded pages could not be read. Please re-upload it and try again.',
                     pageNumber: (error as { pageNumber?: number }).pageNumber,
+                },
+                { status: 422 },
+            );
+        }
+
+        if (code === 'BLANK_SCAN') {
+            // Not an error the teacher needs to "fix" — the photo was fine, the
+            // page is just empty. Return a friendly, actionable message (and the
+            // blank page numbers) instead of the misleading "re-upload clearer
+            // photos". No AI grading call was spent (the flow short-circuits
+            // before Pass 2), which is the whole point of detecting blank early.
+            return NextResponse.json(
+                {
+                    error: 'blank_scan',
+                    code: 'BLANK_SCAN',
+                    message:
+                        (error as { message?: string }).message ??
+                        "This page looks blank — there's nothing to grade. Please upload the student's written answer page.",
+                    blankPages: (error as { blankPages?: number[] }).blankPages,
                 },
                 { status: 422 },
             );
