@@ -101,7 +101,7 @@ async def test_missing_phone_still_flags_outreach_but_reports_failure() -> None:
 
 
 def test_teardown_persists_opt_out_after_hangup() -> None:
-    source = Path(telephony.__file__).read_text()
+    source = Path(telephony.__file__).read_text(encoding="utf-8")
     hangup = source.index("await _hangup(bridge.call_uuid)")
     persist = source.index("await _persist_opt_out(bridge)")
     assert hangup < persist

@@ -711,7 +711,7 @@ class TestTheCallEndsBeforeTheBookkeeping:
     def test_hangup_is_issued_before_transcript_and_summary(self) -> None:
         from pathlib import Path
 
-        source = Path(telephony.__file__).read_text()
+        source = Path(telephony.__file__).read_text(encoding="utf-8")
         hangup = source.index("await _hangup(bridge.call_uuid)")
         transcript = source.index("await _persist_transcript(bridge)\n    if bridge.context")
         summary = source.index("await _generate_call_summary")

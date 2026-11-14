@@ -91,7 +91,7 @@ class TestWriterContract:
     """Class gate: the web writer and this reader agree on the field names."""
 
     def test_the_writer_still_writes_the_fields_the_bridge_reads(self) -> None:
-        sources = [p.read_text() for p in WRITERS if p.exists()]
+        sources = [p.read_text(encoding="utf-8") for p in WRITERS if p.exists()]
         if not sources:
             pytest.skip("web app sources not present in this checkout")
         text = "\n".join(sources)
@@ -102,7 +102,7 @@ class TestWriterContract:
         )
 
     def test_the_bridge_does_not_depend_on_a_field_nothing_writes_alone(self) -> None:
-        sources = [p.read_text() for p in WRITERS if p.exists()]
+        sources = [p.read_text(encoding="utf-8") for p in WRITERS if p.exists()]
         if not sources:
             pytest.skip("web app sources not present in this checkout")
         text = "\n".join(sources)
