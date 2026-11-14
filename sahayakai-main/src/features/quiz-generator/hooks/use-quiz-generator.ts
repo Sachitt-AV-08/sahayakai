@@ -221,10 +221,7 @@ export function useQuizGenerator() {
             form.setValue("language", language);
         }
         form.trigger("topic");
-        // Auto-submit after voice transcript to improve UX
-        setTimeout(() => {
-            form.handleSubmit(onSubmit)();
-        }, 100);
+        // Fill the topic only: the quiz is generated when the teacher presses "Generate Quiz".
     };
 
     return {
