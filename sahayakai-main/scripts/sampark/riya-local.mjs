@@ -92,11 +92,13 @@ const argv = process.argv.slice(2);
 const REAL_CALL = {
     // The unified SARGVISION agent (Sampark + Athithi Vani), 2026-11-04. Sampark calls route to its
     // school workflows only with product_context "sampark", which the ElevenLabs client always sends.
-    agentId: 'agent_0601m6hcjz53fa8rbc8mkn46vmw8',
+    // RIYA_REAL_AGENT_ID / RIYA_REAL_PHONE_NUMBER_ID override both when the agent lives in another
+    // ElevenLabs workspace (the key in this shell must be able to read that agent and number).
+    agentId: process.env.RIYA_REAL_AGENT_ID?.trim() || 'agent_0601m6hcjz53fa8rbc8mkn46vmw8',
     // +917965853645 on the Vobiz SIP trunk (TLS), imported for and assigned to the unified agent
     // (the earlier phnum_9701… and phnum_1501… resources are superseded).
     // Riya's caller ID — never a contact's number.
-    phoneNumberId: 'phnum_5301m6hd2e5de5qaqf79txqf1hbq',
+    phoneNumberId: process.env.RIYA_REAL_PHONE_NUMBER_ID?.trim() || 'phnum_5301m6hd2e5de5qaqf79txqf1hbq',
     sourceAgentId: 'agent_9201m4wq7tahfedr03vcf5es80bq',
     allowedNumber: '+918431339732',
 };
@@ -565,9 +567,11 @@ async function main() {
             SAMPARK_RIYA_TEST_DAILY_CAP: testCap(),
             // School notices plus the four attendance-outreach workflows (absence, academic, behaviour, achievement).
             SAMPARK_RIYA_PURPOSES: 'ptm_invitation,event_invitation,holiday_notice,exam_schedule_notice,emergency_closure,absence_notice,academic_performance,classroom_behaviour,student_achievement',
-            // Verified on the agent 2026-10-29 (record_voice=false, delete_audio, 7-day retention):
-            // the console must not tell staff calls are recorded.
-            SAMPARK_RIYA_RECORDING_OFF_CONFIRMED: 'true',
+            // Verified on the default agent 2026-10-29 (record_voice=false, delete_audio, 7-day retention):
+            // the console must not tell staff calls are recorded. An overriding agent was not verified
+            // (Sampark 2N, 2026-11-14: record_voice=true, unlimited retention), so the app then asks for
+            // the guardian's recorded-conversation consent before it dials.
+            SAMPARK_RIYA_RECORDING_OFF_CONFIRMED: process.env.RIYA_REAL_AGENT_ID?.trim() ? 'false' : 'true',
             // Staff read the transcript under Details; kept 7 days, the same as the agent's retention.
             SAMPARK_RIYA_STORE_TRANSCRIPTS: 'true',
             SAMPARK_RIYA_TRANSCRIPT_DAYS: '7',
