@@ -77,6 +77,16 @@ export interface VidyaLiveOptions {
   onTranscript?: (t: VidyaLiveTranscript) => void;
   onLevel?: (level: number) => void;
   onError?: (code: VidyaLiveErrorCode, message: string) => void;
+  /**
+   * Greet on connect: once the upstream session is ready, VIDYA says one short
+   * hello, so the teacher hears straight away that voice works. Off by default.
+   */
+  greet?: boolean;
+  /**
+   * If the mic has carried no speech at all this session after this long in
+   * LISTENING, VIDYA says (once) that she can't hear the teacher. Off when unset.
+   */
+  micSilenceHintMs?: number | null;
 }
 
 export type VidyaLiveErrorCode =
@@ -96,6 +106,15 @@ const QUIET_MS_FOR_THINKING = 450;
 const INTERRUPTED_FLASH_MS = 350;
 const READY_FALLBACK_MS = 8000;
 const TOOL_TURN_AUDIO_GRACE_MS = 4000;
+
+/**
+ * Notes sent as text turns (VIDYA answers by voice, in the session language).
+ * Bracketed and addressed to her, so she speaks the result, not the note.
+ */
+export const VIDYA_GREETING_PROMPT =
+  '[Voice mode just opened. Greet the teacher warmly in one short sentence and ask how you can help. Do not mention this note.]';
+export const VIDYA_MIC_SILENT_PROMPT =
+  "[You have heard nothing at all from the teacher's microphone since voice mode opened. In one short sentence, say you can't hear them and ask them to check that their microphone is on and selected. Do not mention this note.]";
 
 function b64FromBuffer(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -160,6 +179,11 @@ export class VidyaLiveSession {
   private bargeStartAt = 0;
   private framesUp = 0;
   private framesDown = 0;
+  /** When LISTENING last began; the mic-silence hint counts from here. */
+  private listeningSince = 0;
+  /** Any speech this session, from the local mic level or the server's transcript. */
+  private heardSpeech = false;
+  private micHintSent = false;
   readonly metrics: VidyaLiveMetrics = { turns: [] };
   /** Recent non-audio server frames with the client state at arrival (debugging). */
   readonly frameLog: string[] = [];
@@ -234,6 +258,7 @@ export class VidyaLiveSession {
   private set(s: VidyaLiveState, detail?: string) {
     if (this.state === s) return;
     this.state = s;
+    if (s === 'listening') this.listeningSince = performance.now();
     this.opts.onState(s, detail);
   }
 
@@ -253,6 +278,7 @@ export class VidyaLiveSession {
     this.frameLog.length = 0;
     this.metrics.connectMs = this.metrics.readyMs = undefined;
     this.framesUp = this.framesDown = 0;
+    this.heardSpeech = this.micHintSent = false;
     this.startedAt = performance.now();
     this.set('connecting');
 
@@ -428,6 +454,20 @@ export class VidyaLiveSession {
     this.opts.onLevel?.(this.micLevel);
 
     const now = performance.now();
+    if (m.rms > SPEECH_RMS) this.heardSpeech = true;
+    else if (
+      this.opts.micSilenceHintMs &&
+      !this.heardSpeech &&
+      !this.micHintSent &&
+      this.state === 'listening' &&
+      now - this.listeningSince >= this.opts.micSilenceHintMs
+    ) {
+      // Nothing but silence since voice opened: most often the wrong or a muted
+      // input device. Say so once instead of listening forever.
+      this.micHintSent = true;
+      this.sendText(VIDYA_MIC_SILENT_PROMPT);
+      return;
+    }
     if (m.rms > SPEECH_RMS) {
       if (this.state === 'speaking' && !this.bargeStartAt) this.bargeStartAt = now;
       this.lastLoudAt = now;
@@ -469,6 +509,7 @@ export class VidyaLiveSession {
     if (f.ready) {
       this.metrics.readyMs = Math.round(performance.now() - this.startedAt);
       this.set('listening');
+      if (this.opts.greet) this.sendText(VIDYA_GREETING_PROMPT);
       return;
     }
     if (typeof f.audio === 'string') {
@@ -506,6 +547,7 @@ export class VidyaLiveSession {
     if (f.transcript && typeof f.transcript === 'object') {
       const t = f.transcript as VidyaLiveTranscript;
       if (typeof t.text === 'string') this.opts.onTranscript?.(t);
+      if (t.role === 'user' && t.text.trim()) this.heardSpeech = true;
       if (t.role === 'user' && this.state === 'listening') this.userSpokeThisTurn = true;
       // Gemini Live generates faster than real time: an answer can be fully
       // delivered (so the server has nothing left to "interrupt") while most
@@ -515,7 +557,9 @@ export class VidyaLiveSession {
       return;
     }
     if (typeof f.error === 'string') {
-      this.fail('upstream_failed', f.error);
+      // Before `ready` the upstream Live session never opened (model access,
+      // credentials, quota): voice is unavailable, nothing was "lost".
+      this.fail(this.metrics.readyMs == null ? 'unavailable' : 'upstream_failed', f.error);
     }
   }
 

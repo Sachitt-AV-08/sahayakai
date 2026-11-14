@@ -62,6 +62,8 @@ const FRIENDLY: Record<string, string> = {
   idle_timeout: "I paused because it was quiet. Tap me whenever you're ready.",
 };
 const GENERIC = "I lost the connection. Tap me to start again.";
+/** Listening with no speech at all from the mic this long → VIDYA says she can't hear the teacher. */
+const MIC_SILENCE_HINT_MS = 8000;
 
 /** Observer callbacks must never be able to break the live session. */
 function observe(fn: () => void): void {
@@ -101,6 +103,9 @@ export function useVidyaLive({ scope, getIdToken, buildSessionInput, onToolCall,
       scope,
       getIdToken: () => tokenRef.current(),
       ...inputRef.current(),
+      // She says hello as soon as she is connected, and says so (once) if the mic stays silent.
+      greet: true,
+      micSilenceHintMs: MIC_SILENCE_HINT_MS,
       onState: (s) => {
         setState(s);
         observe(() => stateRef.current?.(s));
