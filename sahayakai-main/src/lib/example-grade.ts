@@ -4,7 +4,7 @@
  */
 export function gradeFromExamplePrompt(prompt: string): string | null {
     const m =
-        prompt.match(/\b(?:grade|class|std\.?|standard)\s*(\d{1,2})\b/i) ??
+        prompt.match(/\b(?:grades?|class(?:es)?|std\.?|standard)\s*(\d{1,2})\b/i) ??
         prompt.match(/\b(\d{1,2})(?:st|nd|rd|th)\s*(?:grade|graders?|class|std)\b/i);
     const n = m ? Number(m[1]) : NaN;
     return Number.isInteger(n) && n >= 1 && n <= 12 ? `Class ${n}` : null;
