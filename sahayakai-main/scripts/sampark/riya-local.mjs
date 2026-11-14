@@ -132,6 +132,9 @@ const EMU_DATA_DIR = join(PERSIST_DIR, 'emulator-data');
 const LOCAL_KEYS_FILE = join(PERSIST_DIR, 'local-keys.json');
 const SARGVISION_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.json');
 const NPM_CACHE = WIN ? join(process.env.LOCALAPPDATA ?? homedir(), 'npm-cache-riya-firestore') : join(homedir(), '.npm-cache-riya-firestore');
+// Every Riya workflow (src/lib/sampark/conversation/riya-purposes.ts). Practice and the real-call modes
+// use the same list; real calls stay gated by Test mode, allow-lists, consent and the calling window.
+const RIYA_ALL_PURPOSES = 'ptm_invitation,event_invitation,holiday_notice,exam_schedule_notice,emergency_closure,absence_notice,academic_performance,classroom_behaviour,student_achievement';
 const LOCAL_AGENT = 'agent_localtestlocaltestlocaltest0';
 const WEB_ENV_LOCAL = '.env.development.local';
 const AGENTS_DIR = join('..', 'sahayakai-agents');
@@ -148,6 +151,9 @@ const tsx = (script, ...rest) => [TSX, script, ...rest];
 /** Quote a path for the Windows shell (npx needs one there); a no-op elsewhere. */
 const q = (a) => (WIN && /\s/.test(a) ? `"${a}"` : a);
 
+// A closed console (window closed, output piped into head) must never crash a stop half-way.
+process.stdout.on('error', () => {});
+process.stderr.on('error', () => {});
 const say = (s = '') => process.stdout.write(`${s}\n`);
 const step = (s) => say(`\n== ${s}`);
 const fail = (s) => {
@@ -508,7 +514,7 @@ async function main() {
         SAMPARK_PHONE_PEPPER: localKeys.pepper,
         SAMPARK_ENABLED: 'true',
         SAMPARK_ELEVENLABS_ENABLED: 'true',
-        SAMPARK_RIYA_PURPOSES: 'ptm_invitation',
+        SAMPARK_RIYA_PURPOSES: RIYA_ALL_PURPOSES, // Practice simulates calls, so every workflow can be tried (Class-Wide Outreach needs the announcement ones)
         // Disposable placeholders so the webhook receiver can be tested. Not a real key: Test mode
         // stays refused because live dialling is off and this is not the non-production database.
         ELEVENLABS_WEBHOOK_SECRET: localKeys.webhookSecret,
@@ -566,7 +572,7 @@ async function main() {
             // Per contact on the roster, per school elsewhere.
             SAMPARK_RIYA_TEST_DAILY_CAP: testCap(),
             // School notices plus the four attendance-outreach workflows (absence, academic, behaviour, achievement).
-            SAMPARK_RIYA_PURPOSES: 'ptm_invitation,event_invitation,holiday_notice,exam_schedule_notice,emergency_closure,absence_notice,academic_performance,classroom_behaviour,student_achievement',
+            SAMPARK_RIYA_PURPOSES: RIYA_ALL_PURPOSES,
             // Verified on the default agent 2026-10-29 (record_voice=false, delete_audio, 7-day retention):
             // the console must not tell staff calls are recorded. An overriding agent was not verified
             // (Sampark 2N, 2026-11-14: record_voice=true, unlimited retention), so the app then asks for
@@ -620,7 +626,7 @@ async function main() {
             // Only the named roster contacts can ring; the rest of the class is visible but refused.
             SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: allowed.join(','),
             SAMPARK_RIYA_TEST_DAILY_CAP: testCap(),
-            SAMPARK_RIYA_PURPOSES: 'ptm_invitation,event_invitation,holiday_notice,exam_schedule_notice,emergency_closure,absence_notice,academic_performance,classroom_behaviour,student_achievement',
+            SAMPARK_RIYA_PURPOSES: RIYA_ALL_PURPOSES,
             // The bridge records no audio; transcripts are kept 7 days for staff (Details).
             SAMPARK_RIYA_RECORDING_OFF_CONFIRMED: 'true',
             SAMPARK_RIYA_STORE_TRANSCRIPTS: 'true',
