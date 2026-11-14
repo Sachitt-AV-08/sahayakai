@@ -49,6 +49,10 @@ const WED_21_IST = new Date('2026-10-07T15:30:00Z');
 
 const crypt = { encrypt: encryptPhone, hash: hashPhone };
 
+/** The launcher's default agent and number: a literal, optionally behind an env override. */
+const LAUNCHER_AGENT_RE = /agentId: (?:process\.env\.RIYA_REAL_AGENT_ID\?\.trim\(\) \|\| )?'(agent_\w+)'/;
+const LAUNCHER_PHONE_RE = /phoneNumberId: (?:process\.env\.RIYA_REAL_PHONE_NUMBER_ID\?\.trim\(\) \|\| )?'(phnum_\w+)'/;
+
 describe('Sargvision roster data', () => {
     beforeAll(setPhoneEnv);
 
@@ -342,7 +346,7 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
     });
 
     it('the launcher, .env.example and the setup doc name the same Riya phone-number resource', () => {
-        const launcherId = read('scripts/sampark/riya-local.mjs').match(/phoneNumberId: '(phnum_\w+)'/)?.[1];
+        const launcherId = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_PHONE_RE)?.[1];
         const exampleId = read('.env.example').match(/^ELEVENLABS_AGENT_PHONE_NUMBER_ID=(phnum_\w+)/m)?.[1];
         expect(launcherId).toMatch(/^phnum_\w{20,}$/);
         expect(exampleId).toBe(launcherId);
@@ -350,8 +354,9 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
     });
 
     it('real calls use the unified SARGVISION agent and the Vobiz number assigned to it (live contract)', () => {
-        const launcherAgent = read('scripts/sampark/riya-local.mjs').match(/agentId: '(agent_\w+)'/)?.[1];
-        const launcherPhone = read('scripts/sampark/riya-local.mjs').match(/phoneNumberId: '(phnum_\w+)'/)?.[1];
+        // The launcher's DEFAULT ids (RIYA_REAL_AGENT_ID / RIYA_REAL_PHONE_NUMBER_ID may override them).
+        const launcherAgent = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_AGENT_RE)?.[1];
+        const launcherPhone = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_PHONE_RE)?.[1];
         const exampleAgent = read('.env.example').match(/^ELEVENLABS_AGENT_ID=(agent_\w+)/m)?.[1];
         expect(launcherAgent).toBe(contract.agentId);
         expect(exampleAgent).toBe(contract.agentId);
@@ -359,14 +364,14 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
         expect(contract.phoneNumberAssignedAgentId).toBe(contract.agentId);
     });
 
-    it('the real-call launcher enables the four outreach workflows', () => {
-        // PTM only for Practice; the full list for each real-call mode (--real-call ElevenLabs, --vobiz-call Vobiz).
-        const lists = [...read('scripts/sampark/riya-local.mjs').matchAll(/SAMPARK_RIYA_PURPOSES: '([a-z_,]+)'/g)].map((m) => m[1]);
-        expect(lists).toHaveLength(3);
-        for (const realCall of lists.slice(1)) {
-            for (const p of Object.values(OUTREACH_REASON_PURPOSE)) expect(realCall.split(',')).toContain(p);
-            expect(realCall.split(',').every((p) => (RIYA_PURPOSES as readonly string[]).includes(p))).toBe(true);
-        }
-        expect(lists[1]).toBe(lists[2]); // both providers offer the same workflows
+    it('every launcher mode enables the four outreach workflows', () => {
+        // Practice simulates calls and Class-Wide Outreach offers Practice runs, so Practice gets the
+        // same full list as --real-call (ElevenLabs) and --vobiz-call (Vobiz): one shared constant.
+        const src = read('scripts/sampark/riya-local.mjs');
+        const all = src.match(/const RIYA_ALL_PURPOSES = '([a-z_,]+)'/)?.[1] ?? '';
+        for (const p of Object.values(OUTREACH_REASON_PURPOSE)) expect(all.split(',')).toContain(p);
+        expect(all.split(',').every((p) => (RIYA_PURPOSES as readonly string[]).includes(p))).toBe(true);
+        const uses = [...src.matchAll(/SAMPARK_RIYA_PURPOSES: ([^,\n]+)/g)].map((m) => m[1].trim());
+        expect(uses).toEqual(['RIYA_ALL_PURPOSES', 'RIYA_ALL_PURPOSES', 'RIYA_ALL_PURPOSES']);
     });
 });
