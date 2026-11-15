@@ -1685,5 +1685,9 @@
   "You choose the message once. SahayakAI makes every call, in each parent's own language, and tells you who picked up.": "നിങ്ങൾ സന്ദേശം ഒരിക്കൽ തിരഞ്ഞെടുക്കുന്നു. SahayakAI ഓരോ കോളും, ഓരോ രക്ഷിതാവിന്റെയും സ്വന്തം ഭാഷയിൽ ചെയ്യുന്നു, ആരാണ് എടുത്തതെന്ന് നിങ്ങളോട് പറയുന്നു.",
   "Your browser does not support audio processing. Please try a different browser.": "നിങ്ങളുടെ ബ്രൗസർ ഓഡിയോ പ്രോസസ്സിംഗ് പിന്തുണയ്ക്കുന്നില്ല. മറ്റൊരു ബ്രൗസർ പരീക്ഷിക്കുക.",
   "Your name": "നിങ്ങളുടെ പേര്",
-  "e.g. Anita Sharma": "ഉദാ. അനിത ശർമ്മ"
+  "e.g. Anita Sharma": "ഉദാ. അനിത ശർമ്മ",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "രക്ഷിതാക്കൾക്കുള്ള കോളുകൾ 10:00 മുതൽ 19:00 IST വരെ മാത്രമേ ചെയ്യൂ. ദയവായി കോൾ സമയത്ത് വീണ്ടും ശ്രമിക്കുക.",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "ഈ രക്ഷിതാവ് ഇനി വിളിക്കരുതെന്ന് ആവശ്യപ്പെട്ടിട്ടുണ്ട്, അതിനാൽ ഞങ്ങൾ കോൾ ചെയ്തിട്ടില്ല. WhatsApp സന്ദേശമോ വീട്ടിലേക്ക് അയയ്ക്കുന്ന കുറിപ്പോ പോലുള്ള മറ്റൊരു മാർഗത്തിലൂടെ അവരെ ബന്ധപ്പെടുക.",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "ഈ രക്ഷിതാവിന്റെ കോൾ മുൻഗണനകൾ ഇപ്പോൾ പരിശോധിക്കാൻ കഴിഞ്ഞില്ല. ദയവായി ഒരു മിനിറ്റിന് ശേഷം വീണ്ടും ശ്രമിക്കുക.",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "ഈ ഔട്ട്റീച്ചിലെ രക്ഷിതാവിന്റെ ഫോൺ നമ്പർ ഇപ്പോൾ വിദ്യാർത്ഥിയുടെ രേഖയുമായി പൊരുത്തപ്പെടുന്നില്ല. പുതിയ ഔട്ട്റീച്ച് ആരംഭിക്കുക."
 }

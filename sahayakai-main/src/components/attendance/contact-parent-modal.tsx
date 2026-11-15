@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { callErrorFromResponse } from "@/lib/attendance/call-errors";
+import { callErrorDescription } from "@/lib/attendance/call-refusal-messages";
 
 interface ContactParentModalProps {
     open: boolean;
@@ -443,7 +444,7 @@ export function ContactParentModal({
             setStep("calling");
             pollForSummary(oid);
         } catch (err: any) {
-            toast({ title: t("Call failed"), description: err.message, variant: "destructive" });
+            toast({ title: t("Call failed"), description: callErrorDescription(err, t), variant: "destructive" });
         } finally {
             setCalling(false);
         }
