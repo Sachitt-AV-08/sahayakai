@@ -91,6 +91,26 @@ function nextWindowOpening(from: Date): Date {
     return from;
 }
 
+/** The code every route returns when it will not place a parent call now. */
+export const OUTSIDE_CALLING_HOURS_CODE = 'OUTSIDE_CALLING_HOURS';
+
+/**
+ * The 409 body for a call refused by the calling window. One shape for every
+ * route that refuses on hours (the call route and the outreach route), so the
+ * modal reads one contract.
+ */
+export function outsideCallingHoursBody(verdict: CallingWindowVerdict): {
+    error: string;
+    code: typeof OUTSIDE_CALLING_HOURS_CODE;
+    nextAllowedAt: string | null;
+} {
+    return {
+        error: verdict.reason,
+        code: OUTSIDE_CALLING_HOURS_CODE,
+        nextAllowedAt: verdict.nextAllowedAt?.toISOString() ?? null,
+    };
+}
+
 /**
  * Is it acceptable to phone a parent right now?
  *

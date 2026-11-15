@@ -4,6 +4,7 @@ import { dbAdapter } from '@/lib/db/adapter';
 import type { OutreachReason, CallStatus, PerformanceContext } from '@/types/attendance';
 import type { Language, Subject } from '@/types';
 import { refuseIfParentOptedOut } from '@/lib/call-suppression';
+import { checkCallingWindow, outsideCallingHoursBody } from '@/lib/calling-hours';
 import { hasAdvancedPlan } from '@/lib/plan-utils';
 
 // Per-(teacher,student) dedup window — protects against accidental floods
@@ -83,6 +84,18 @@ export async function POST(req: NextRequest) {
         const parentPhone: string | undefined = student.parentPhone;
         if (!parentPhone) {
             return NextResponse.json({ error: 'Student has no parent phone on record' }, { status: 422 });
+        }
+
+        // A call outreach is refused here, BEFORE a doc exists, when the call
+        // route would refuse it anyway. Otherwise the doc is written as
+        // 'initiated', the call is refused, and the record reads as a call in
+        // progress while holding the dedup window. Same 409 body as the call
+        // route. WhatsApp copies are not calls and are never refused for hours.
+        if (data.deliveryMethod === 'twilio_call') {
+            const window = checkCallingWindow();
+            if (!window.allowed) {
+                return NextResponse.json(outsideCallingHoursBody(window), { status: 409 });
+            }
         }
 
         // A parent who told us on a call not to phone them again is not called
