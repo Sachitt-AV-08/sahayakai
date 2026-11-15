@@ -36,6 +36,7 @@ import { useLanguage } from "@/context/language-context";
 import { CommunityMessagesProvider } from "@/components/community/community-messages-context";
 import { CommunityMessagesPanel } from "@/components/community/community-messages-panel";
 import { MessagesHeaderButton } from "@/components/community/messages-header-button";
+import { isPublicVoiceOrbEnabled } from "@/lib/vidya-live/public-voice";
 // GlobalVoiceInterface (voice input for unauthenticated visitors) is loaded
 // client-side only on the landing page to avoid adding its dependencies to
 // the initial bundle unnecessarily. Its action/prefill contracts are unchanged.
@@ -99,12 +100,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // teachers and a dashboard-chrome flash for cold visitors.
   if (isHome && loading) return null;
 
+  // Signed-out home: the hero's public VIDYA orb is the voice entry ONLY when
+  // its server route is live (NEXT_PUBLIC_VIDYA_VOICE_PUBLIC, see
+  // src/lib/vidya-live/public-voice.ts). Until then the home keeps the
+  // turn-based floating mic it always had, as do the marketing pages.
   if ((isHome && !user) || isMarketing) {
     return (
       <>
         {children}
         <PWAInstallPrompt />
-        {isMarketing && <GlobalVoiceInterface />}
+        {(isMarketing || !isPublicVoiceOrbEnabled()) && <GlobalVoiceInterface />}
       </>
     );
   }

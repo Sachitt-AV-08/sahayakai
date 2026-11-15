@@ -12,6 +12,11 @@
  * One tap starts the conversation; the visitor then just talks. Tap again to
  * end. Around her: a few quiet, slowly floating capability words — support,
  * not competition.
+ *
+ * Mount ONLY behind isPublicVoiceOrbEnabled() (src/lib/vidya-live/public-voice.ts):
+ * the public session route answers 503 until the sidecar and
+ * VIDYA_VOICE_PUBLIC_ENABLED are live in both regions, and a visitor would
+ * grant the mic for nothing. Gate: src/__tests__/deploy/public-voice-orb-gate.test.tsx.
  */
 
 import { useCallback, useEffect } from "react";
@@ -67,7 +72,7 @@ export function LandingVoiceOrb() {
             {FLOATING.map((f) => (
               <span
                 key={f.label}
-                className={`${f.float} absolute whitespace-nowrap text-[12.5px] font-medium tracking-wide text-neutral-500`}
+                className={`${f.float} absolute whitespace-nowrap text-xs font-medium tracking-wide text-ink-500`}
                 style={{ ...f.pos, opacity: 0.85 }}
               >
                 {t(f.label)}
@@ -82,7 +87,7 @@ export function LandingVoiceOrb() {
         aria-live="polite"
         data-state={live.state}
         data-testid="vidya-hero-status"
-        className="vidya-status relative z-10 -mt-3 inline-flex items-center gap-2.5 rounded-full border border-saffron-200/80 bg-white/85 px-5 py-2 text-[14px] font-medium text-foreground shadow-[0_8px_24px_-14px_hsl(var(--saffron-800)/0.35)] backdrop-blur-sm"
+        className="vidya-status relative z-10 -mt-3 inline-flex items-center gap-2.5 rounded-full border border-saffron-200/80 bg-white/85 px-5 py-2 text-sm font-medium text-foreground shadow-[0_8px_24px_-14px_hsl(var(--saffron-800)/0.35)] backdrop-blur-sm"
       >
         <span aria-hidden className="vidya-status-dot" />
         {live.state === "idle" || live.state === "ended" ? t("Meet VIDYA — tap and talk") : t(status)}
@@ -90,7 +95,7 @@ export function LandingVoiceOrb() {
           <button
             type="button"
             onClick={live.stop}
-            className="ml-1 text-[12px] font-medium text-neutral-500 underline-offset-2 hover:text-foreground hover:underline"
+            className="ml-1 text-xs font-medium text-ink-500 underline-offset-2 hover:text-foreground hover:underline"
             data-testid="vidya-hero-end"
           >
             {t("End")}
@@ -99,7 +104,7 @@ export function LandingVoiceOrb() {
       </p>
 
       {live.caption && live.active && (
-        <p className="mt-3 max-w-[34ch] text-center text-[13px] leading-relaxed text-neutral-500">
+        <p className="mt-3 max-w-[34ch] text-center text-tile leading-relaxed text-ink-500">
           {live.caption.role === "vidya" ? "" : `“`}
           {live.caption.text.slice(-120)}
           {live.caption.role === "vidya" ? "" : `”`}
