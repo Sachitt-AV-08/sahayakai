@@ -61,7 +61,7 @@ import {
 } from '@/lib/sampark/conversation/types';
 import { readVobizRiyaConfig, startVobizRiyaCall, VOBIZ_RIYA_AGENT_ID, type VobizRiyaConfig } from '@/lib/sampark/conversation/vobiz-provider';
 import { MAX_WEBHOOK_BYTES, parseRiyaWebhook, verifyElevenLabsSignature, type RiyaWebhookEvent } from '@/lib/sampark/conversation/webhook';
-import { forwardResponse, forwardWebhook, isAthithiEvent, looksLikeSamparkUserId, productContextOf, readForwardConfig } from '@/lib/sampark/conversation/forward';
+import { forwardResponse, forwardWebhook, isAthithiEvent, productContextOf, readForwardConfig } from '@/lib/sampark/conversation/forward';
 import { hashId } from '@/lib/sampark/intents';
 import { decryptPhone, hashPhone } from '@/lib/sampark/phone';
 import { evaluateGate, FREQUENCY_WINDOW_MS } from '@/lib/sampark/policy/gate';
@@ -1240,18 +1240,7 @@ export async function handleRiyaWebhook(deps: RiyaDeps, rawBody: string, signatu
     const forward = readForwardConfig(env);
     if (forward) {
         const productContext = productContextOf(rawBody);
-        const ours = event.agentId === cfg.config.agentId;
-        const linked = productContext === null && ours ? Boolean(await deps.calls.getLink(event.conversationId)) : false;
-        const athithi = isAthithiEvent(
-            {
-                productContext,
-                agentId: event.agentId,
-                ourAgentId: cfg.config.agentId,
-                linked,
-                samparkUserId: looksLikeSamparkUserId(event.kind === 'post_call' ? event.userId : null),
-            },
-            forward,
-        );
+        const athithi = isAthithiEvent({ productContext, agentId: event.agentId, ourAgentId: cfg.config.agentId }, forward);
         if (athithi) {
             const outcome = await forwardWebhook(forward, rawBody, signatureHeader ?? '', { fetchImpl: deps.http?.fetchImpl });
             const fields = { kind: event.kind, productContext, httpStatus: outcome.httpStatus };
