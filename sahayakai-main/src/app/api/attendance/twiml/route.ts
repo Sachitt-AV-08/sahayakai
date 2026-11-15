@@ -335,6 +335,10 @@ export async function POST(req: NextRequest) {
             parentSpeech,
             turnNumber: newTurnCount,
             performanceSummary: content.performanceSummary,
+            // Selects the request-to-talk SYSTEM rules in the agent prompt. The
+            // neutral `reason` text above is data inside a <user_input> fence,
+            // which the prompt tells the model to ignore as instructions.
+            requestToTalk: content.requestToTalk,
         });
 
         const agentReply = agentResult.reply + (agentResult.followUpQuestion ? ` ${agentResult.followUpQuestion}` : '');

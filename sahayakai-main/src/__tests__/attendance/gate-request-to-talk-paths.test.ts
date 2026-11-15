@@ -17,6 +17,10 @@
  *     neither route's output contains a sentinel, the marks or the reason, and both serve the
  *     fixed line. A positive_feedback control proves the sentinels would be seen.
  *  2. LANGUAGES — the line exists, in the right script, for every language the routes speak.
+ *  2b. AGENT RULES — the request-to-talk rules reach the conversation agent as SYSTEM
+ *     instructions, selected by the trusted `requestToTalk` flag and outside every <user_input>
+ *     fence (text inside a fence is data the prompt tells the model to ignore), and a
+ *     request-to-talk turn is never served by the sidecar, whose agent has no such rules.
  *  3. STRUCTURAL — discovered, not listed:
  *     - a route that reads `spokenScript`, `generatedMessage` or `performanceContext` must be on
  *       the teacher-facing allow-list (its output never reaches a parent); parent-facing routes
@@ -40,6 +44,10 @@ import {
 import requestToTalkScript from '@/locales/call-scripts/request-to-talk.json';
 import { TWILIO_LANGUAGE_MAP } from '@/types/attendance';
 import type { Language } from '@/types';
+import Handlebars from 'handlebars';
+import { PARENT_CALL_AGENT_REPLY_TEMPLATE, REQUEST_TO_TALK_RULES_HEADER } from '@/ai/flows/parent-call-agent-prompt';
+import { generateAgentReply } from '@/ai/flows/parent-call-agent';
+import { callSidecarReply } from '@/lib/sidecar/parent-call-client';
 
 const SRC = path.resolve(__dirname, '../..');
 const rel = (abs: string) => path.relative(SRC, abs).split(path.sep).join('/');
@@ -84,6 +92,19 @@ jest.mock('@/lib/twilio-validate', () => ({
 jest.mock('@/ai/flows/parent-call-agent', () => ({ generateAgentReply: jest.fn() }));
 jest.mock('@/lib/voice-pipeline/config', () => ({ getVoicePipelineConfig: () => ({ orchestratorWsUrl: '' }) }));
 jest.mock('@/lib/logger', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
+// For the real dispatcher (layer 2b): every turn would go to the sidecar ('full') unless refused.
+jest.mock('@/lib/feature-flags', () => ({ decideParentCallDispatch: async () => ({ mode: 'full', reason: 'gate', bucket: 1 }) }));
+jest.mock('@/lib/sidecar/shadow-diff', () => ({ writeShadowDiff: async () => undefined }));
+jest.mock('@/lib/sidecar/parent-call-client', () => {
+    class E extends Error {}
+    return {
+        callSidecarReply: jest.fn(async () => ({ reply: 'sidecar reply', shouldEndCall: false })),
+        SidecarBehaviouralError: class extends E {},
+        SidecarConfigError: class extends E {},
+        SidecarHttpError: class extends E {},
+        SidecarTimeoutError: class extends E {},
+    };
+});
 
 // The agent ECHOES everything it was given, so anything the route hands it is in the reply the
 // parent hears. A concern field reaching the agent is therefore visible in the TwiML.
@@ -287,6 +308,65 @@ describe('the line exists in every language the routes speak', () => {
     it('Odia on Twilio follows its Hindi voice and Hindi call menu', () => {
         expect(twilioSpokenLanguage('Odia')).toBe('Hindi');
         expect(twilioSpokenLanguage('Bengali')).toBe('Bengali');
+    });
+});
+
+// ── 2b. Agent rules are system instructions ─────────────────────────────────────────────────
+
+/** The rendered prompt with every <user_input> fence removed: what the model treats as rules. */
+const outsideFences = (rendered: string) => rendered.replace(/<user_input\b[^>]*>[\s\S]*?<\/user_input>/g, '');
+const renderAgentPrompt = (input: unknown) => Handlebars.compile(PARENT_CALL_AGENT_REPLY_TEMPLATE, { noEscape: true })(input);
+const RULE = 'Never guess, hint at, confirm or deny a reason';
+
+describe.each(REQUEST_TO_TALK_REASONS.map((r) => [String(r), r] as const))('agent rules, reason=%s', (_label, reason) => {
+    beforeEach(() => store.set(OUTREACH, concernRecord(reason)));
+
+    it('the agent is flagged and its prompt carries the request-to-talk rules outside every fence', async () => {
+        await twimlPostText();
+        const input = agentInputs[0] as Record<string, unknown>;
+        expect(input.requestToTalk).toBe(true);
+        const rules = outsideFences(renderAgentPrompt(input));
+        expect(rules).toContain(REQUEST_TO_TALK_RULES_HEADER);
+        expect(rules).toContain(RULE);
+        expect(rules).toContain('override rules 4, 5 and 8');
+    });
+});
+
+describe('agent rules: structure and control', () => {
+    it('in the template, the flag-gated block sits outside every <user_input> fence', () => {
+        const t = PARENT_CALL_AGENT_REPLY_TEMPLATE;
+        const block = t.indexOf('{{#if requestToTalk}}');
+        expect(block).toBeGreaterThan(0);
+        for (const m of t.matchAll(/<user_input\b[^>]*>[\s\S]*?<\/user_input>/g)) {
+            const [from, to] = [m.index!, m.index! + m[0].length];
+            expect(block >= from && block < to).toBe(false);
+        }
+        expect(outsideFences(t)).toContain(RULE);
+    });
+
+    it('control: a good-news call is not flagged and its prompt has no request-to-talk rules', async () => {
+        store.set(OUTREACH, concernRecord('positive_feedback'));
+        await twimlPostText();
+        const input = agentInputs[0] as Record<string, unknown>;
+        expect(input.requestToTalk).toBe(false);
+        expect(renderAgentPrompt(input)).not.toContain(REQUEST_TO_TALK_RULES_HEADER);
+    });
+
+    it('a request-to-talk turn is served by Genkit, never by the sidecar, even in full mode', async () => {
+        const { dispatchParentCallReply } = jest.requireActual('@/lib/sidecar/dispatch');
+        (generateAgentReply as jest.Mock).mockResolvedValue({ reply: 'genkit reply', shouldEndCall: false });
+        (callSidecarReply as jest.Mock).mockClear();
+        const base = {
+            callSid: 'CA-gate', studentName: 'Aarav', className: 'Class 5', subject: '', reason: 'r', teacherMessage: 'm',
+            parentLanguage: 'en', transcript: [], parentSpeech: 'hello', turnNumber: 2,
+        };
+        const flagged = await dispatchParentCallReply({ ...base, requestToTalk: true });
+        expect(flagged.source).toBe('genkit');
+        expect(callSidecarReply).not.toHaveBeenCalled();
+        // Control: the same turn without the flag goes to the sidecar in full mode.
+        const unflagged = await dispatchParentCallReply({ ...base, subject: 'Maths', requestToTalk: false });
+        expect(unflagged.source).toBe('sidecar');
+        expect(callSidecarReply).toHaveBeenCalledTimes(1);
     });
 });
 

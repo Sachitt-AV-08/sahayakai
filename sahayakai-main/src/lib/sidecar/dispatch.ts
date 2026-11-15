@@ -220,6 +220,17 @@ async function decideDispatchWithTimeout(
  * route's outer try/catch then lands the canned safe wrap-up.
  */
 export async function dispatchParentCallReply(input: DispatchInput): Promise<DispatchedReply> {
+    // A request-to-talk turn is served by Genkit only. Its rules are system
+    // instructions in the Genkit prompt, selected by `requestToTalk`; the
+    // sidecar's parent-call agent has no such rules (and its request contract
+    // has no such field), so it must not answer a concern call.
+    if (input.requestToTalk) {
+        const decision: ParentCallSidecarDecision = { mode: 'off', reason: 'request_to_talk', bucket: 0 };
+        const out = await generateAgentReply(input);
+        logDispatch(decision, { source: 'genkit', callSid: input.callSid, turnNumber: input.turnNumber });
+        return genkitOutputToReply(out, 'genkit', decision);
+    }
+
     const decision = await decideDispatchWithTimeout(input.callSid);
 
     // ── off ────────────────────────────────────────────────────────────
