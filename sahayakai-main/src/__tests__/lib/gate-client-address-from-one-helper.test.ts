@@ -8,9 +8,13 @@
  *    pick a fresh address per request and walk around the limit.
  *  - the first fix took the LAST entry. Behind our global load balancer that is the load
  *    balancer's own address, so every visitor would share one bucket.
- * The gate fails if any source file reads the header itself, if the helper trusts a
- * client-supplied entry on either path into Cloud Run, or if a production deploy step stops
- * telling the app which address is our load balancer.
+ *  - the first version of this gate looked only for an 'x-forwarded-for' literal, so a route could
+ *    go back to keying its limit on `x-real-ip` (as the public-session limiter did before the
+ *    fix), `cf-connecting-ip`, `true-client-ip` or `forwarded`. Nothing in front of Cloud Run sets
+ *    those, so the client chooses them, and the gate stayed green.
+ * The gate fails if any source file outside the helper reads any client address header (or
+ * `request.ip`) itself, if the helper trusts a client-supplied entry on either path into Cloud
+ * Run, or if a production deploy step stops telling the app which address is our load balancer.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -19,7 +23,9 @@ import { clientAddress } from '@/lib/client-address';
 
 const SRC = path.resolve(__dirname, '..', '..');
 const HELPER = path.join(SRC, 'lib', 'client-address.ts');
-const READS_HEADER = /["'`]x-forwarded-for["'`]/i;
+/** Every header a client can send to claim an address, and NextRequest's own `ip`. */
+const ADDRESS_HEADERS = ['x-forwarded-for', 'x-real-ip', 'forwarded', 'cf-connecting-ip', 'true-client-ip', 'x-client-ip', 'x-cluster-client-ip', 'fastly-client-ip', 'x-appengine-user-ip'];
+const READS_HEADER = new RegExp(`["'\`](?:${ADDRESS_HEADERS.join('|')})["'\`]|\\b(?:req|request)\\.ip\\b`, 'i');
 
 function sourceFiles(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {
@@ -70,7 +76,20 @@ describe('gate: the caller address comes from one helper', () => {
         }
     });
 
-    it('no source file outside the helper reads X-Forwarded-For itself', () => {
+    it('recognises every way a route could read a client address itself', () => {
+        for (const line of [
+            "req.headers.get('x-forwarded-for')",
+            "req.headers.get('x-real-ip') ?? clientAddress(req)",
+            'headers().get("X-Real-IP")',
+            'request.headers.get(`cf-connecting-ip`)',
+            "h.get('true-client-ip')",
+            "req.headers.get('forwarded')",
+            'const ip = request.ip ?? null;',
+        ]) expect({ line, caught: READS_HEADER.test(line) }).toEqual({ line, caught: true });
+        expect(READS_HEADER.test("clientAddress(req) // via the helper, 'x-forwarded' prefix only")).toBe(false);
+    });
+
+    it('no source file outside the helper reads a client address header itself', () => {
         const files = sourceFiles(SRC);
         expect(files.length).toBeGreaterThan(500);
         const offenders = files.filter((f) => f !== HELPER && READS_HEADER.test(readFileSync(f, 'utf8'))).map((f) => path.relative(SRC, f));
