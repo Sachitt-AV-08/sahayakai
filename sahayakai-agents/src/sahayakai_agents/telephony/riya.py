@@ -9,6 +9,12 @@ turn timings, the end_call rules and the post-call data-collection fields.
 Nothing in this module calls ElevenLabs; speech in and out is the bridge's
 engine (Gemini Live on Vertex).
 
+One deliberate difference from the export: the academic_performance and
+classroom_behaviour nodes are requests to talk (REQUEST_TO_TALK_PURPOSES). They
+never state, name or frame the concern, before or after verification (founder
+decision of 23 Oct 2026; Sampark plan §2A). A re-extract that brings back the
+export's old wording fails tests/unit/test_telephony_riya_request_to_talk.py.
+
 HOW THE ELEVENLABS WORKFLOW MAPS ONTO THIS MODULE
 
   start_node edges (product_context + call_purpose)  -> `route()`
@@ -52,6 +58,7 @@ __all__ = [
     "BUSY_LINES",
     "LOCKED_MARKER",
     "PURPOSE_FIELDS",
+    "REQUEST_TO_TALK_PURPOSES",
     "RiyaCall",
     "RiyaDecision",
     "RiyaStage",
@@ -152,6 +159,14 @@ PURPOSE_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 SAFE_EXIT_NODE = "node_context_missing_safe_exit"
+
+#: Concern calls are requests to talk: the class teacher would like to speak with the parent,
+#: and the call never says why (founder decision of 23 Oct 2026; Sampark plan §2A). Mirrors
+#: the web app's REQUEST_TO_TALK_PURPOSES (academic_talk, conduct_talk) for the Riya
+#: call_purpose values that map to them. Their variable carries only the request line.
+REQUEST_TO_TALK_PURPOSES: frozenset[str] = frozenset(
+    {"academic_performance", "classroom_behaviour"}
+)
 
 
 @lru_cache(maxsize=1)
@@ -616,6 +631,13 @@ class RiyaCall:
             else f'- Begin the call by saying exactly this, word for word, and nothing else: "{opening}" '
             "Then wait for the parent's answer. Never introduce yourself a second time.\n"
         )
+        request_to_talk = (
+            "- This call is a request to talk: the class teacher would like to speak with the "
+            "parent. You do not know why, and you never say, hint at or guess it. If asked, say "
+            "the class teacher will explain when they speak. Never say the call purpose aloud.\n"
+            if self.purpose in REQUEST_TO_TALK_PURPOSES
+            else ""
+        )
         runtime = (
             "\n\n# Runtime notes for this phone line\n"
             + first
@@ -627,15 +649,15 @@ class RiyaCall:
             "guardian (even before you asked), reply with only a brief acknowledgement "
             "such as \"Thank you.\" and wait: the system will then give you the details "
             "to share. Never mention this marker.\n"
-            "- Concerns and disagreement (behaviour, academics, attendance): if the parent is "
-            "upset, defensive or disagrees, stay calm and kind. Acknowledge their feeling in your "
-            "own words (\"I understand this is upsetting\"), never argue, never blame the parent "
-            "or label the child, and do not repeat the concern as if it were proven. Say the "
-            "school wants to work together to support the child. Offer a follow-up: ask if they "
-            "would like the class teacher to call them back, and if yes, ask when. Never end "
-            "the call or say goodbye in the same reply as answering a concern; close only after "
-            "the parent says they are done.\n"
-            "- Callbacks (this overrides any line above that ends the call when it is not a "
+            "- If the parent is upset, worried, defensive or disagrees, stay calm and kind. "
+            "Acknowledge their feeling in your own words (\"I understand\"), never argue, never "
+            "blame the parent or label the child, and never say anything about the child that "
+            "this call's details do not say. Offer a follow-up: ask if they would like the class "
+            "teacher to call them back, and if yes, ask when. Never end the call or say goodbye "
+            "in the same reply as answering a worry; close only after the parent says they are "
+            "done.\n"
+            + request_to_talk
+            + "- Callbacks (this overrides any line above that ends the call when it is not a "
             "good time): if the person says it is not a good time, or asks you to call later, "
             "do NOT end the call. Ask when you should call back. If they give only a day "
             "(\"tomorrow\"), ask what time. Then repeat the day and time back in one short "
@@ -909,6 +931,16 @@ class RiyaCall:
             f"- {k}: {(self.variables.get(k) or '').strip() or '(not provided)'}"
             for k in sorted(names)
         ]
+        if self.purpose in REQUEST_TO_TALK_PURPOSES:
+            # The request line is the whole message: paraphrasing it is how a reason creeps in.
+            return (
+                "(System: the person has confirmed they are the parent or guardian. This is "
+                "the request you may now make:\n"
+                + "\n".join(details)
+                + "\nSay it in exactly those words and nothing more: add no reason, example "
+                "or detail about the child, and do not introduce yourself or say the child's "
+                "name again. Then wait for the parent's answer.)"
+            )
         return (
             "(System: the person has confirmed they are the parent or guardian. These "
             "are the call details you may now share:\n"

@@ -16,7 +16,7 @@ import crypto from 'node:crypto';
 
 import { createMemoryConversationRepo } from '@/lib/sampark/conversation/repo';
 import type { RiyaFacts } from '@/lib/sampark/conversation/facts';
-import { PAGE_FIRST_PURPOSES } from '@/lib/sampark/catalogue';
+import { PAGE_FIRST_PURPOSES, REQUEST_TO_TALK_PURPOSES } from '@/lib/sampark/catalogue';
 import { OUTREACH_REASON_PURPOSE, REQUEST_TO_TALK_LINES, RIYA_PURPOSES, riyaPurposeSpec, type RiyaPurpose } from '@/lib/sampark/conversation/riya-purposes';
 import { encryptPhone, hashPhone } from '@/lib/sampark/phone';
 import type { AuditEntry, SamparkRepo } from '@/lib/sampark/ports';
@@ -196,6 +196,60 @@ describe('gate: page-first purposes never ring a real phone without paging', () 
         const s = await setup({ mode: 'practice' });
         const preview = await previewRiyaCall(s.deps, ORG, { purpose, guardianId: 'g1', studentId: 's1', facts: FACTS[purpose] });
         expect(preview.refusals.map((r) => r.code)).not.toContain('PAGING_REQUIRED');
+    });
+});
+
+// Class gate (founder decision of 23 Oct 2026; plan §2A): a concern call is a request to talk. The
+// hosted ElevenLabs agent's academic and behaviour nodes live in its console, outside this
+// repository, and still frame the call as "a brief academic progress update" and discuss the
+// concern. Until an operator confirms they were rewritten (SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED),
+// no request-to-talk purpose may ring through that agent. Practice and the Vobiz bridge (whose
+// workflow is in sahayakai-agents and gated there) stay available.
+describe('gate: request-to-talk purposes never ring through an unconfirmed hosted ElevenLabs agent', () => {
+    const requestToTalk = RIYA_PURPOSES.filter((p) => REQUEST_TO_TALK_PURPOSES.has(riyaPurposeSpec(p).samparkPurpose));
+    const preview = (s: Setup, purpose: RiyaPurpose) => previewRiyaCall(s.deps, ORG, { purpose, guardianId: 'g1', studentId: 's1', facts: FACTS[purpose] });
+    const codes = async (s: Setup, purpose: RiyaPurpose) => (await preview(s, purpose)).refusals.map((r) => r.code);
+    const vobizEnv = (): Record<string, string | undefined> => ({
+        ...elevenEnv(),
+        SAMPARK_VOBIZ_RIYA_ENABLED: 'true',
+        VOBIZ_AUTH_ID: 'MA_TEST_ONLY',
+        VOBIZ_AUTH_TOKEN: 'tok_test_only',
+        VOBIZ_FROM_NUMBER: '+918000000000',
+        SAMPARK_PUBLIC_BASE_URL: 'https://sampark.example.test',
+        VOBIZ_STREAM_BASE_URL: 'https://bridge.example.test',
+        SAHAYAKAI_REQUEST_SIGNING_KEY: 'test-signing-key-not-real-0123456789',
+    });
+
+    it('covers the concern workflows at all', () => {
+        expect(requestToTalk).toEqual(expect.arrayContaining(['academic_performance', 'classroom_behaviour']));
+    });
+
+    it.each(requestToTalk)('%s on ElevenLabs is refused with ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED, and nothing is dialled', async (purpose) => {
+        const s = await setup({ mode: 'test' });
+        expect((await preview(s, purpose)).provider).toBe('elevenlabs');
+        expect(await codes(s, purpose)).toEqual(['ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED']);
+        expect(await refusalCode(startRiyaCall(s.deps, ORG, ADMIN, await startInput(s.deps, purpose)))).toBe('ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED');
+        expect(s.fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it.each(requestToTalk)('%s on ElevenLabs runs once the operator confirms the hosted agent', async (purpose) => {
+        for (const value of ['1', 'TRUE', 'yes', '']) {
+            const s = await setup({ mode: 'test', env: { ...elevenEnv(), SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED: value } });
+            expect(await codes(s, purpose)).toContain('ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED');
+        }
+        const s = await setup({ mode: 'test', env: { ...elevenEnv(), SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED: 'true' } });
+        expect(await codes(s, purpose)).toEqual([]);
+    });
+
+    it.each(requestToTalk)('%s still runs as a Practice call and on the Vobiz bridge', async (purpose) => {
+        expect(await codes(await setup({ mode: 'practice' }), purpose)).toEqual([]);
+        const s = await setup({ mode: 'test', env: vobizEnv(), school: { conversationProvider: 'vobiz' } });
+        expect((await preview(s, purpose)).provider).toBe('vobiz');
+        expect(await codes(s, purpose)).toEqual([]);
+    });
+
+    it.each(RIYA_PURPOSES.filter((p) => !requestToTalk.includes(p) && !PAGE_FIRST_PURPOSES.has(riyaPurposeSpec(p).samparkPurpose)))('%s (not a request to talk) is not held back on ElevenLabs', async (purpose) => {
+        expect(await codes(await setup({ mode: 'test' }), purpose)).not.toContain('ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED');
     });
 });
 
@@ -477,7 +531,8 @@ describe('Test mode — ElevenLabs (mocked network)', () => {
         ['positive_feedback', 'student_achievement', 'achievement_details', 'Your child has shown excellent improvement in Science.'],
     ] as const)('outreach %s: the unified agent gets product_context=sampark, call_purpose %s and %s; the call is recorded against the child', async (reason, purpose, variable, spoken) => {
         expect(OUTREACH_REASON_PURPOSE[reason]).toBe(purpose);
-        const s = await setup({ mode: 'test' });
+        // Requests to talk need the operator's confirmation that the hosted agent was rewritten (gate above).
+        const s = await setup({ mode: 'test', env: { ...elevenEnv(), SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED: 'true' } });
         const { call } = await startRiyaCall(s.deps, ORG, ADMIN, await startInput(s.deps, purpose));
         expect(s.fetchImpl).toHaveBeenCalledTimes(1);
         const [url, init] = s.fetchImpl.mock.calls[0] as unknown as [string, RequestInit];

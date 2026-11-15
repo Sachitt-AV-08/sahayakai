@@ -226,10 +226,12 @@ function announcementFor(purpose: RiyaPurpose, v: RiyaVariables): string {
             return `Your child was marked absent on ${v.absence_date}. Is your child with you right now?`;
         case 'emergency_closure':
             return `I'm calling to inform you that the school will be closed on ${v.closure_date} due to ${v.closure_reason}.${v.transport_information ? ` ${v.transport_information}` : ''}`;
+        // Requests to talk: the request line is the whole announcement. No framing ("a brief
+        // academic progress update", "a classroom update") names the concern or its category.
         case 'academic_performance':
-            return `I'm calling with a brief academic progress update. ${v.academic_update}`;
+            return v.academic_update;
         case 'classroom_behaviour':
-            return `I'm calling to share a classroom update. ${v.behaviour_summary}`;
+            return v.behaviour_summary;
         case 'student_achievement':
             return `I'm calling to share a positive update. ${v.achievement_details}`;
     }

@@ -3221,5 +3221,6 @@
   "{school} · school workspace": "{school} · शाळेचे वर्कस्पेस",
   "{when}, {type}, {title}, {status}": "{when}, {type}, {title}, {status}",
   "Parents are called 10:00–19:00, Monday to Saturday, never on school holidays.": "पालकांना सोमवार ते शनिवार, 10:00–19:00 दरम्यान कॉल केला जातो, शाळेच्या सुट्ट्यांच्या दिवशी कधीही नाही.",
-  "Same-day absence calls alert staff first. Staff alerts are not set up yet, so only Practice calls can run.": "त्याच दिवशीच्या गैरहजेरीच्या कॉलआधी कर्मचाऱ्यांना सूचना दिली जाते. कर्मचारी सूचना अजून सुरू झालेली नाही, त्यामुळे फक्त सराव कॉल चालवता येतील."
+  "Same-day absence calls alert staff first. Staff alerts are not set up yet, so only Practice calls can run.": "त्याच दिवशीच्या गैरहजेरीच्या कॉलआधी कर्मचाऱ्यांना सूचना दिली जाते. कर्मचारी सूचना अजून सुरू झालेली नाही, त्यामुळे फक्त सराव कॉल चालवता येतील.",
+  "Calls asking a parent to speak with the class teacher cannot run on ElevenLabs until its voice agent is updated. Use Practice or Vobiz.": "पालकांना वर्गशिक्षकांशी बोलण्याची विनंती करणारे कॉल ElevenLabs चा व्हॉइस एजंट अद्ययावत होईपर्यंत त्यावर चालवता येत नाहीत. सराव मोड किंवा Vobiz वापरा."
 }

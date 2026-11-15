@@ -39,8 +39,9 @@ BASE = {
     "absence_date": "6th November",
     "closure_date": "8th November",
     "closure_reason": "heavy rain",
-    "academic_update": "Good progress in reading",
-    "behaviour_summary": "Finds it hard to focus after lunch",
+    # Requests to talk: the web app sends only the request line (REQUEST_TO_TALK_LINES).
+    "academic_update": "Your child's class teacher would like to speak with you about your child's studies. Is there a good time this week for a short call?",
+    "behaviour_summary": "Your child's class teacher would like to speak with you this week. Is there a good time for a short call?",
     "assignment_details": "Science project due Friday",
     "achievement_details": "First prize in the quiz",
     "followup_details": "Extra reading support on Tuesdays",
@@ -731,11 +732,11 @@ def test_sampark_signature_and_token_formats(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def _behaviour_delivered() -> RiyaCall:
-    c = call("classroom_behaviour", behaviour_summary="difficulty paying attention during class")
+    c = call("classroom_behaviour")
     c.on_parent("Yes, go ahead.")
     c.on_agent(c.guardian_question())
     assert c.on_parent("Yes, I am his father.").act is Act.UNLOCK
-    c.on_agent("I'm calling to share that your child has been having difficulty paying attention during class.")
+    c.on_agent(BASE["behaviour_summary"])
     return c
 
 

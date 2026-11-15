@@ -32,7 +32,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 
 import { logger } from '@/lib/logger';
-import { PAGE_FIRST_PURPOSES, purposeSpec } from '@/lib/sampark/catalogue';
+import { PAGE_FIRST_PURPOSES, purposeSpec, REQUEST_TO_TALK_PURPOSES } from '@/lib/sampark/catalogue';
 import {
     fetchConversation,
     findConversationByUserId,
@@ -151,6 +151,17 @@ function testDailyCap(env: Env): number {
 /** The operator confirmed the agent records no audio and keeps no transcript (privacy settings on the ElevenLabs agent). */
 function recordingOffConfirmed(env: Env): boolean {
     return env.SAMPARK_RIYA_RECORDING_OFF_CONFIRMED === 'true';
+}
+
+/**
+ * The operator confirmed the HOSTED ElevenLabs agent's academic and behaviour nodes were rewritten
+ * as requests to talk. Their wording lives in the ElevenLabs console, not in this repository, and
+ * until it changes it frames the call as "a brief academic progress update" before the listener is
+ * verified and discusses the concern after (founder decision of 23 Oct 2026; plan §2A). The Vobiz
+ * bridge runs its own, fixed workflow (sahayakai-agents riya_workflow.json) and needs no flag.
+ */
+function elevenLabsRequestToTalkVerified(env: Env): boolean {
+    return env.SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED === 'true';
 }
 
 export type RiyaBlocker =
@@ -488,6 +499,7 @@ export const RiyaReviewSchema = z.object({ note: z.enum(['did_not_ring', 'rang',
 export type RiyaRefusal =
     | { code: 'PURPOSE_NOT_ENABLED' }
     | { code: 'PAGING_REQUIRED' }
+    | { code: 'ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED' }
     | { code: 'FACTS_REQUIRED' }
     | { code: 'FACTS_INVALID'; problems: RiyaFactProblem[] }
     | { code: 'CAMPAIGN_FACTS_UNAVAILABLE' }
@@ -602,6 +614,11 @@ async function evaluate(deps: RiyaDeps, orgId: string, input: RiyaPreviewInput):
     const spec = { ...purposeSpec(riyaSpec.samparkPurpose), status: 'available' as const, mode: 'conversation' as const };
     // A2 pages staff before the parent is called; with no pager yet, only a simulated call may run.
     if (PAGE_FIRST_PURPOSES.has(spec.id) && provider !== 'simulated') refusals.push({ code: 'PAGING_REQUIRED' });
+    // A request to talk never states the concern. The hosted ElevenLabs agent still does until its
+    // nodes are rewritten, so it may not place these calls until an operator confirms it was.
+    if (REQUEST_TO_TALK_PURPOSES.has(spec.id) && provider === 'elevenlabs' && !elevenLabsRequestToTalkVerified(env)) {
+        refusals.push({ code: 'ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED' });
+    }
     if (pauseStopsPurpose(school.pause, spec.id)) refusals.push({ code: 'SCHOOL_PAUSED' });
 
     const preferences = (await deps.repo.getPreferences(orgId, [guardian.id])).get(guardian.id) ?? null;
@@ -762,6 +779,7 @@ function refusalError(refusals: RiyaRefusal[]): SamparkServiceError {
     const message: Record<RiyaRefusal['code'], string> = {
         PURPOSE_NOT_ENABLED: 'This Riya workflow is not enabled for this deployment',
         PAGING_REQUIRED: 'Same-day absence calls page staff first, and paging is not set up yet; only Practice calls can run',
+        ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED: 'The hosted ElevenLabs agent is not confirmed to only ask the parent to talk to the class teacher; this call can run in Practice or on Vobiz',
         FACTS_REQUIRED: 'The call needs its facts',
         FACTS_INVALID: 'Some facts are missing or cannot be said; nothing was dialled',
         CAMPAIGN_FACTS_UNAVAILABLE: 'That campaign has no facts for this workflow',

@@ -115,7 +115,7 @@ describe('Riya class gates', () => {
         const offenders: string[] = [];
         for (const s of SOURCES) {
             if (isTest(s.rel)) continue;
-            for (const m of s.code.matchAll(/(?:process\.env|env)\.(SAMPARK_ELEVENLABS_ENABLED|SAMPARK_RIYA_STORE_TRANSCRIPTS|SAMPARK_RIYA_RECORDING_OFF_CONFIRMED|SAMPARK_RIYA_PRODUCTION_DATA_APPROVED|ELEVENLABS_ALLOW_SOURCE_AGENT)\s*(!==|===|==|!=)?\s*('[^']*')?/g)) {
+            for (const m of s.code.matchAll(/(?:process\.env|env)\.(SAMPARK_ELEVENLABS_ENABLED|SAMPARK_RIYA_STORE_TRANSCRIPTS|SAMPARK_RIYA_RECORDING_OFF_CONFIRMED|SAMPARK_RIYA_ELEVENLABS_REQUEST_TO_TALK_VERIFIED|SAMPARK_RIYA_PRODUCTION_DATA_APPROVED|ELEVENLABS_ALLOW_SOURCE_AGENT)\s*(!==|===|==|!=)?\s*('[^']*')?/g)) {
                 if ((m[2] !== '===' && m[2] !== '!==') || m[3] !== "'true'") offenders.push(`${s.rel}: ${m[0]}`);
             }
         }

@@ -253,7 +253,7 @@ async function requireClass(deps: BatchDeps, orgId: string, uid: string, grade: 
 // ── Preview ─────────────────────────────────────────────────────────────────
 
 /** Refusals that are the same for every family: the batch as a whole cannot run. */
-const CAMPAIGN_REFUSALS = new Set<RiyaRefusal['code']>(['PURPOSE_NOT_ENABLED', 'PAGING_REQUIRED', 'FACTS_REQUIRED', 'CAMPAIGN_FACTS_UNAVAILABLE', 'PROVIDER_UNAVAILABLE']);
+const CAMPAIGN_REFUSALS = new Set<RiyaRefusal['code']>(['PURPOSE_NOT_ENABLED', 'PAGING_REQUIRED', 'ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED', 'FACTS_REQUIRED', 'CAMPAIGN_FACTS_UNAVAILABLE', 'PROVIDER_UNAVAILABLE']);
 /** Refusals that only delay the batch (it waits and dials when they clear). */
 const WAITING_REFUSALS = new Set<RiyaRefusal['code']>(['OUTSIDE_CALLING_HOURS', 'SCHOOL_PAUSED']);
 const PER_FAMILY_FACT_VARIABLES = new Set(['student_name', 'class_name', 'section_name']);

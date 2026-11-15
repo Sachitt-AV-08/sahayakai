@@ -225,7 +225,8 @@ describe('Riya calls tab (Practice)', () => {
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Difficulty paying attention' }));
         fireEvent.click(screen.getByRole('button', { name: 'Preview what Riya will say' }));
-        expect(await screen.findByText(/I'm calling to share a classroom update\. Your child's class teacher would like to speak with you this week\./)).toBeTruthy();
+        // A request to talk: staff review exactly the request line, with no "classroom update" framing.
+        expect(await screen.findByText(`“${REQUEST_TO_TALK_LINES.classroom_behaviour}”`)).toBeTruthy();
 
         const place = screen.getByRole('button', { name: 'Run practice call' }) as HTMLButtonElement;
         await waitFor(() => expect(place.disabled).toBe(false));

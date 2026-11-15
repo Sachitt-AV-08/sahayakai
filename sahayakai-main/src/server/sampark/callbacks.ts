@@ -220,6 +220,7 @@ const REFUSAL_MESSAGE: Partial<Record<CallbackRefusal['code'], string>> = {
     STUDENT_INACTIVE: 'This student is no longer active',
     PURPOSE_NOT_ENABLED: 'This kind of Riya call is not switched on',
     PAGING_REQUIRED: 'Same-day absence calls page staff first, and paging is not set up yet',
+    ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED: 'The hosted ElevenLabs agent is not confirmed to only ask the parent to talk to the class teacher, so this callback cannot run on ElevenLabs',
 };
 
 function refusalToError(p: CallbackPreview): SamparkServiceError {
