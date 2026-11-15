@@ -493,7 +493,7 @@ function CallbackStatusLine({ call, callback }: { call: ConversationCallView; ca
         return (
             <p className="flex flex-wrap items-center gap-2 text-sm">
                 <StatusPill tone="warning">{t("Callback requested")}</StatusPill>
-                {requested && <span className="text-foreground break-words">{fmt(t("asked for: \u201c{text}\u201d"), { text: requested })}</span>}
+                {requested && <span className="text-foreground break-words">{fmt(t("asked for: “{text}”"), { text: requested })}</span>}
                 <span className="text-muted-foreground">{callback ? t("Not scheduled yet: confirm a time in the calendar.") : t("Not in the calendar yet.")}</span>
             </p>
         );
