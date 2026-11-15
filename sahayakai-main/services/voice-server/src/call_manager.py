@@ -24,6 +24,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from src.call_policy import AI_REVEAL_ORIGINAL
 from src.conversation_state import PHASE_INSTRUCTION_PREFIX
 
 if TYPE_CHECKING:
@@ -35,12 +36,10 @@ _SANITIZE_RE = re.compile(r'[*#\-•\[\]\(\)\{\}:]|^\d+\.\s*', re.MULTILINE)
 # Sentence-ending punctuation (Hindi purna viram + standard)
 _SENTENCE_END_RE = re.compile(r'[।.?!]')
 
-# AI identity reveal keywords — replace entire response if detected
-_AI_REVEAL_WORDS = re.compile(
-    r'(AI|bot|assistant|model|कृत्रिम|एआई|बॉट|सहायक|भाषा मॉडल|language model|'
-    r'स्वचालित|automated|artificial|machine|गूगल|Google|OpenAI|trained)',
-    re.IGNORECASE,
-)
+# AI identity reveal keywords — replace entire response if detected.
+# Defined in call_policy (pure) so the plan can pick it per call; this is the
+# original pattern, still the default and still what positive_feedback uses.
+_AI_REVEAL_WORDS = AI_REVEAL_ORIGINAL
 _AI_REVEAL_REPLACEMENT = "जी, मैं {teacher_name} बोल रहा हूँ। {student_name} के बारे में बात करते हैं।"
 
 
@@ -79,11 +78,17 @@ class CallManager(FrameProcessor):
         max_turns: int = 6,
         on_turn_complete: "CallManager.OnTurnComplete | None" = None,
         phase_instructor: "PhaseInstructor | None" = None,
+        ai_reveal_pattern: "re.Pattern[str] | None" = None,
+        ai_reveal_line: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._context = context  # Universal LLMContext — holds full conversation
         self._call_context = call_context
+        # Both come from the CallPlan. None keeps the original behaviour
+        # (original pattern, Hindi "I am the teacher" replacement).
+        self._ai_reveal_re = ai_reveal_pattern or _AI_REVEAL_WORDS
+        self._ai_reveal_line = ai_reveal_line
         self._max_turns = max_turns
         self._on_turn_complete = on_turn_complete
         self._phase_instructor = phase_instructor
@@ -162,7 +167,7 @@ class CallManager(FrameProcessor):
                         # Sentence ended in a previous frame — suppress this one
                         return
             # Guard: if any AI-revealing words in accumulated response, suppress ALL text
-            if _AI_REVEAL_WORDS.search(self._current_response):
+            if self._ai_reveal_re.search(self._current_response):
                 self._ai_reveal_detected = True
                 return  # Suppress this and all future text frames
 
@@ -196,10 +201,13 @@ class CallManager(FrameProcessor):
                 truncated = _SANITIZE_RE.sub('', truncated).replace('\n', ' ').strip()
 
                 # Guard: If LLM reveals it's AI, replace with safe response
-                if _AI_REVEAL_WORDS.search(truncated):
-                    teacher = self._call_context.get("teacherName", "Teacher")
-                    student = self._call_context.get("studentName", "student")
-                    truncated = f"जी, मैं {teacher} बोल रहा हूँ। {student} के बारे में बात करते हैं।"
+                if self._ai_reveal_re.search(truncated):
+                    if self._ai_reveal_line:
+                        truncated = self._ai_reveal_line
+                    else:
+                        teacher = self._call_context.get("teacherName", "Teacher")
+                        student = self._call_context.get("studentName", "student")
+                        truncated = f"जी, मैं {teacher} बोल रहा हूँ। {student} के बारे में बात करते हैं।"
                     logger.warning(f"Turn {self._turn_number}: AI reveal blocked, replaced")
                     # Also need to push this replacement to TTS
                     from pipecat.frames.frames import TTSSpeakFrame

@@ -46,27 +46,16 @@ from pipecat.services.google.llm import GoogleLLMService
 
 from src.config import Config
 from src.call_manager import CallManager
+from src.call_policy import LANGUAGE_CODES, is_positive_feedback, lang_code_for, plan_call
 from src.conversation_state import PhaseInstructor
 from src.stt_filter import STTConfidenceFilter
-from src.prompts.agent_reply import build_system_instruction, get_greetings
 from src.persistence import sync_transcript
 from src.call_store import CallStore
 from src.call_analyzer import analyze_call
 
-# Twilio Media Streams language code mapping
-TWILIO_LANG_MAP = {
-    "English": "en-IN",
-    "Hindi": "hi-IN",
-    "Kannada": "kn-IN",
-    "Tamil": "ta-IN",
-    "Telugu": "te-IN",
-    "Malayalam": "ml-IN",
-    "Bengali": "bn-IN",
-    "Marathi": "mr-IN",
-    "Gujarati": "gu-IN",
-    "Punjabi": "pa-IN",
-    "Odia": "en-IN",  # Odia TTS not available, fallback
-}
+# Parent language → speech code. Lives in call_policy (pure) so the
+# language-coverage test enumerates the same map; kept under its old name.
+TWILIO_LANG_MAP = LANGUAGE_CODES
 
 # Sarvam TTS voice mapping — male and female options
 # See: https://docs.sarvam.ai/api-reference-docs/text-to-speech
@@ -123,24 +112,21 @@ async def create_bot(
         → context_aggregator.assistant() (captures agent responses)
     """
     parent_language = call_context.get("parentLanguage", "Hindi")
-    lang_code = TWILIO_LANG_MAP.get(parent_language, "en-IN")
+    lang_code = lang_code_for(parent_language)
     outreach_id = call_context.get("id", "")
+    positive = is_positive_feedback(call_context)
 
     logger.info(
         f"Creating streaming bot for outreach {outreach_id}, "
-        f"language: {parent_language} ({lang_code})"
+        f"language: {parent_language} ({lang_code}), "
+        f"mode: {'positive_feedback' if positive else 'request_to_talk'}"
     )
 
-    # ── Build greeting text ──
-    # The generatedMessage IS the greeting — teacher intro + student mention.
-    # No generic "important message from school" prefix (sounds like robocall).
-    # Fallback to language-specific generic greeting only if no message provided.
-    teacher_message = call_context.get("generatedMessage", "")
-    if teacher_message:
-        greeting_text = teacher_message
-    else:
-        greetings = get_greetings(lang_code)
-        greeting_text = greetings["greeting"]
+    # ── What this call may say ──
+    # Decided by call_policy.plan_call (below, once the parent history is
+    # known). Only positive_feedback speaks the teacher's generatedMessage;
+    # every other reason, including a missing or unknown one, opens with the
+    # fixed request-to-talk line and the model never sees the concern.
 
     # ── Serializer ──
     # Provider-specific mu-law codec + call-control. The caller may pass one in
@@ -205,16 +191,19 @@ async def create_bot(
         call_store.create_call(outreach_id, call_context)
 
     # ── Build system instruction with parent history ──
+    # Parent history is built from earlier calls' reasons and concerns, so a
+    # request-to-talk call does not even read it; positive_feedback uses it as
+    # before.
     parent_history = None
-    if call_store:
+    if call_store and positive:
         parent_phone = call_context.get("parentPhone", "")
         parent_history = call_store.build_parent_context(parent_phone)
         if parent_history:
             logger.info(f"Parent history injected for {parent_phone}")
 
-    system_instruction = build_system_instruction(
-        call_context, greeting_text, parent_history=parent_history,
-    )
+    plan = plan_call(call_context, parent_history=parent_history)
+    greeting_text = plan.greeting
+    system_instruction = plan.system_instruction
 
     llm = GoogleLLMService(
         api_key=config.google_api_key,
@@ -260,15 +249,17 @@ async def create_bot(
         )
 
     # ── Phase Instructor: injects turn-specific instructions before LLM ──
-    phase_instructor = PhaseInstructor(call_context=call_context)
+    phase_instructor = PhaseInstructor(guidance=plan.phase_guidance)
 
     # ── Call Manager: turn counting, transcript, call lifecycle ──
     call_manager = CallManager(
         context=context,
-        call_context=call_context,
+        call_context=plan.manager_context,
         max_turns=6,
         on_turn_complete=_sync_turn,
         phase_instructor=phase_instructor,
+        ai_reveal_pattern=plan.ai_reveal_pattern,
+        ai_reveal_line=plan.ai_reveal_line,
     )
 
     # ── TTS: Sarvam Bulbul v3 (WebSocket streaming) ──

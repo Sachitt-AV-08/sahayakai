@@ -1,0 +1,77 @@
+{
+  "_about": [
+    "Every sentence the parent-call engine speaks from a fixed script, per call language.",
+    "Keys are the speech-language codes the engine actually uses (call_policy.LANGUAGE_CODES);",
+    "an Odia call is spoken in en-IN, so it uses the English lines.",
+    "request_to_talk: the whole greeting of every call whose reason is not positive_feedback",
+    "(founder decision, 23 Oct 2026: a concern call is a request to talk and never states the concern).",
+    "request_to_talk is the same sentence as the web app's src/locales/call-scripts/request-to-talk.json",
+    "(the Docker build context is this directory, so it is copied, and test_request_to_talk checks the copies agree).",
+    "explain_in_person: what the engine says when the parent asks why, or guesses a reason.",
+    "stop_acknowledgement: spoken once, right before hanging up, when the parent asks not to be called again.",
+    "review: translation confidence. Anything other than 'source' or 'confident' needs a native speaker",
+    "to read it aloud before it is trusted on a live call."
+  ],
+  "lines": {
+    "en-IN": {
+      "request_to_talk": "Your child's class teacher would like to speak with you this week. Is there a good time for a short call?",
+      "explain_in_person": "The class teacher would like to explain this to you in person.",
+      "stop_acknowledgement": "Of course, we will not call you again. Thank you, and goodbye.",
+      "review": "source"
+    },
+    "hi-IN": {
+      "request_to_talk": "आपके बच्चे के क्लास टीचर इस हफ़्ते आपसे बात करना चाहते हैं। क्या कोई अच्छा समय है जब थोड़ी देर बात हो सके?",
+      "explain_in_person": "यह बात क्लास टीचर आपको ख़ुद समझाना चाहते हैं।",
+      "stop_acknowledgement": "जी, बिल्कुल, हम आपको दोबारा फ़ोन नहीं करेंगे। धन्यवाद, नमस्ते।",
+      "review": "confident"
+    },
+    "bn-IN": {
+      "request_to_talk": "আপনার সন্তানের ক্লাস টিচার এই সপ্তাহে আপনার সঙ্গে একটু কথা বলতে চান। অল্প সময় কথা বলার জন্য কোনো সুবিধার সময় আছে কি?",
+      "explain_in_person": "এই বিষয়টা ক্লাস টিচার নিজেই আপনাকে বুঝিয়ে বলতে চান।",
+      "stop_acknowledgement": "অবশ্যই, আমরা আপনাকে আর ফোন করব না। ধন্যবাদ, নমস্কার।",
+      "review": "unsure: needs a native Bengali speaker"
+    },
+    "mr-IN": {
+      "request_to_talk": "तुमच्या पाल्याचे वर्गशिक्षक या आठवड्यात तुमच्याशी बोलू इच्छितात. थोडा वेळ बोलण्यासाठी तुमच्यासाठी कोणती वेळ सोयीची असेल?",
+      "explain_in_person": "हे वर्गशिक्षक तुम्हाला स्वतः समजावून सांगतील.",
+      "stop_acknowledgement": "नक्कीच, आम्ही तुम्हाला पुन्हा फोन करणार नाही. धन्यवाद, नमस्कार.",
+      "review": "unsure: needs a native Marathi speaker"
+    },
+    "gu-IN": {
+      "request_to_talk": "તમારા બાળકના વર્ગશિક્ષક આ અઠવાડિયે તમારી સાથે વાત કરવા માંગે છે. થોડી વાર વાત કરવા માટે તમને કયો સમય અનુકૂળ રહેશે?",
+      "explain_in_person": "આ વાત વર્ગશિક્ષક તમને જાતે સમજાવવા માંગે છે.",
+      "stop_acknowledgement": "ચોક્કસ, અમે તમને ફરીથી ફોન નહીં કરીએ. આભાર, આવજો.",
+      "review": "unsure: needs a native Gujarati speaker"
+    },
+    "pa-IN": {
+      "request_to_talk": "ਤੁਹਾਡੇ ਬੱਚੇ ਦੇ ਕਲਾਸ ਟੀਚਰ ਇਸ ਹਫ਼ਤੇ ਤੁਹਾਡੇ ਨਾਲ ਗੱਲ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹਨ। ਥੋੜ੍ਹੀ ਦੇਰ ਗੱਲ ਕਰਨ ਲਈ ਤੁਹਾਡੇ ਲਈ ਕਿਹੜਾ ਸਮਾਂ ਠੀਕ ਰਹੇਗਾ?",
+      "explain_in_person": "ਇਹ ਗੱਲ ਕਲਾਸ ਟੀਚਰ ਤੁਹਾਨੂੰ ਆਪ ਸਮਝਾਉਣਾ ਚਾਹੁੰਦੇ ਹਨ।",
+      "stop_acknowledgement": "ਜੀ ਬਿਲਕੁਲ, ਅਸੀਂ ਤੁਹਾਨੂੰ ਦੁਬਾਰਾ ਫ਼ੋਨ ਨਹੀਂ ਕਰਾਂਗੇ। ਧੰਨਵਾਦ, ਸਤ ਸ੍ਰੀ ਅਕਾਲ।",
+      "review": "unsure: needs a native Punjabi speaker"
+    },
+    "kn-IN": {
+      "request_to_talk": "ನಿಮ್ಮ ಮಗುವಿನ ಕ್ಲಾಸ್ ಟೀಚರ್ ಈ ವಾರ ನಿಮ್ಮೊಂದಿಗೆ ಮಾತನಾಡಲು ಬಯಸುತ್ತಾರೆ. ಸ್ವಲ್ಪ ಹೊತ್ತು ಮಾತನಾಡಲು ನಿಮಗೆ ಯಾವ ಸಮಯ ಅನುಕೂಲವಾಗುತ್ತದೆ?",
+      "explain_in_person": "ಅದನ್ನು ಕ್ಲಾಸ್ ಟೀಚರ್ ಅವರೇ ನಿಮಗೆ ಖುದ್ದಾಗಿ ತಿಳಿಸುತ್ತಾರೆ.",
+      "stop_acknowledgement": "ಖಂಡಿತ, ನಾವು ನಿಮಗೆ ಮತ್ತೆ ಕರೆ ಮಾಡುವುದಿಲ್ಲ. ಧನ್ಯವಾದಗಳು, ನಮಸ್ಕಾರ.",
+      "review": "unsure: needs a native Kannada speaker"
+    },
+    "ta-IN": {
+      "request_to_talk": "உங்கள் குழந்தையின் வகுப்பு ஆசிரியர் இந்த வாரம் உங்களுடன் பேச விரும்புகிறார். சிறிது நேரம் பேச உங்களுக்கு எந்த நேரம் வசதியாக இருக்கும்?",
+      "explain_in_person": "அதை வகுப்பு ஆசிரியரே உங்களிடம் நேரடியாக விளக்குவார்.",
+      "stop_acknowledgement": "கண்டிப்பாக, நாங்கள் இனி உங்களை அழைக்க மாட்டோம். நன்றி, வணக்கம்.",
+      "review": "unsure: needs a native Tamil speaker (written register may sound formal on a call)"
+    },
+    "te-IN": {
+      "request_to_talk": "మీ పిల్లల క్లాస్ టీచర్ ఈ వారం మీతో మాట్లాడాలనుకుంటున్నారు. కొద్దిసేపు మాట్లాడటానికి మీకు ఏ సమయం వీలుగా ఉంటుంది?",
+      "explain_in_person": "ఆ విషయం క్లాస్ టీచర్ గారే మీకు స్వయంగా వివరిస్తారు.",
+      "stop_acknowledgement": "తప్పకుండా, మేము మీకు మళ్ళీ ఫోన్ చేయము. ధన్యవాదాలు, నమస్కారం.",
+      "review": "unsure: needs a native Telugu speaker"
+    },
+    "ml-IN": {
+      "request_to_talk": "നിങ്ങളുടെ കുട്ടിയുടെ ക്ലാസ് ടീച്ചർ ഈ ആഴ്ച നിങ്ങളോട് സംസാരിക്കാൻ ആഗ്രഹിക്കുന്നു. കുറച്ചുനേരം സംസാരിക്കാൻ നിങ്ങൾക്ക് ഏത് സമയമാണ് സൗകര്യം?",
+      "explain_in_person": "അത് ക്ലാസ് ടീച്ചർ തന്നെ നിങ്ങളോട് നേരിട്ട് പറയും.",
+      "stop_acknowledgement": "തീർച്ചയായും, ഞങ്ങൾ ഇനി നിങ്ങളെ വിളിക്കില്ല. നന്ദി, നമസ്കാരം.",
+      "review": "unsure: needs a native Malayalam speaker"
+    }
+  }
+}
