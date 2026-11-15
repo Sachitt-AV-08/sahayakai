@@ -187,9 +187,9 @@ const SPECS: Record<RiyaPurpose, RiyaPurposeSpec> = {
         requiredVariables: ['closure_date', 'closure_reason'],
         risk: 'high',
     },
-    // The three outreach workflows speak a child-specific observation. It is assembled from the
-    // closed phrases below (never staff free text) and goes through the same consent, quiet-hours
-    // and frequency gate as every Riya call, under the catalogue's request-to-talk purposes.
+    // Academic and behaviour outreach are requests to talk: the call says REQUEST_TO_TALK_LINES,
+    // never the concern. Achievement speaks its closed praise line. All three go through the same
+    // consent, quiet-hours and frequency gate as every Riya call.
     academic_performance: {
         id: 'academic_performance',
         samparkPurpose: 'academic_talk',
@@ -274,9 +274,9 @@ export const EXAM_SUBJECTS = {
 export type ExamSubject = keyof typeof EXAM_SUBJECTS;
 
 /**
- * What a poor-performance outreach call may say about the named subjects. Closed, reviewed
- * English sentences: `{subjects}` is replaced by the EXAM_SUBJECTS names ("Mathematics and
- * Science"); nothing else is inserted.
+ * The academic concerns staff may record for a poor-performance outreach. Closed, reviewed
+ * English sentences (`{subjects}` is replaced by EXAM_SUBJECTS names) for the teacher's record;
+ * the call itself says only REQUEST_TO_TALK_LINES.academic_performance.
  */
 export const ACADEMIC_CONCERNS = {
     below_expected: "Your child's recent work in {subjects} has been below the expected level.",
@@ -286,7 +286,18 @@ export const ACADEMIC_CONCERNS = {
 export type AcademicConcern = keyof typeof ACADEMIC_CONCERNS;
 export const MAX_ACADEMIC_SUBJECTS = 3;
 
-/** Classroom observations a behaviour outreach call may share; each completes "Your child …". */
+/**
+ * What a request-to-talk call says in place of the concern (REQUEST_TO_TALK_PURPOSES in the
+ * catalogue; founder decision of 23 Oct 2026): who would like to speak and when, never why. The
+ * subjects, concern or observations staff select stay on the school's record for the teacher.
+ * They are never spoken and never sent to a calling provider, so the agent cannot repeat them.
+ */
+export const REQUEST_TO_TALK_LINES = {
+    academic_performance: "Your child's class teacher would like to speak with you about your child's studies. Is there a good time this week for a short call?",
+    classroom_behaviour: "Your child's class teacher would like to speak with you this week. Is there a good time for a short call?",
+} as const;
+
+/** Classroom observations staff may record for a behaviour outreach (kept on the record, never spoken). */
 export const BEHAVIOUR_OBSERVATIONS = {
     attention: 'has been having difficulty paying attention in class',
     disturbing_others: 'has been disturbing other students during lessons',

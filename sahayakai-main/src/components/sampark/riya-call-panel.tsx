@@ -203,6 +203,7 @@ export function scenarioLabel(t: Translate, s: SimulationScenario): string {
 export function refusalText(t: Translate, r: RiyaPreview["refusals"][number]): string {
     switch (r.code) {
         case "PURPOSE_NOT_ENABLED": return t("This workflow is not switched on yet.");
+        case "PAGING_REQUIRED": return t("Same-day absence calls alert staff first. Staff alerts are not set up yet, so only Practice calls can run.");
         case "FACTS_REQUIRED": return t("Enter the details for this call.");
         case "FACTS_INVALID": return t("Some details are missing, in the past, or not on the school calendar.");
         case "CAMPAIGN_FACTS_UNAVAILABLE": return t("That campaign has no details for this workflow.");

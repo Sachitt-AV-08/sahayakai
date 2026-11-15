@@ -15,6 +15,7 @@ import {
     enabledRiyaPurposes,
     OUTREACH_REASON_PURPOSE,
     outreachReasonForPurpose,
+    REQUEST_TO_TALK_LINES,
     RIYA_AGENT_PURPOSES_NOT_OFFERED,
     RIYA_PURPOSES,
     RIYA_VARIABLES,
@@ -275,22 +276,22 @@ describe('the four attendance outreach reasons (Sampark parent outreach)', () =>
         expect(r.announcement).toBe('Your child was marked absent on Wednesday, the seventh of October. Is your child with you right now?');
     });
 
-    it('scenario 2, poor performance: the academic workflow with the closed concern and subject names', () => {
+    it('scenario 2, poor performance: a request to talk; the chosen concern and subjects are never sent', () => {
         const r = build('academic_performance');
         if (!r.ok) throw new Error(JSON.stringify(r.problems));
         expect(r.variables.call_purpose).toBe('academic_performance');
-        expect(r.variables.academic_update).toBe("Your child's recent work in Mathematics and Science has been below the expected level.");
+        expect(r.variables.academic_update).toBe(REQUEST_TO_TALK_LINES.academic_performance);
         expect(r.variables.behaviour_summary).toBe('');
         expect(r.variables.achievement_details).toBe('');
         const three = build('academic_performance', { purpose: 'academic_performance', subjects: ['english', 'hindi', 'science'], concern: 'missed_assessments' });
-        expect(three.ok && three.variables.academic_update).toBe('Your child has missed recent tests or assignments in English, Hindi and Science.');
+        expect(three.ok && three.variables.academic_update).toBe(REQUEST_TO_TALK_LINES.academic_performance);
     });
 
-    it('scenario 3, behavioural concern: the classroom-behaviour workflow with the chosen observations', () => {
+    it('scenario 3, behavioural concern: a request to talk; the chosen observations are never sent', () => {
         const r = build('classroom_behaviour');
         if (!r.ok) throw new Error(JSON.stringify(r.problems));
         expect(r.variables.call_purpose).toBe('classroom_behaviour');
-        expect(r.variables.behaviour_summary).toBe('Your child has been having difficulty paying attention in class and has been disturbing other students during lessons.');
+        expect(r.variables.behaviour_summary).toBe(REQUEST_TO_TALK_LINES.classroom_behaviour);
         expect(r.variables.academic_update).toBe('');
     });
 

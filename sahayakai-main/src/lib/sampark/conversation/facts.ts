@@ -35,6 +35,7 @@ import {
     emptyRiyaVariables,
     MAX_ACADEMIC_SUBJECTS,
     MAX_BEHAVIOUR_OBSERVATIONS,
+    REQUEST_TO_TALK_LINES,
     type AcademicConcern,
     type Achievement,
     type BehaviourObservation,
@@ -203,14 +204,6 @@ export function spokenList(items: readonly string[]): string {
     return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
-function academicUpdate(subjects: readonly ExamSubject[], concern: AcademicConcern): string {
-    return ACADEMIC_CONCERNS[concern].replace('{subjects}', spokenList(subjects.map((s) => EXAM_SUBJECTS[s])));
-}
-
-function behaviourSummary(observations: readonly BehaviourObservation[]): string {
-    return `Your child ${spokenList(observations.map((o) => BEHAVIOUR_OBSERVATIONS[o]))}.`;
-}
-
 function achievementDetails(achievement: Achievement, subject: ExamSubject | null): string {
     return ACHIEVEMENTS[achievement].replace('{subject}', subject ? EXAM_SUBJECTS[subject] : '');
 }
@@ -299,11 +292,13 @@ export function buildRiyaVariables(input: RiyaBuildInput): RiyaBuildResult {
                 v.closure_reason = closureReason(facts.reason);
                 v.transport_information = busesLine(facts.busesRunning);
                 break;
+            // Requests to talk: the selected subjects, concern and observations stay on the
+            // school's record and are never spoken or sent to the provider.
             case 'academic_performance':
-                v.academic_update = academicUpdate(facts.subjects, facts.concern);
+                v.academic_update = REQUEST_TO_TALK_LINES.academic_performance;
                 break;
             case 'classroom_behaviour':
-                v.behaviour_summary = behaviourSummary(facts.observations);
+                v.behaviour_summary = REQUEST_TO_TALK_LINES.classroom_behaviour;
                 break;
             case 'student_achievement':
                 // A subject-naming achievement without a subject leaves the variable empty (refused below).

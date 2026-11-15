@@ -32,7 +32,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 
 import { logger } from '@/lib/logger';
-import { purposeSpec } from '@/lib/sampark/catalogue';
+import { PAGE_FIRST_PURPOSES, purposeSpec } from '@/lib/sampark/catalogue';
 import {
     fetchConversation,
     findConversationByUserId,
@@ -477,6 +477,7 @@ export const RiyaReviewSchema = z.object({ note: z.enum(['did_not_ring', 'rang',
 
 export type RiyaRefusal =
     | { code: 'PURPOSE_NOT_ENABLED' }
+    | { code: 'PAGING_REQUIRED' }
     | { code: 'FACTS_REQUIRED' }
     | { code: 'FACTS_INVALID'; problems: RiyaFactProblem[] }
     | { code: 'CAMPAIGN_FACTS_UNAVAILABLE' }
@@ -589,6 +590,8 @@ async function evaluate(deps: RiyaDeps, orgId: string, input: RiyaPreviewInput):
 
     const riyaSpec = riyaPurposeSpec(input.purpose);
     const spec = { ...purposeSpec(riyaSpec.samparkPurpose), status: 'available' as const, mode: 'conversation' as const };
+    // A2 pages staff before the parent is called; with no pager yet, only a simulated call may run.
+    if (PAGE_FIRST_PURPOSES.has(spec.id) && provider !== 'simulated') refusals.push({ code: 'PAGING_REQUIRED' });
     if (pauseStopsPurpose(school.pause, spec.id)) refusals.push({ code: 'SCHOOL_PAUSED' });
 
     const preferences = (await deps.repo.getPreferences(orgId, [guardian.id])).get(guardian.id) ?? null;
@@ -748,6 +751,7 @@ function refusalError(refusals: RiyaRefusal[]): SamparkServiceError {
     if (first.code === 'PROVIDER_UNAVAILABLE') return conflict(first.blocker, first.message);
     const message: Record<RiyaRefusal['code'], string> = {
         PURPOSE_NOT_ENABLED: 'This Riya workflow is not enabled for this deployment',
+        PAGING_REQUIRED: 'Same-day absence calls page staff first, and paging is not set up yet; only Practice calls can run',
         FACTS_REQUIRED: 'The call needs its facts',
         FACTS_INVALID: 'Some facts are missing or cannot be said; nothing was dialled',
         CAMPAIGN_FACTS_UNAVAILABLE: 'That campaign has no facts for this workflow',

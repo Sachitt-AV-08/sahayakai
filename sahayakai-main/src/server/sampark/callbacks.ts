@@ -219,6 +219,7 @@ const REFUSAL_MESSAGE: Partial<Record<CallbackRefusal['code'], string>> = {
     NOT_GUARDIAN_OF_RECORD: 'This guardian is not on record for this student',
     STUDENT_INACTIVE: 'This student is no longer active',
     PURPOSE_NOT_ENABLED: 'This kind of Riya call is not switched on',
+    PAGING_REQUIRED: 'Same-day absence calls page staff first, and paging is not set up yet',
 };
 
 function refusalToError(p: CallbackPreview): SamparkServiceError {

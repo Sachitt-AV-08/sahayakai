@@ -16,7 +16,8 @@ import crypto from 'node:crypto';
 
 import { createMemoryConversationRepo } from '@/lib/sampark/conversation/repo';
 import type { RiyaFacts } from '@/lib/sampark/conversation/facts';
-import { OUTREACH_REASON_PURPOSE, RIYA_PURPOSES, type RiyaPurpose } from '@/lib/sampark/conversation/riya-purposes';
+import { PAGE_FIRST_PURPOSES } from '@/lib/sampark/catalogue';
+import { OUTREACH_REASON_PURPOSE, REQUEST_TO_TALK_LINES, RIYA_PURPOSES, riyaPurposeSpec, type RiyaPurpose } from '@/lib/sampark/conversation/riya-purposes';
 import { encryptPhone, hashPhone } from '@/lib/sampark/phone';
 import type { AuditEntry, SamparkRepo } from '@/lib/sampark/ports';
 import { createMemorySamparkRepo } from '@/lib/sampark/repo/memory';
@@ -171,6 +172,31 @@ function postCall(conversationId: string, data: Record<string, unknown> = {}, ts
 
 afterEach(() => {
     delete process.env.SAMPARK_LIVE_DIAL_ENABLED;
+});
+
+// Class gate (plan §3, A2 "paging comes first"): a same-day absence call pages staff before the
+// parent is called. Until a pager exists no real phone may ring for a PAGE_FIRST purpose; the
+// simulated Practice call stays available so the workflow can still be rehearsed.
+describe('gate: page-first purposes never ring a real phone without paging', () => {
+    const pageFirst = RIYA_PURPOSES.filter((p) => PAGE_FIRST_PURPOSES.has(riyaPurposeSpec(p).samparkPurpose));
+
+    it('covers the absence workflow at all', () => {
+        expect(pageFirst).toEqual(expect.arrayContaining(['absence_notice']));
+    });
+
+    it.each(pageFirst)('%s is refused with PAGING_REQUIRED on a real provider, and nothing is dialled', async (purpose) => {
+        const s = await setup({ mode: 'test' });
+        const preview = await previewRiyaCall(s.deps, ORG, { purpose, guardianId: 'g1', studentId: 's1', facts: FACTS[purpose] });
+        expect(preview.refusals.map((r) => r.code)).toContain('PAGING_REQUIRED');
+        expect(await refusalCode(startRiyaCall(s.deps, ORG, ADMIN, await startInput(s.deps, purpose)))).toBe('PAGING_REQUIRED');
+        expect(s.fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it.each(pageFirst)('%s still runs as a simulated Practice call', async (purpose) => {
+        const s = await setup({ mode: 'practice' });
+        const preview = await previewRiyaCall(s.deps, ORG, { purpose, guardianId: 'g1', studentId: 's1', facts: FACTS[purpose] });
+        expect(preview.refusals.map((r) => r.code)).not.toContain('PAGING_REQUIRED');
+    });
 });
 
 // ── Practice: the dry run ───────────────────────────────────────────────────
@@ -443,10 +469,11 @@ describe('Test mode — ElevenLabs (mocked network)', () => {
         expect(call).toMatchObject({ state: 'initiated', destination: 'test_phone', phoneLast4: '0001', providerConversationId: 'conv_abc123', agentId: '…mf5yr2' });
     });
 
+    // consecutive_absences maps to absence_notice, a page-first purpose: refused on a real
+    // provider until paging exists (see the PAGING_REQUIRED gate above).
     it.each([
-        ['consecutive_absences', 'absence_notice', 'absence_date', 'Wednesday, the seventh of October'],
-        ['poor_performance', 'academic_performance', 'academic_update', "Your child's recent marks in Mathematics have dropped compared with earlier in the term."],
-        ['behavioral_concern', 'classroom_behaviour', 'behaviour_summary', 'Your child has not been completing classwork in class.'],
+        ['poor_performance', 'academic_performance', 'academic_update', REQUEST_TO_TALK_LINES.academic_performance],
+        ['behavioral_concern', 'classroom_behaviour', 'behaviour_summary', REQUEST_TO_TALK_LINES.classroom_behaviour],
         ['positive_feedback', 'student_achievement', 'achievement_details', 'Your child has shown excellent improvement in Science.'],
     ] as const)('outreach %s: the unified agent gets product_context=sampark, call_purpose %s and %s; the call is recorded against the child', async (reason, purpose, variable, spoken) => {
         expect(OUTREACH_REASON_PURPOSE[reason]).toBe(purpose);
@@ -463,6 +490,8 @@ describe('Test mode — ElevenLabs (mocked network)', () => {
         expect(body.conversation_initiation_client_data).not.toHaveProperty('conversation_config_override');
         expect(call).toMatchObject({ riyaPurpose: purpose, guardianId: 'g1', studentId: 's1', state: 'initiated', providerConversationId: 'conv_abc123' });
         expect(call.variables[variable]).toBe(spoken);
+        // What staff selected stays on the school's record for the teacher, never on the call.
+        expect(call.facts).toEqual(FACTS[purpose]);
     });
 
     it('a test phone whose stored hash does not match is never dialled', async () => {

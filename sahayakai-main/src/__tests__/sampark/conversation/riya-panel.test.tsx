@@ -96,6 +96,7 @@ jest.mock('@/lib/api/client', () => {
 import { RiyaCallPanel } from '@/components/sampark/riya-call-panel';
 import { SamparkSchoolProvider } from '@/components/sampark/school-context';
 import { createMemoryConversationRepo } from '@/lib/sampark/conversation/repo';
+import { REQUEST_TO_TALK_LINES } from '@/lib/sampark/conversation/riya-purposes';
 import { encryptPhone, hashPhone } from '@/lib/sampark/phone';
 import { createMemorySamparkRepo } from '@/lib/sampark/repo/memory';
 import { schoolView } from '@/server/sampark/school';
@@ -224,7 +225,7 @@ describe('Riya calls tab (Practice)', () => {
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Difficulty paying attention' }));
         fireEvent.click(screen.getByRole('button', { name: 'Preview what Riya will say' }));
-        expect(await screen.findByText(/I'm calling to share a classroom update\. Your child has been having difficulty paying attention in class\./)).toBeTruthy();
+        expect(await screen.findByText(/I'm calling to share a classroom update\. Your child's class teacher would like to speak with you this week\./)).toBeTruthy();
 
         const place = screen.getByRole('button', { name: 'Run practice call' }) as HTMLButtonElement;
         await waitFor(() => expect(place.disabled).toBe(false));
@@ -233,7 +234,9 @@ describe('Riya calls tab (Practice)', () => {
         await waitFor(async () => expect(await deps.calls.listCalls(ORG, 10)).toHaveLength(1));
         const [stored] = await deps.calls.listCalls(ORG, 10);
         expect(stored).toMatchObject({ riyaPurpose: 'classroom_behaviour', guardianId: 'g1', studentId: 's1', provider: 'simulated' });
-        expect(stored.variables.behaviour_summary).toBe('Your child has been having difficulty paying attention in class.');
+        // A request to talk: the call says who wants to speak, and the observation stays on the record.
+        expect(stored.variables.behaviour_summary).toBe(REQUEST_TO_TALK_LINES.classroom_behaviour);
+        expect(stored.facts).toMatchObject({ purpose: 'classroom_behaviour', observations: ['attention'] });
         expect(fetchSpy).not.toHaveBeenCalled();
     });
 
