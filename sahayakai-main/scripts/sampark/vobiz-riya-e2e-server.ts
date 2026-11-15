@@ -31,6 +31,7 @@ import { previewRiyaCall, riyaAvailability, startRiyaCall, type RiyaDeps } from 
 import { handleVobizRiyaAnswer, handleVobizRiyaContext, handleVobizRiyaEvent, handleVobizRiyaStatus } from '@/server/sampark/vobiz-riya';
 
 import { guardian, prefs, school, student } from '../../src/__tests__/sampark/engine/_fixtures';
+import { realTestNumber } from './real-test-number';
 
 const arg = (k: string, d: string) => {
     const i = process.argv.indexOf(`--${k}`);
@@ -41,14 +42,16 @@ const PURPOSE = arg('purpose', 'ptm_invitation') as RiyaPurpose;
 const ORG = 'hillview-demo';
 /**
  * --real-dial: ONE real call, only to the user-authorised test number, through real Vobiz, on the
- * real clock (Sampark's own calling-hours gate applies). Needs VOBIZ_AUTH_ID/TOKEN/FROM_NUMBER,
+ * real clock (Sampark's own calling-hours gate applies). Needs RIYA_REAL_TEST_NUMBER (that number,
+ * as +91 and ten digits; refuses to start without it), VOBIZ_AUTH_ID/TOKEN/FROM_NUMBER,
  * E2E_PUBLIC_BASE (https tunnel to this server), E2E_BRIDGE_BASE (https tunnel to the bridge) and
  * E2E_MARKER (a file path: refuses if it exists, written BEFORE the dial, so never twice).
  */
 const REAL = process.argv.includes('--real-dial');
-// The operator's own authorised test number, from this shell; never committed (the repository is public).
-const AUTHORISED_TEST_PHONE = process.env.RIYA_REAL_TEST_NUMBER?.trim() || '+919800000001';
-const TEST_PHONE = REAL ? AUTHORISED_TEST_PHONE : '+919800000001'; // else synthetic, never dialled
+// --real-dial: the operator's own authorised test number from this shell, or the script refuses to
+// start. Never a default: the repository is public, and whatever is here is allow-listed below and
+// really rung. Without --real-dial: a synthetic number, never dialled.
+const TEST_PHONE = REAL ? realTestNumber('--real-dial') : '+919800000001';
 
 if (!process.env.SAHAYAKAI_REQUEST_SIGNING_KEY?.trim()) throw new Error('SAHAYAKAI_REQUEST_SIGNING_KEY is required');
 if (REAL) {

@@ -32,7 +32,7 @@ import { decryptPhone, encryptPhone, hashPhone } from '@/lib/sampark/phone';
 import { FirestoreSamparkRepo } from '@/lib/sampark/repo/firestore';
 
 import { riyaDemoFamily } from './riya-demo-family';
-import { RIYA_TEST_ORG_ID, RIYA_TEST_ORG_NAME, RIYA_TEST_PHONE, riyaTestStudent } from './riya-test-student';
+import { RIYA_TEST_ORG_ID, RIYA_TEST_ORG_NAME, riyaTestPhone, riyaTestStudent } from './riya-test-student';
 import { readRoster, sargvisionRecords } from './sargvision-roster';
 import { SARGVISION_ORG_ID, SARGVISION_SCHOOL_NAME } from '@/lib/sampark/sargvision';
 
@@ -223,14 +223,16 @@ async function main(): Promise<void> {
     }
     if (process.argv.includes('--riya-test-student')) {
         // Student "Alyssa" with the authorised test phone. Needs Sampark enabled for the test school
-        // (console) and the SAME SAMPARK_PII_KEY / SAMPARK_PHONE_PEPPER as the app.
+        // (console) and the SAME SAMPARK_PII_KEY / SAMPARK_PHONE_PEPPER as the app. Refuses without
+        // RIYA_REAL_TEST_NUMBER in this shell, before anything is written: no made-up stand-in.
+        const testPhone = riyaTestPhone();
         const repo = new FirestoreSamparkRepo(samparkDb);
         if (!(await repo.getSchool(RIYA_TEST_ORG_ID))) {
             out(`Riya test student NOT seeded: enable Sampark for ${RIYA_TEST_ORG_NAME} in the console first, then re-run with --riya-test-student.`);
             process.exitCode = 3;
             return;
         }
-        const { student, guardian, preferences } = riyaTestStudent(RIYA_TEST_ORG_ID, new Date().toISOString(), { encrypt: encryptPhone, hash: hashPhone });
+        const { student, guardian, preferences } = riyaTestStudent(RIYA_TEST_ORG_ID, new Date().toISOString(), { encrypt: encryptPhone, hash: hashPhone }, testPhone);
         // Reuse, never duplicate: fixed ids, upserted.
         const existed = (await repo.listStudents(RIYA_TEST_ORG_ID)).some((s) => s.id === student.id);
         await repo.upsertStudents(RIYA_TEST_ORG_ID, [student]);
@@ -238,7 +240,7 @@ async function main(): Promise<void> {
         await repo.upsertPreferences([preferences]);
         // Read back: the stored ciphertext must decrypt to the authorised number.
         const saved = await repo.getGuardian(RIYA_TEST_ORG_ID, guardian.id);
-        const ok = saved ? decryptPhone(saved.phoneEnc) === RIYA_TEST_PHONE && saved.phoneHash === hashPhone(RIYA_TEST_PHONE) : false;
+        const ok = saved ? decryptPhone(saved.phoneEnc) === testPhone && saved.phoneHash === hashPhone(testPhone) : false;
         out(`  sampark_schools/${RIYA_TEST_ORG_ID}: student "${student.displayName}" (${student.id}, ${existed ? 'reused' : 'created'}) → contact "${guardian.displayName}" ending ${guardian.phoneLast4}; read back ${ok ? 'OK' : 'FAILED'}`);
         if (!ok) process.exitCode = 1;
         return;
