@@ -36,7 +36,7 @@ The wrapper puts the portable Node 20 first on PATH **for that window only**, ch
 3. starts the emulator for project `demo-sahayakai` and waits for a real TCP connection on `127.0.0.1:8080`;
 4. generates a disposable PII key, phone pepper and webhook secret **in memory only** and gives the same values to the seed and the app;
 5. seeds `hillview-demo`, starts `next dev`, waits until `/sampark/hillview-demo/riya` answers, and opens `http://localhost:3000/sampark`;
-6. if it is outside 10:00–20:00 IST, starts the app's Sampark clock at 11:00 IST today (emulator only, see §8) so Practice calls are not refused at night; `-RealClock` turns that off;
+6. if it is outside 10:00–19:00 IST, starts the app's Sampark clock at 11:00 IST today (emulator only, see §8) so Practice calls are not refused at night; `-RealClock` turns that off;
 7. waits at a menu: **f** add the synthetic family, **w** run the signed webhook checks, **s** status, **q** quit (stops the app and the emulator).
 
 Options: `-ReuseEmulator` (use an emulator you already started on 8080), `-RealClock`, `-NoOpen`, `-Port 3001`, `-ToolsDir <folder with node.exe>`.
@@ -154,7 +154,7 @@ On `/sampark`, **Hillview Demo School → Enable school calls**. You land on `/s
 
 No ElevenLabs or telephone request left the browser (checked) or the server (the simulator is in-process; `riya-panel.test.tsx` asserts no fetch).
 
-**Calling hours.** Practice obeys the same 10:00–20:00 IST window as real calls; at night the preview says "Outside the school calling hours." `SAMPARK_DEV_NOW` (set automatically by the launcher at night) starts the app's Sampark clock at that instant and lets it run forward. It is ignored unless `FIRESTORE_EMULATOR_HOST` is set and `NODE_ENV` is not production. Webhook signature freshness always uses the real clock (fixed in this version; it used to follow the rehearsal clock).
+**Calling hours.** Practice obeys the same 10:00–19:00 IST window as real calls; at night the preview says "Outside the school calling hours." `SAMPARK_DEV_NOW` (set automatically by the launcher at night) starts the app's Sampark clock at that instant and lets it run forward. It is ignored unless `FIRESTORE_EMULATOR_HOST` is set and `NODE_ENV` is not production. Webhook signature freshness always uses the real clock (fixed in this version; it used to follow the rehearsal clock).
 
 ## 9. Test the webhook without a call  [verified]
 
@@ -277,7 +277,7 @@ Not run by Claude: this session has no Google Cloud credentials, and its shell o
 It does not bypass consent, school admin authorisation, suppression or opt-outs, the source-agent refusal, the daily cap, the in-flight lock, or webhook signatures. The call's audit entry records it. Tested in `riya-service.test.ts`.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File $s -Step WindowOn -WindowMinutes 60   # only if outside 10:00–20:00 IST
+powershell -ExecutionPolicy Bypass -File $s -Step WindowOn -WindowMinutes 60   # only if outside 10:00–19:00 IST
 powershell -ExecutionPolicy Bypass -File $s -Step WindowOff                    # right after the call
 ```
 
@@ -302,15 +302,23 @@ Opt-out on a Riya call is **spoken**. "Stop calling" or the agent's `stop_reques
 7. Afterwards, the call row moves from "Ringing or on the call" to **Conversation ended** when the webhook arrives. If it stays unclear, use **Check status** (a read-only provider lookup) and do not retry. The daily cap of 1 refuses a second call that day.
 8. Do not call Sir until you have reviewed this result and approved a second call in writing.
 
-### 11.6 The local real test call (authorised 2026-10-29: one call to +91 9800000109)
+### 11.6 The local real test call (authorised 2026-10-29: one call to the operator's own test phone)
 
 ```powershell
+# Set in this window only; never committed (the repository is public).
+$env:RIYA_REAL_TEST_NUMBER = '+91XXXXXXXXXX'          # your own authorised test phone
+$env:RIYA_REAL_AGENT_ID = 'agent_fakeagent1000000000000000000'
+$env:RIYA_REAL_PHONE_NUMBER_ID = 'phnum_fakenumber100000000000000000'
 powershell -ExecutionPolicy Bypass -File scripts\sampark\Start-Riya-Local.ps1 -RealCall -RealClock
 ```
 
+The launcher refuses `-RealCall` unless all three are set. The real team roster, if you use one,
+goes in `scripts\sampark\sargvision-roster.local.json` (git-ignored; copy the `.example.json` and put
+in the team's own numbers); the tracked example's made-up numbers are never allow-listed.
+
 - Asks for the ElevenLabs key with hidden input (or uses `ELEVENLABS_API_KEY` already set in that window). The key stays in that process only.
-- Uses the unified SARGVISION agent `agent_fakeagent1000000000000000000` (Sampark + Athithi Vani; every Sampark call sends `product_context=sampark`, without which the agent routes to its safe-exit node) and number id `phnum_fakenumber100000000000000000` (sent as `agent_phone_number_id`; it is Riya's outbound caller ID +91 79 6585 3645 on the Vobiz TLS trunk, assigned to the unified agent on 2026-11-04 and superseding `phnum_9701…`; never a roster contact), turns on live dialling, uses the emulator's separate `sampark-nonprod` database, sets `SAMPARK_RIYA_TEST_ALLOWED_NUMBERS=+919800000109` and a cap of 1 call per day, and keeps the real clock.
-- Seeds the **non-demo** emulator school `riya-test-local` (admin `dev-user-123`). In the console: **Enable school calls** for *Riya Test School (local)*, then **Settings → Test phone** `+919800000109` and **Test — my phone only**. Then run `npx tsx scripts/sampark/seed-emulator.ts --riya-test-student` with the launcher's values (menu key **a**) to add student **Alyssa**.
+- Uses the unified SARGVISION agent `agent_fakeagent1000000000000000000` (Sampark + Athithi Vani; every Sampark call sends `product_context=sampark`, without which the agent routes to its safe-exit node) and number id `phnum_fakenumber100000000000000000` (sent as `agent_phone_number_id`; it is Riya's outbound caller ID +91 79 6585 3645 on the Vobiz TLS trunk, assigned to the unified agent on 2026-11-04 and superseding `phnum_9701…`; never a roster contact), turns on live dialling, uses the emulator's separate `sampark-nonprod` database, sets `SAMPARK_RIYA_TEST_ALLOWED_NUMBERS` to `RIYA_REAL_TEST_NUMBER` and a cap of 1 call per day, and keeps the real clock.
+- Seeds the **non-demo** emulator school `riya-test-local` (admin `dev-user-123`). In the console: **Enable school calls** for *Riya Test School (local)*, then **Settings → Test phone** (the same number as `RIYA_REAL_TEST_NUMBER`) and **Test — my phone only**. Then run `npx tsx scripts/sampark/seed-emulator.ts --riya-test-student` with the launcher's values (menu key **a**) to add student **Alyssa**.
 - **Riya calls** tab → PTM invitation → Alyssa → Preview. The preview and the confirmation both show the full number that will ring. **Place call** once.
 - ElevenLabs cannot reach `localhost`, so no webhook arrives: follow the result with **Check status** (a read-only GET of the conversation).
 - `SAMPARK_RIYA_TEST_ALLOWED_NUMBERS` is required for every real Riya call. If it is unset, or the saved test phone is not on it, the call is refused before anything is dialled (`TEST_PHONE_NOT_ALLOWED`).
@@ -329,7 +337,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sampark\Start-Riya-Local.ps1 -R
 | Page asks for Google sign-in | The dev cookie isn't set, or you are not on `next dev` (§6). |
 | "Only administrators of this school…" | The seed ran against another emulator, or `GCLOUD_PROJECT` differs between seed and app. |
 | Family missing in the Riya picker | Sampark wasn't enabled before `--riya-demo-family` (exit code 3), or the PII key differs between seed and app. |
-| "Outside the school calling hours." | 10:00–20:00 IST only. Use the launcher at night, or `SAMPARK_DEV_NOW` (§8). |
+| "Outside the school calling hours." | 10:00–19:00 IST only. Use the launcher at night, or `SAMPARK_DEV_NOW` (§8). |
 | Webhook 401 | Secret differs between app and sender, or the signature is over 30 minutes old (real clock). |
 | Webhook 503 `not yet linked` | Normal for an unknown conversation under 15 minutes old. |
 | `ELEVENLABS_AGENT_ID_IS_SOURCE_EXPORT` | You configured Varunesh's agent. Use the clone. |

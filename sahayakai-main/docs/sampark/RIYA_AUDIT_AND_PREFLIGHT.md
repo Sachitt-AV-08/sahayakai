@@ -171,7 +171,7 @@ The target is the existing **`sahayakai-preview`** Cloud Run service (`cloudbuil
 | Exact words (example; the real text is the preview the console shows, built from the seeded records) | Opening: "Hello, this is Riya, an AI assistant calling on behalf of {test school}, with an important update. Is this a good time to talk?" (after proposal §1). After confirmation: "I'm calling to invite you to the parent-teacher meeting for your child's class, Seven, section B, on Saturday, the seventeenth of October at ten o'clock in the morning." |
 | Disclosure and retention | Proposals §1–§4 must be applied and verified first. |
 | Allow-list and cap | Test phone only (code); 1 call in flight; daily cap 2; no automatic retry |
-| Calling window | 10:00–20:00 IST, not on the school's off days or holidays. **Now (about 22:00 IST) is outside the window.** |
+| Calling window | 10:00–19:00 IST, not on the school's off days or holidays. **Now (about 22:00 IST) is outside the window.** |
 | Tests and build | §5 |
 | Rollback | §7 |
 | Remaining risks | The webhook signature format is unproven until the first real event. Number assignment semantics are unverified. Voice and latency on the Vobiz trunk from this clone are untested. The translations are machine-drafted. |

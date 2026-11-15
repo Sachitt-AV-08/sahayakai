@@ -164,7 +164,7 @@ async function main(): Promise<void> {
             await repo.upsertStudents(SARGVISION_ORG_ID, students);
             await repo.upsertGuardians(SARGVISION_ORG_ID, guardians);
             await repo.upsertPreferences(preferences);
-            // Test mode on the school's normal hours (10:00–20:00 IST is the most the rules allow).
+            // Test mode on the school's normal hours (10:00–19:00 IST is the most the rules allow).
             // `--sargvision-mode practice` (the launcher without --real-call): simulated calls only.
             const mode = argValue(process.argv, '--sargvision-mode') === 'practice' ? 'practice' : 'test';
             // `--sargvision-provider vobiz` (launcher --vobiz-call): Settings → Calling provider = Vobiz Calls.

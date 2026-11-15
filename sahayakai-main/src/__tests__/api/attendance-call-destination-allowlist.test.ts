@@ -72,7 +72,13 @@ describe('call route with CALL_ALLOWED_DESTINATIONS', () => {
     });
     beforeEach(() => {
         for (const k of ENV_KEYS) delete process.env[k];
-        store = { parent_outreach: { o1: { teacherUid: 'teacher-A', parentPhone: REAL_PARENT, callStatus: 'initiated' } } };
+        // The outreach names its class and student, and the student record holds the parent's
+        // number: the server-side destination check (#157) resolves the call target from there.
+        store = {
+            parent_outreach: { o1: { teacherUid: 'teacher-A', classId: 'c1', studentId: 's1', parentPhone: REAL_PARENT, callStatus: 'initiated' } },
+            classes: { c1: { teacherUid: 'teacher-A' } },
+            'classes/c1/students': { s1: { parentPhone: REAL_PARENT } },
+        };
         (global as any).__fakeDb = createFakeDb(store);
         placeVobizCall.mockReset().mockResolvedValue({ ok: true, handle: { requestUuid: 'uuid1' } });
         fetchMock.mockReset().mockResolvedValue({ ok: true, status: 201, json: async () => ({ sid: 'CA1' }) });

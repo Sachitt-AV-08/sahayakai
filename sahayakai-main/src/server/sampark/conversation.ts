@@ -405,15 +405,24 @@ const BLOCKER_MESSAGE: Record<RiyaBlocker, string> = {
     DEMO_SCHOOL_PRACTICE_ONLY: 'This is a demo school: Riya calls stay in Practice. Real test calls need a non-demo school',
 };
 
-/** The one authorised local after-hours Riya test (user's own phone, 2026-10-29): the only school, student and number it covers. */
-export const LOCAL_AFTER_HOURS_TEST = { orgId: 'riya-test-local', studentId: 'riya-test-student-alyssa', phoneE164: '+919800000109' } as const;
+/**
+ * The one authorised local after-hours Riya test (2026-10-29): the only school and student it
+ * covers. The number is the operator's own test phone, read from RIYA_REAL_TEST_NUMBER at call
+ * time and never committed (the repository is public); without it the override stays off.
+ */
+export const LOCAL_AFTER_HOURS_TEST = { orgId: 'riya-test-local', studentId: 'riya-test-student-alyssa' } as const;
+
+function localAfterHoursTestPhone(env: Env): string | null {
+    const raw = env.RIYA_REAL_TEST_NUMBER?.trim() ?? '';
+    return /^\+91[6-9]\d{9}$/.test(raw) ? raw : null;
+}
 
 /**
  * A narrower, local-only sibling of `stagingTestWindowOverride`: replaces only the calling-hours
  * deferral for ONE real Riya attempt, and only when ALL of these hold:
  *   - the app runs against the local Firestore emulator, not in production, on `sampark-nonprod`;
  *   - the school is LOCAL_AFTER_HOURS_TEST.orgId (non-demo, Test mode) and the call rings its
- *     saved test phone, which is LOCAL_AFTER_HOURS_TEST.phoneE164 and on the allow-list;
+ *     saved test phone, which is RIYA_REAL_TEST_NUMBER and on the allow-list;
  *   - the student is LOCAL_AFTER_HOURS_TEST.studentId;
  *   - it was armed (`school.localAfterHoursTest`) at most 3 hours ago and has not expired;
  *   - no ElevenLabs call (accepted, unknown or refused) was created since it was armed.
@@ -439,7 +448,8 @@ export function localAfterHoursTestOverride(
     if (school.orgId !== LOCAL_AFTER_HOURS_TEST.orgId || school.isDemo) return off('not_test_school');
     if (studentId !== LOCAL_AFTER_HOURS_TEST.studentId) return off('not_test_student');
     if (school.mode !== 'test' || destination !== 'test_phone') return off('not_test_phone');
-    if (school.testPhoneHash !== hashPhone(LOCAL_AFTER_HOURS_TEST.phoneE164) || !allowedTestNumbers(env).includes(LOCAL_AFTER_HOURS_TEST.phoneE164)) return off('not_test_number');
+    const testPhone = localAfterHoursTestPhone(env);
+    if (!testPhone || school.testPhoneHash !== hashPhone(testPhone) || !allowedTestNumbers(env).includes(testPhone)) return off('not_test_number');
     if (untilMs <= now.getTime()) return off('expired');
     if (untilMs - armedMs > STAGING_TEST_WINDOW_MAX_MS || untilMs - now.getTime() > STAGING_TEST_WINDOW_MAX_MS) return off('longer_than_3_hours');
     if (realAttemptsSinceArmed > 0) return off('already_used');

@@ -236,7 +236,7 @@ Two notes on these results:
 | Workflow | `ptm_invitation` |
 | Data spoken | School spoken name; child's English first name; class and section; date and time from typed facts (shown in the preview, confirmed before dialling) |
 | Call count | 1. Duplicate starts are blocked, the daily cap is ≤ 5, and nothing retries |
-| Calling window | 10:00–20:00 IST, Monday–Saturday, not a school holiday |
+| Calling window | 10:00–19:00 IST, Monday–Saturday, not a school holiday |
 | Disclosure and retention | Per §6, as authorised |
 | Environment | Non-production deployment, `sampark-nonprod` database, no production traffic change |
 | Billing | One ElevenLabs conversation (≤ 10 min) plus one Vobiz outbound minute |

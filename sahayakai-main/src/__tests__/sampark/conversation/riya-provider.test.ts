@@ -135,7 +135,7 @@ describe('startRiyaOutboundCall', () => {
     it('a refusal keeps the provider’s own explanation, bounded and with phone numbers cut to the last 4', async () => {
         const fetchImpl = async () => jsonResponse(400, { detail: { status: 'invalid_request', message: 'Cannot call +91 98000 00109: number not verified' } });
         expect(await startRiyaOutboundCall(config(), req, { fetchImpl: fetchImpl as unknown as typeof fetch })).toEqual({
-            kind: 'rejected', category: 'invalid_request', httpStatus: 400, providerMessage: 'invalid_request: Cannot call …9732: number not verified',
+            kind: 'rejected', category: 'invalid_request', httpStatus: 400, providerMessage: 'invalid_request: Cannot call …0109: number not verified',
         });
         expect(providerErrorMessage({ detail: [{ loc: ['body', 'to_number'], msg: 'field required' }] })).toBe('body.to_number: field required');
         expect(providerErrorMessage({ detail: 'x'.repeat(400) })).toHaveLength(300);

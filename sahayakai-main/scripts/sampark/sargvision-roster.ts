@@ -1,6 +1,8 @@
 /**
- * Builds the Sargvision sample-class records (local emulator test roster) from
- * scripts/sampark/sargvision-roster.json. Pure: no I/O besides reading that file in `readRoster`.
+ * Builds the Sargvision sample-class records (local emulator test roster). The real roster, with
+ * the team's own numbers, lives in scripts/sampark/sargvision-roster.local.json, which git ignores
+ * (the repository is public). Without it the example roster is used: same people, made-up numbers
+ * that real-call mode refuses (see `rosterSource`). Pure: no I/O besides reading the file.
  *
  * Each contact is a real local test contact, not a pupil with parents: the Sampark model rings a
  * guardian record about a student record, so each person is stored as a student (themself, in the
@@ -8,7 +10,7 @@
  * number. No parent relationship is recorded.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { normalizeIndianPhone } from '@/lib/sampark/phone';
@@ -26,7 +28,16 @@ export interface Roster {
     contacts: RosterContact[];
 }
 
-export function readRoster(file = join(process.cwd(), 'scripts', 'sampark', 'sargvision-roster.json')): Roster {
+export const LOCAL_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.local.json');
+export const EXAMPLE_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.example.json');
+
+/** The local roster when present (real numbers), else the example (made-up numbers, never dialled). */
+export function rosterSource(root = process.cwd()): { file: string; real: boolean } {
+    const local = join(root, LOCAL_ROSTER_FILE);
+    return existsSync(local) ? { file: local, real: true } : { file: join(root, EXAMPLE_ROSTER_FILE), real: false };
+}
+
+export function readRoster(file = rosterSource().file): Roster {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Roster;
     return validateRoster(raw);
 }

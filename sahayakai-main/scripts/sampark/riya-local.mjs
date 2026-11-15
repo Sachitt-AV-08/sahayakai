@@ -18,7 +18,7 @@
  *   --real-call        the ONE authorised real Riya test call (docs/sampark/RIYA_LOCAL_SETUP.md §11.6):
  *                      reads ELEVENLABS_API_KEY from this shell (refuses without it), uses the
  *                      configured agent and number, live dialling on, the emulator's separate
- *                      `sampark-nonprod` database, only +919800000109 allowed, 1 call per day,
+ *                      `sampark-nonprod` database, only RIYA_REAL_TEST_NUMBER allowed, 1 call per day,
  *                      real clock. Seeds the non-demo school riya-test-local.
  *   --persist          keep the emulator data between runs (%LOCALAPPDATA%\riya-local\emulator-data,
  *                      imported at start, exported on exit) and reuse the same LOCAL disposable keys
@@ -49,7 +49,7 @@
  *   --no-warm          skip the background warm-up that compiles the Sampark pages and APIs right
  *                      after start (read-only GETs), so the first click on each is not a compile wait
  *
- * Every run seeds the Sargvision sample class (scripts/sampark/sargvision-roster.json) on the
+ * Every run seeds the Sargvision sample class (scripts/sampark/sargvision-roster.local.json when present, else the example roster) on the
  * emulator's `sampark-nonprod` database. Without --real-call it is in Practice mode (simulated
  * calls, nothing rings); --real-call switches it to Test mode for the allow-listed roster.
  *
@@ -94,13 +94,15 @@ const REAL_CALL = {
     // school workflows only with product_context "sampark", which the ElevenLabs client always sends.
     // RIYA_REAL_AGENT_ID / RIYA_REAL_PHONE_NUMBER_ID override both when the agent lives in another
     // ElevenLabs workspace (the key in this shell must be able to read that agent and number).
-    agentId: process.env.RIYA_REAL_AGENT_ID?.trim() || 'agent_fakeagent1000000000000000000',
+    // Required from this shell, never defaulted: the repository is public (docs/sampark/RIYA_LOCAL_SETUP.md §11.6).
+    agentId: process.env.RIYA_REAL_AGENT_ID?.trim() ?? '',
     // +917965853645 on the Vobiz SIP trunk (TLS), imported for and assigned to the unified agent
     // (the earlier phnum_9701… and phnum_1501… resources are superseded).
     // Riya's caller ID — never a contact's number.
-    phoneNumberId: process.env.RIYA_REAL_PHONE_NUMBER_ID?.trim() || 'phnum_fakenumber100000000000000000',
+    phoneNumberId: process.env.RIYA_REAL_PHONE_NUMBER_ID?.trim() ?? '',
     sourceAgentId: 'agent_fakeagent3000000000000000000',
-    allowedNumber: '+919800000109',
+    // The one authorised test phone, in E.164 (+91…), from this shell. Never committed.
+    allowedNumber: process.env.RIYA_REAL_TEST_NUMBER?.trim() ?? '',
 };
 const has = (f) => argv.includes(`--${f}`);
 /** Real test calls per contact per day: --test-cap N (1-5, default 2). Local testing only. */
@@ -130,7 +132,10 @@ const EMU_STORAGE_RULES = join(STATE_DIR, 'storage.riya-emulator.rules');
 const PERSIST_DIR = join(process.env.LOCALAPPDATA ?? homedir(), 'riya-local');
 const EMU_DATA_DIR = join(PERSIST_DIR, 'emulator-data');
 const LOCAL_KEYS_FILE = join(PERSIST_DIR, 'local-keys.json');
-const SARGVISION_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.json');
+// The real team roster is a local, git-ignored file (the repository is public); the tracked example has
+// made-up numbers and is used for Practice only. Real-call modes never allow-list the example.
+const SARGVISION_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.local.json');
+const SARGVISION_EXAMPLE_ROSTER_FILE = join('scripts', 'sampark', 'sargvision-roster.example.json');
 const NPM_CACHE = WIN ? join(process.env.LOCALAPPDATA ?? homedir(), 'npm-cache-riya-firestore') : join(homedir(), '.npm-cache-riya-firestore');
 // Every Riya workflow (src/lib/sampark/conversation/riya-purposes.ts). Practice and the real-call modes
 // use the same list; real calls stay gated by Test mode, allow-lists, consent and the calling window.
@@ -396,8 +401,9 @@ function liveVoiceSettings() {
     };
 }
 
-/** The Sargvision roster's numbers, for the local allow-list only (never printed). */
+/** The Sargvision roster's real numbers (local file only), for the local allow-list (never printed). */
 function sargvisionNumbers() {
+    if (!existsSync(SARGVISION_ROSTER_FILE)) return [];
     try {
         const roster = JSON.parse(readFileSync(SARGVISION_ROSTER_FILE, 'utf8'));
         return roster.contacts.map((c) => c.phone).filter((p) => /^\+91[6-9]\d{9}$/.test(p));
@@ -584,13 +590,15 @@ async function main() {
         // The key comes only from the operator's shell; it is never printed, written or defaulted.
         const realKey = process.env.ELEVENLABS_API_KEY?.trim() ?? '';
         if (realKey.length < 20 || realKey === 'local-placeholder-not-a-key') fail('--real-call needs ELEVENLABS_API_KEY in this shell (Start-Riya-Local.ps1 -RealCall asks for it with hidden input).');
+        if (!/^agent_\w+$/.test(REAL_CALL.agentId) || !/^phnum_\w+$/.test(REAL_CALL.phoneNumberId)) fail('--real-call needs RIYA_REAL_AGENT_ID and RIYA_REAL_PHONE_NUMBER_ID in this shell (docs/sampark/RIYA_LOCAL_SETUP.md §11.6).');
+        if (!/^\+91[6-9]\d{9}$/.test(REAL_CALL.allowedNumber)) fail('--real-call needs RIYA_REAL_TEST_NUMBER in this shell: the one authorised test phone, as +91 and ten digits.');
         Object.assign(appEnv, {
             ELEVENLABS_API_KEY: realKey,
             ELEVENLABS_AGENT_ID: REAL_CALL.agentId,
             ELEVENLABS_AGENT_PHONE_NUMBER_ID: REAL_CALL.phoneNumberId,
             ELEVENLABS_SOURCE_AGENT_ID: REAL_CALL.sourceAgentId,
             SAMPARK_LIVE_DIAL_ENABLED: 'true',
-            // The test phone plus the Sargvision roster (scripts/sampark/sargvision-roster.json): nothing else can ring.
+            // The test phone plus the Sargvision roster (scripts/sampark/sargvision-roster.local.json, git-ignored): nothing else can ring.
             SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: [REAL_CALL.allowedNumber, ...sargvisionNumbers()].filter((n, i, all) => all.indexOf(n) === i).join(','),
             // Per contact on the roster, per school elsewhere.
             SAMPARK_RIYA_TEST_DAILY_CAP: testCap(),
@@ -632,6 +640,7 @@ async function main() {
         if (limits) say(`   Vobiz account capacity (read live): ${limits.concurrent} concurrent call(s), ${limits.cps ?? '?'} call(s)/second. Batch lines capped at ${Math.min(3, verifiedLimit)}.`);
         else say('   WARNING: could not read the Vobiz account limits; batches use the app ceiling (3) and back off on any 429.');
         let roster = [];
+        if (!existsSync(SARGVISION_ROSTER_FILE)) fail(`--vobiz-call needs the real roster in ${SARGVISION_ROSTER_FILE} (git-ignored; copy ${SARGVISION_EXAMPLE_ROSTER_FILE} and put in the team's own numbers).`);
         try { roster = JSON.parse(readFileSync(SARGVISION_ROSTER_FILE, 'utf8')).contacts; } catch { /* checked below */ }
         const allowIds = opt('vobiz-allow', 'sv-alyssa').split(',').map((s) => s.trim()).filter(Boolean);
         const allowed = roster.filter((c) => allowIds.includes(c.id)).map((c) => c.phone).filter((p) => /^\+91[6-9]\d{9}$/.test(p));

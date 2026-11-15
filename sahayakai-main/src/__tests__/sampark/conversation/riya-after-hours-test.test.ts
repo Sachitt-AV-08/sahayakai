@@ -9,14 +9,17 @@ import { LOCAL_AFTER_HOURS_TEST, localAfterHoursTestOverride } from '@/server/sa
 
 import { setPhoneEnv } from '../server/_helpers';
 
-const NOW = new Date('2026-10-29T15:00:00Z'); // 20:30 IST, after the 10:00–20:00 window
+const NOW = new Date('2026-10-29T15:00:00Z'); // 20:30 IST, after the 10:00–19:00 window
+// A made-up test phone: the real one comes from RIYA_REAL_TEST_NUMBER in the operator's shell.
+const TEST_PHONE = '+919800000109';
 const ARMED = { armedAt: '2026-10-29T14:55:00Z', until: '2026-10-29T15:55:00Z' };
 
 const localEnv = (over: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
     NODE_ENV: 'development',
     SAMPARK_FIRESTORE_DATABASE: 'sampark-nonprod',
-    SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: LOCAL_AFTER_HOURS_TEST.phoneE164,
+    RIYA_REAL_TEST_NUMBER: TEST_PHONE,
+    SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: TEST_PHONE,
     ...over,
 });
 
@@ -25,7 +28,7 @@ function school(over: Partial<SamparkSchool> = {}): SamparkSchool {
         orgId: LOCAL_AFTER_HOURS_TEST.orgId,
         isDemo: false,
         mode: 'test',
-        testPhoneHash: hashPhone(LOCAL_AFTER_HOURS_TEST.phoneE164),
+        testPhoneHash: hashPhone(TEST_PHONE),
         localAfterHoursTest: ARMED,
         ...over,
     } as SamparkSchool;
@@ -76,5 +79,9 @@ describe('local after-hours Riya test exception', () => {
         expect(run({ now: new Date('2026-10-29T16:00:00Z') })).toMatchObject({ active: false, inactiveReason: 'expired' });
         expect(run({ school: { localAfterHoursTest: { armedAt: ARMED.armedAt, until: '2026-10-29T20:00:00Z' } } })).toMatchObject({ active: false, inactiveReason: 'longer_than_3_hours' });
         expect(run({ school: { localAfterHoursTest: { armedAt: 'x', until: ARMED.until } } })).toMatchObject({ active: false, inactiveReason: 'unparseable' });
+    });
+
+    it('stays off when the operator has not set RIYA_REAL_TEST_NUMBER (the number is never committed)', () => {
+        expect(run({ env: localEnv({ RIYA_REAL_TEST_NUMBER: undefined }) })).toMatchObject({ active: false, inactiveReason: 'not_test_number' });
     });
 });

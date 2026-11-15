@@ -168,6 +168,10 @@ describe.each(Object.keys(PROVIDERS))('call route behaviour with provider=%s', (
             parent_outreach: {
                 o1: { teacherUid: 'teacher-A', parentPhone: PHONE, classId: 'c1', studentId: 's1', callStatus: 'initiated' },
             },
+            // The server-side destination check (#157) resolves the number from the teacher's own
+            // class and the student record, so both exist here.
+            classes: { c1: { teacherUid: 'teacher-A' } },
+            'classes/c1/students': { s1: { parentPhone: PHONE }, sibling: { parentPhone: PHONE } },
         };
         (global as any).__fakeDb = createFakeDb(store);
         fetchMock.mockReset();
@@ -196,7 +200,7 @@ describe.each(Object.keys(PROVIDERS))('call route behaviour with provider=%s', (
 
     it('suppression also covers a sibling outreach sharing the same number', async () => {
         store.call_suppressions = { [phoneSuppressionId(PHONE)]: { reason: 'opt_out' } };
-        store.parent_outreach.o2 = { teacherUid: 'teacher-A', parentPhone: PHONE, studentId: 'sibling' };
+        store.parent_outreach.o2 = { teacherUid: 'teacher-A', parentPhone: PHONE, classId: 'c1', studentId: 'sibling' };
         const res = await POST(req({ outreachId: 'o2', parentLanguage: 'Hindi' }));
         expect(res.status).toBe(409);
         expect(contacted()).toBe(0);

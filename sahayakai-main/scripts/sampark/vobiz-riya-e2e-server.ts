@@ -46,7 +46,8 @@ const ORG = 'hillview-demo';
  * E2E_MARKER (a file path: refuses if it exists, written BEFORE the dial, so never twice).
  */
 const REAL = process.argv.includes('--real-dial');
-const AUTHORISED_TEST_PHONE = '+919800000109'; // Alyssa's test number (verified against call fdec5de6)
+// The operator's own authorised test number, from this shell; never committed (the repository is public).
+const AUTHORISED_TEST_PHONE = process.env.RIYA_REAL_TEST_NUMBER?.trim() || '+919800000001';
 const TEST_PHONE = REAL ? AUTHORISED_TEST_PHONE : '+919800000001'; // else synthetic, never dialled
 
 if (!process.env.SAHAYAKAI_REQUEST_SIGNING_KEY?.trim()) throw new Error('SAHAYAKAI_REQUEST_SIGNING_KEY is required');

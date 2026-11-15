@@ -42,7 +42,7 @@ re-run everything before each deployment.
 | 3.11 | Good-news call | No complaint record, no "null" text | |
 | 3.12 | AI unreachable | Call continues on scripted replies, marked "Scripted replies" | |
 | 3.13 | Bad / oversized request, abuse | 400; 61st request in 10 min from one address is 429 | |
-| 3.14 | Callback time rules | Outside 10:00–20:00, Sunday, holiday, past, >30 days refused with next permitted time | |
+| 3.14 | Callback time rules | Outside 10:00–19:00, Sunday, holiday, past, >30 days refused with next permitted time | |
 | 3.15 | Parent's callback request | Waits as "Needs confirming" until a person sets a time | |
 | 3.16 | Campaign lifecycle | Draft → approve → calling → finished; no phone rings | |
 | 3.17 | No answer / busy | Saved as not reached; appears under "Families not reached" | |

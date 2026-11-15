@@ -4,7 +4,9 @@
  * Pure: no I/O.
  *
  * Emulator only, never production: the seed refuses to run without FIRESTORE_EMULATOR_HOST.
- * The number is the user's own authorised test phone. A real Riya call still rings only the
+ * The number is the operator's own authorised test phone, read from RIYA_REAL_TEST_NUMBER (never
+ * committed: the repository is public); without it a made-up number is seeded, which no allow-list
+ * contains, so nothing can ring. A real Riya call still rings only the
  * school's saved test phone, and only when that number is on SAMPARK_RIYA_TEST_ALLOWED_NUMBERS.
  */
 
@@ -14,7 +16,7 @@ export const RIYA_TEST_ORG_ID = 'riya-test-local';
 export const RIYA_TEST_ORG_NAME = 'Riya Test School (local)';
 export const RIYA_TEST_STUDENT_ID = 'riya-test-student-alyssa';
 export const RIYA_TEST_GUARDIAN_ID = 'riya-test-guardian-alyssa';
-export const RIYA_TEST_PHONE = '+919800000109';
+export const RIYA_TEST_PHONE = process.env.RIYA_REAL_TEST_NUMBER?.trim() || '+919800000001';
 
 export interface PhoneCrypto {
     encrypt(e164: string): string;

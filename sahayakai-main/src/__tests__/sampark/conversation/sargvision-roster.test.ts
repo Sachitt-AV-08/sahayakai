@@ -32,9 +32,11 @@ import type { SamparkSchool } from '@/types/sampark';
 import { school as schoolFixture, testClock } from '../engine/_fixtures';
 import { setPhoneEnv } from '../server/_helpers';
 
-const ROSTER_FILE = join(__dirname, '..', '..', '..', '..', 'scripts', 'sampark', 'sargvision-roster.json');
+// The tracked example roster: the team's names with made-up numbers. The real roster is a local,
+// git-ignored file (the repository is public) and is never read by tests.
+const ROSTER_FILE = join(__dirname, '..', '..', '..', '..', 'scripts', 'sampark', 'sargvision-roster.example.json');
 const EXPECTED: [string, string][] = [
-    ['Abhishek', '+916363740720'],
+    ['Abhishek', '+919800000101'],
     ['Nischay', '+919800000102'],
     ['Nandini', '+919800000103'],
     ['Shivadeth', '+919800000104'],
@@ -49,9 +51,6 @@ const WED_21_IST = new Date('2026-10-07T15:30:00Z');
 
 const crypt = { encrypt: encryptPhone, hash: hashPhone };
 
-/** The launcher's default agent and number: a literal, optionally behind an env override. */
-const LAUNCHER_AGENT_RE = /agentId: (?:process\.env\.RIYA_REAL_AGENT_ID\?\.trim\(\) \|\| )?'(agent_\w+)'/;
-const LAUNCHER_PHONE_RE = /phoneNumberId: (?:process\.env\.RIYA_REAL_PHONE_NUMBER_ID\?\.trim\(\) \|\| )?'(phnum_\w+)'/;
 
 describe('Sargvision roster data', () => {
     beforeAll(setPhoneEnv);
@@ -63,10 +62,10 @@ describe('Sargvision roster data', () => {
     });
 
     it('refuses duplicates, non-mobile numbers and another org', () => {
-        const ok: Roster = { orgId: SARGVISION_ORG_ID, contacts: [{ id: 'sv-a', name: 'A', phone: '+916363740720' }] };
+        const ok: Roster = { orgId: SARGVISION_ORG_ID, contacts: [{ id: 'sv-a', name: 'A', phone: '+919800000101' }] };
         expect(() => validateRoster({ ...ok, orgId: 'hillview-demo' })).toThrow();
         expect(() => validateRoster({ ...ok, contacts: [...ok.contacts, { id: 'sv-a', name: 'B', phone: '+917777777777' }] })).toThrow();
-        expect(() => validateRoster({ ...ok, contacts: [{ id: 'sv-b', name: 'B', phone: '+91 63637 40720' }] })).toThrow();
+        expect(() => validateRoster({ ...ok, contacts: [{ id: 'sv-b', name: 'B', phone: '+91 98000 00101' }] })).toThrow();
         expect(() => validateRoster({ ...ok, contacts: [{ id: 'sv-b', name: 'B', phone: '+915000000101' }] })).toThrow();
     });
 
@@ -207,7 +206,7 @@ describe('Sargvision roster calls (Riya service)', () => {
     });
 
     it('refuses a number that is not on the allow-list', async () => {
-        const s = await setupRoster({ env: localEnv({ SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: '+916363740720' }) });
+        const s = await setupRoster({ env: localEnv({ SAMPARK_RIYA_TEST_ALLOWED_NUMBERS: '+919800000101' }) });
         const { preview, run } = await start(s.deps, 'sv-alyssa');
         expect(preview.refusals.map((r) => r.code)).toContain('NUMBER_NOT_ALLOWED');
         expect(preview.destinationE164).toBeNull();
@@ -333,9 +332,9 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
         expect(sargvisionCallsRing({ mode: 'test' }, { SAMPARK_LIVE_DIAL_ENABLED: 'true' })).toBe(true);
 
         // The flag reaches the roster rows; a contact without it is a Practice contact.
-        registerSargvisionRoster([{ studentId: 'sv-varunesh', guardianId: 'sv-varunesh-contact', name: 'Varunesh', phoneLast4: '7646' }]);
+        registerSargvisionRoster([{ studentId: 'sv-varunesh', guardianId: 'sv-varunesh-contact', name: 'Varunesh', phoneLast4: '0105' }]);
         expect(getDemoSchool().students.find((s) => s.id === 'sv-varunesh')?.rosterContact?.realCall).toBe(false);
-        registerSargvisionRoster([{ studentId: 'sv-varunesh', guardianId: 'sv-varunesh-contact', name: 'Varunesh', phoneLast4: '7646', realCall: true }]);
+        registerSargvisionRoster([{ studentId: 'sv-varunesh', guardianId: 'sv-varunesh-contact', name: 'Varunesh', phoneLast4: '0105', realCall: true }]);
         expect(getDemoSchool().students.find((s) => s.id === 'sv-varunesh')?.rosterContact?.realCall).toBe(true);
     });
 
@@ -345,22 +344,22 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
         expect(roster.contacts.map((c) => c.phone)).not.toContain(RIYA_CALLER_ID);
     });
 
-    it('the launcher, .env.example and the setup doc name the same Riya phone-number resource', () => {
-        const launcherId = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_PHONE_RE)?.[1];
-        const exampleId = read('.env.example').match(/^ELEVENLABS_AGENT_PHONE_NUMBER_ID=(phnum_\w+)/m)?.[1];
-        expect(launcherId).toMatch(/^phnum_\w{20,}$/);
-        expect(exampleId).toBe(launcherId);
-        expect(read('docs/sampark/RIYA_LOCAL_SETUP.md')).toContain(launcherId);
+    it('the launcher takes the real agent, number and test phone only from the shell, never a default', () => {
+        // The repository is public: real-call identifiers and the operator's own phone are never committed.
+        const src = read('scripts/sampark/riya-local.mjs');
+        expect(src).toContain("agentId: process.env.RIYA_REAL_AGENT_ID?.trim() ?? ''");
+        expect(src).toContain("phoneNumberId: process.env.RIYA_REAL_PHONE_NUMBER_ID?.trim() ?? ''");
+        expect(src).toContain("allowedNumber: process.env.RIYA_REAL_TEST_NUMBER?.trim() ?? ''");
+        expect(src.match(/'phnum_\w+'/g) ?? []).toEqual(["'phnum_localtestlocaltestlocaltest0'"]);
+        expect(src).not.toMatch(/'\+91[6-9]\d{9}'/);
     });
 
-    it('real calls use the unified SARGVISION agent and the Vobiz number assigned to it (live contract)', () => {
-        // The launcher's DEFAULT ids (RIYA_REAL_AGENT_ID / RIYA_REAL_PHONE_NUMBER_ID may override them).
-        const launcherAgent = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_AGENT_RE)?.[1];
-        const launcherPhone = read('scripts/sampark/riya-local.mjs').match(LAUNCHER_PHONE_RE)?.[1];
+    it('.env.example and the setup doc name the unified agent and the Vobiz number assigned to it (live contract)', () => {
         const exampleAgent = read('.env.example').match(/^ELEVENLABS_AGENT_ID=(agent_\w+)/m)?.[1];
-        expect(launcherAgent).toBe(contract.agentId);
+        const examplePhone = read('.env.example').match(/^ELEVENLABS_AGENT_PHONE_NUMBER_ID=(phnum_\w+)/m)?.[1];
         expect(exampleAgent).toBe(contract.agentId);
-        expect(launcherPhone).toBe(contract.agentPhoneNumberId);
+        expect(examplePhone).toBe(contract.agentPhoneNumberId);
+        expect(read('docs/sampark/RIYA_LOCAL_SETUP.md')).toContain(examplePhone);
         expect(contract.phoneNumberAssignedAgentId).toBe(contract.agentId);
     });
 

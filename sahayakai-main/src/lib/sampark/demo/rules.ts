@@ -1,6 +1,7 @@
 /**
  * When a demo callback may ring, mirroring SamparkAI's callback rules: inside
- * calling hours (10:00–20:00 IST, Monday to Saturday), not on a school holiday,
+ * calling hours (10:00–19:00 IST, the shared routine band in policy/routine-hours.ts; Monday to
+ * Saturday), not on a school holiday,
  * at least a minute ahead and at most 30 days ahead. A refused time comes back
  * with the next permitted time for the person to choose; nothing is moved
  * silently.
@@ -8,10 +9,11 @@
 
 import { CALLBACK_MAX_AHEAD_MS, CALLBACK_MIN_LEAD_MS } from '@/lib/sampark/callbacks/state';
 import { DEFAULT_CALLBACK_TIME_ZONE, zonedToUtc } from '@/lib/sampark/callbacks/time';
+import { ROUTINE_END_CEILING_HOUR, ROUTINE_START_FLOOR_HOUR } from '@/lib/sampark/policy/routine-hours';
 
 const TZ = DEFAULT_CALLBACK_TIME_ZONE;
-export const CALL_START_HOUR = 10;
-export const CALL_END_HOUR = 20;
+export const CALL_START_HOUR = ROUTINE_START_FLOOR_HOUR;
+export const CALL_END_HOUR = ROUTINE_END_CEILING_HOUR;
 
 export type TimeRefusal = 'past' | 'too_far' | 'sunday' | 'holiday' | 'outside_hours';
 
@@ -68,5 +70,5 @@ export const REFUSAL_TEXT: Record<TimeRefusal, string> = {
     too_far: 'Callbacks can be booked up to 30 days ahead.',
     sunday: 'The school does not call families on Sundays.',
     holiday: 'That day is a school holiday: no routine calls.',
-    outside_hours: 'Families are called between 10:00 and 20:00.',
+    outside_hours: 'Families are called between 10:00 and 19:00.',
 };
