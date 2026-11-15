@@ -17,10 +17,15 @@
  *   - `product_context` == "athithi" in the conversation's dynamic variables (every Athithi call
  *     sends it; the agent routes on it), or
  *   - the event's agent is listed in SAMPARK_ATHITHI_AGENT_IDS (a hotel-only agent sharing the
- *     workspace webhook), or
- *   - it carries no product_context, is not linked to a Sampark call and has no Sampark user id:
- *     a `call_initiation_failure` often arrives without the client data, and a Sampark call is
- *     linked to its conversation as soon as ElevenLabs accepts it.
+ *     workspace webhook).
+ *
+ * An event from the shared agent that carries NO product_context is never forwarded: it stays with
+ * Sampark, which handles it exactly as before forwarding existed ("not yet linked" 503 while young,
+ * ignored after). A `call_initiation_failure` often arrives without client data, and a Sampark
+ * call is linked to its conversation only when the start request returns, so its own failure can
+ * arrive unlinked. Forwarded, Athithi would answer 200 and Sampark would lose it for good; and
+ * Athithi gains nothing, because an event without client data carries none of Athithi's signed ids
+ * (it could only log it).
  *
  * How the result is reported back to ElevenLabs:
  *   2xx from Athithi            -> 200 (done)
@@ -76,10 +81,6 @@ export interface ForwardFacts {
     productContext: string | null;
     agentId: string;
     ourAgentId: string;
-    /** The conversation is already linked to a Sampark call. */
-    linked: boolean;
-    /** The event carries a Sampark user id (`orgId~callId`). */
-    samparkUserId: boolean;
 }
 
 /** Should this verified event go to Athithi Vani instead of being handled here? */
@@ -87,13 +88,8 @@ export function isAthithiEvent(facts: ForwardFacts, config: ForwardConfig): bool
     if (facts.productContext === ATHITHI_PRODUCT_CONTEXT) return true;
     if (facts.productContext !== null) return false;
     if (facts.agentId !== facts.ourAgentId) return config.agentIds.has(facts.agentId);
-    return !facts.linked && !facts.samparkUserId;
-}
-
-export function looksLikeSamparkUserId(userId: string | null | undefined): boolean {
-    if (!userId) return false;
-    const [orgId, callId] = userId.split('~');
-    return Boolean(orgId && callId && /^[A-Za-z0-9_-]{1,128}$/.test(orgId) && /^[a-f0-9]{32}$/.test(callId));
+    // Unattributable on the shared agent: Sampark's to settle (see the header).
+    return false;
 }
 
 export type ForwardOutcome =

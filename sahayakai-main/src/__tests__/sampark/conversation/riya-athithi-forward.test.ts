@@ -10,14 +10,13 @@ import {
     forwardResponse,
     forwardWebhook,
     isAthithiEvent,
-    looksLikeSamparkUserId,
     productContextOf,
     readForwardConfig,
     type ForwardConfig,
 } from '@/lib/sampark/conversation/forward';
 import { createMemoryConversationRepo } from '@/lib/sampark/conversation/repo';
 import { createMemorySamparkRepo } from '@/lib/sampark/repo/memory';
-import { handleRiyaWebhook, type RiyaDeps } from '@/server/sampark/conversation';
+import { handleRiyaWebhook, UNLINKED_RETRY_WINDOW_SECONDS, type RiyaDeps } from '@/server/sampark/conversation';
 
 import { testClock } from '../engine/_fixtures';
 
@@ -64,10 +63,10 @@ function postCall(opts: { context?: string | null; agent?: string; conversationI
     });
 }
 
-function failure(conversationId = 'conv_hotel_2', reason = 'no-answer'): string {
+function failure(conversationId = 'conv_hotel_2', reason = 'no-answer', eventTs = TS): string {
     return JSON.stringify({
         type: 'call_initiation_failure',
-        event_timestamp: TS,
+        event_timestamp: eventTs,
         data: { agent_id: AGENT, conversation_id: conversationId, failure_reason: reason },
     });
 }
@@ -116,17 +115,50 @@ describe('Athithi Vani webhook forwarding', () => {
         expect(outcome.status).toBe(503);
     });
 
-    it('a failure without client data goes to Athithi unless it is linked to a Sampark call', async () => {
+    it('a failure without client data stays with Sampark, exactly as before forwarding', async () => {
+        const fetchImpl = replying(200);
+        const { deps: d } = deps(fetchImpl);
+
+        // Fresh and unlinked: may be Sampark's own failure racing its start request. The existing
+        // "not yet linked" 503, so ElevenLabs retries.
+        const fresh = failure('conv_unknown_2');
+        expect(await handleRiyaWebhook(d, fresh, sign(fresh))).toEqual({ status: 503, body: { ok: false, error: 'not yet linked' } });
+
+        // Old and still unlinked: acknowledged and ignored, as before.
+        const old = failure('conv_unknown_2', 'no-answer', TS - UNLINKED_RETRY_WINDOW_SECONDS - 1);
+        expect(await handleRiyaWebhook(d, old, sign(old))).toEqual({ status: 200, body: { ok: true } });
+
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it("Sampark's own failure that beats its start request is not lost to Athithi (regression)", async () => {
         const fetchImpl = replying(200);
         const { deps: d, calls } = deps(fetchImpl);
+        const body = failure('conv_school_3', 'busy');
 
-        const hotel = failure('conv_hotel_2');
-        expect((await handleRiyaWebhook(d, hotel, sign(hotel))).body).toMatchObject({ forwarded: true });
+        // First delivery arrives before the start request returned: 503, retried.
+        expect((await handleRiyaWebhook(d, body, sign(body))).status).toBe(503);
+        // The start request returns and links the conversation; the retry is now Sampark's.
+        await calls.linkConversation('conv_school_3', { orgId: 'org-1', callId: 'd'.repeat(32), createdAt: NOW.toISOString() });
+        const retried = await handleRiyaWebhook(d, body, sign(body));
+        expect(retried.body).not.toHaveProperty('forwarded');
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
 
-        await calls.linkConversation('conv_school_2', { orgId: 'org-1', callId: 'a'.repeat(32), createdAt: NOW.toISOString() });
-        const school = failure('conv_school_2');
-        await handleRiyaWebhook(d, school, sign(school));
-        expect(fetchImpl).toHaveBeenCalledTimes(1);
+    it('a failure that does carry product_context=athithi is forwarded at once', async () => {
+        const fetchImpl = replying(200);
+        const { deps: d } = deps(fetchImpl);
+        const body = JSON.stringify({
+            type: 'call_initiation_failure',
+            event_timestamp: TS,
+            data: {
+                agent_id: AGENT,
+                conversation_id: 'conv_hotel_4',
+                failure_reason: 'busy',
+                conversation_initiation_client_data: { dynamic_variables: { product_context: 'athithi' } },
+            },
+        });
+        expect((await handleRiyaWebhook(d, body, sign(body))).body).toMatchObject({ forwarded: true });
     });
 
     it('a post-call with a Sampark user id is never forwarded', async () => {
@@ -186,16 +218,13 @@ describe('forward helpers', () => {
     });
 
     it('classifies events', () => {
-        const base = { agentId: 'agent_x', ourAgentId: 'agent_x', linked: false, samparkUserId: false };
-        expect(isAthithiEvent({ ...base, productContext: 'athithi', linked: true }, config)).toBe(true);
+        const base = { agentId: 'agent_x', ourAgentId: 'agent_x' };
+        expect(isAthithiEvent({ ...base, productContext: 'athithi' }, config)).toBe(true);
         expect(isAthithiEvent({ ...base, productContext: 'sampark' }, config)).toBe(false);
-        expect(isAthithiEvent({ ...base, productContext: null }, config)).toBe(true);
-        expect(isAthithiEvent({ ...base, productContext: null, linked: true }, config)).toBe(false);
-        expect(isAthithiEvent({ ...base, productContext: null, samparkUserId: true }, config)).toBe(false);
+        expect(isAthithiEvent({ ...base, productContext: null }, config)).toBe(false);
         expect(isAthithiEvent({ ...base, productContext: null, agentId: 'agent_other' }, config)).toBe(false);
         expect(isAthithiEvent({ ...base, productContext: null, agentId: HOTEL_AGENT }, config)).toBe(true);
-        expect(looksLikeSamparkUserId(`org~${'c'.repeat(32)}`)).toBe(true);
-        expect(looksLikeSamparkUserId('guest-1')).toBe(false);
+        expect(isAthithiEvent({ ...base, productContext: 'athithi', agentId: 'agent_other' }, config)).toBe(true);
     });
 
     it('maps a timeout to a retry', async () => {
