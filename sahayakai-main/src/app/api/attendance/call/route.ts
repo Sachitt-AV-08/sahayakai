@@ -352,8 +352,19 @@ export async function POST(req: NextRequest) {
 
     // Ownership and the server-stored destination first: until the record is
     // known to be this teacher's, a refusal must not touch it.
-    const db = await getDb();
-    const target = await resolveOutreachTarget(db, outreachId, userId);
+    //
+    // A Firestore error here must still answer in JSON. Uncaught, Next.js sends
+    // an empty 500 the modal cannot parse, and the teacher sees a JSON parse
+    // error instead of a message (gate: attendance-call-json-errors-gate).
+    let db: FirebaseFirestore.Firestore;
+    let target: TargetResolution;
+    try {
+        db = await getDb();
+        target = await resolveOutreachTarget(db, outreachId, userId);
+    } catch (error) {
+        console.error('[attendance/call] target resolution failed:', error);
+        return NextResponse.json({ error: 'Internal error', code: 'INTERNAL', retryable: true }, { status: 500 });
+    }
     if (!target.ok) {
         if (target.owned) await markNotDialled(db, outreachId, target.category);
         return target.response;

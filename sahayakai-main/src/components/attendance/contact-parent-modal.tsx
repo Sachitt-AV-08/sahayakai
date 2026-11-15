@@ -18,6 +18,7 @@ import {
     MessageSquare, ClipboardList, ArrowRight, UserCircle, Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { callErrorFromResponse } from "@/lib/attendance/call-errors";
 
 interface ContactParentModalProps {
     open: boolean;
@@ -415,10 +416,7 @@ export function ContactParentModal({
                 subject, // personalizes the Exotel voicebot greeting; ignored by Twilio path
             }),
         });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error ?? 'Failed to save outreach record');
-        }
+        if (!res.ok) throw await callErrorFromResponse(res, 'Failed to save outreach record');
         return res.json() as Promise<{ outreachId: string }>;
     };
 
@@ -440,10 +438,7 @@ export function ContactParentModal({
                 }),
             });
 
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error ?? 'Call failed');
-            }
+            if (!res.ok) throw await callErrorFromResponse(res, 'Call failed');
 
             setStep("calling");
             pollForSummary(oid);
