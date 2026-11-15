@@ -51,14 +51,18 @@ import type { UserProfile } from "@/types"
  *   Talk to VIDYA
  *   Home · Library · Community · Profile      the four destinations
  *   Make      lesson plan, worksheet, quiz, exam paper, rubric, instant answer
- *   Class     attendance (parent calls start from a class register)
+ *   Class     attendance at /attendance, for every teacher (the class
+ *             registers; parent calls start from a class register)
  *   Messages · Notifications                  with unread counts
  *   Explore   folded: shared resources, usage, privacy; Labs and the
  *             internal dashboards only for staff / labsNav beta testers
- *   footer    the one SamparkAI entry (every signed-in user; it opens the
- *             SamparkAI workspace's school picker, and the SamparkAI APIs
- *             admit school admins only). The account (profile, classes,
- *             settings, sign out) lives in the header avatar menu only.
+ *   footer    the one SamparkAI entry, only while SamparkAI is switched on
+ *             for this deployment (nav-access `sampark`, the server's
+ *             SAMPARK_ENABLED; hidden while off or unknown, since the
+ *             SamparkAI APIs answer 404 then). It opens the SamparkAI
+ *             workspace's school picker, and the SamparkAI APIs admit school
+ *             admins only. The account (profile, classes, settings, sign out)
+ *             lives in the header avatar menu only.
  *
  * Layout and states live in ProductSideNav (rail 768–1023px, sidebar from
  * 1024px, foldable). The phone uses the TabBar and this same sidebar inside
@@ -231,8 +235,9 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       label: t("Class"),
       tier: "secondary",
       items: [
-        // Attendance and parent calls live in SamparkAI: the same destination as the SamparkAI entry.
-        { key: "attendance", label: t("Attendance"), shortLabel: t("Class"), icon: ClipboardList, href: samparkEntryUrl(), active: starts("/attendance") },
+        // The teacher's class registers and parent-call modal. Never a SamparkAI URL: SamparkAI is off in
+        // production and admits school admins only (src/__tests__/components/nav-surfaces-sampark-gate.test.tsx).
+        { key: "attendance", label: t("Attendance"), shortLabel: t("Class"), icon: ClipboardList, href: "/attendance", active: starts("/attendance") },
       ],
     },
     {
@@ -337,10 +342,11 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       <Link href={samparkHref} className={className} aria-label={label} onClick={onNavigate} data-testid="sampark-entry">{children}</Link>
     )
 
-  // The SamparkAI entry shows signed in or out (SamparkAI's workspace has its
-  // own sign-in gate). The teacher's account (profile, classes, settings,
-  // sign out) is not repeated here: its one entry is the header avatar menu
-  // (AuthButton), plus the Profile destination above.
+  // The SamparkAI entry shows only once the server says SamparkAI is on
+  // (access.sampark); signed out, that is unknown, so it stays hidden. The
+  // teacher's account (profile, classes, settings, sign out) is not repeated
+  // here: its one entry is the header avatar menu (AuthButton), plus the
+  // Profile destination above.
   const footer = (mode: "full" | "rail") => {
     if (mode === "rail") {
       return (
@@ -394,7 +400,7 @@ export function AppSidebar({ collapsed = false, onToggleCollapsed, forceFull = f
       brandHref="/"
       lead={lead}
       sections={sections}
-      footer={footer}
+      footer={access.sampark ? footer : undefined}
       collapsed={collapsed}
       onToggleCollapsed={onToggleCollapsed}
       forceFull={forceFull}

@@ -2,17 +2,21 @@
  * SahayakAI sidebar information architecture (design system, decided
  * 26 Oct 2026): Talk to VIDYA, the four destinations, Make, Class,
  * Messages · Notifications, a folded Explore. Labs and the internal
- * dashboards are hidden from teachers; SamparkAI is linked only for users
- * who administer a school.
+ * dashboards are hidden from teachers; SamparkAI is linked only while the
+ * server says it is on (nav-access `sampark`). The class gate for every
+ * navigation surface is nav-surfaces-sampark-gate.test.tsx.
  */
 
 import { render, screen, within, fireEvent } from '@testing-library/react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AppSidebar } from '@/components/app-sidebar';
 
-let mockAccess = { staff: false, labs: false };
+const NO_ACCESS = { staff: false, labs: false, sampark: false };
+let mockAccess = NO_ACCESS;
+// Like the real hook: nothing beyond the teacher default until a signed-in
+// user's nav-access answer arrives.
 jest.mock('@/components/shell/use-nav-access', () => ({
-    useNavAccess: () => mockAccess,
+    useNavAccess: (uid: string | null) => (uid ? mockAccess : NO_ACCESS),
 }));
 
 // ── Firebase mocks ──────────────────────────────────────────────────────────
@@ -110,7 +114,7 @@ function sidebar() {
 
 describe('AppSidebar — information architecture', () => {
     beforeEach(() => {
-        mockAccess = { staff: false, labs: false };
+        mockAccess = NO_ACCESS;
     });
 
     it('leads with the four destinations, in order', () => {
@@ -137,13 +141,15 @@ describe('AppSidebar — information architecture', () => {
         }
     });
 
-    it('Attendance opens SamparkAI (the same place as the SamparkAI entry)', () => {
-        render(<AppSidebar />);
-        const attendance = sidebar().getAllByRole('link', { name: /Attendance/ });
-        const entry = screen.getAllByTestId('sampark-entry')[0].getAttribute('href');
-        expect(attendance.length).toBeGreaterThan(0);
-        for (const a of attendance) expect(a.getAttribute('href')).toBe(entry);
-        expect(entry).toMatch(/^\/sampark\//);
+    it('Attendance opens the class registers at /attendance, with SamparkAI off or on', () => {
+        for (const access of [NO_ACCESS, { ...NO_ACCESS, sampark: true }]) {
+            mockAccess = access;
+            const { unmount } = render(<AppSidebar />);
+            const attendance = sidebar().getAllByRole('link', { name: /Attendance/ });
+            expect(attendance.length).toBeGreaterThan(0);
+            for (const a of attendance) expect(a.getAttribute('href')).toBe('/attendance');
+            unmount();
+        }
     });
 
     it('hides Labs and the internal dashboards from a teacher', () => {
@@ -155,7 +161,7 @@ describe('AppSidebar — information architecture', () => {
     });
 
     it('shows Labs and the dashboards to staff once Explore is open', () => {
-        mockAccess = { staff: true, labs: true };
+        mockAccess = { staff: true, labs: true, sampark: false };
         render(<AppSidebar />);
         fireEvent.click(sidebar().getByRole('button', { name: /explore/i }));
         const hrefs = sidebar().getAllByRole('link').map((a) => a.getAttribute('href'));
@@ -165,14 +171,25 @@ describe('AppSidebar — information architecture', () => {
     // Class gate for "one SamparkAI entry, at the bottom": a second link from
     // any other section, or the entry moving above the teaching tools, fails.
     describe('the SamparkAI entry', () => {
-        // The branded SamparkAI entry. The Class › Attendance item also opens SamparkAI on purpose,
-        // and is checked on its own below, so it is not counted here.
+        // Every link that opens or names SamparkAI (Attendance is /attendance, so it never counts).
         const samparkLinks = (root: HTMLElement) =>
             [...root.querySelectorAll('a')]
-                .filter((a) => !a.querySelector('[data-testicon="ClipboardList"]'))
                 .filter((a) => /sampark/i.test(a.getAttribute('href') ?? '') || /sampark/i.test(a.textContent ?? ''));
 
-        it('appears exactly once in the sidebar and once in the rail, for every signed-in user', () => {
+        beforeEach(() => {
+            mockAccess = { ...NO_ACCESS, sampark: true };
+        });
+
+        it('is absent while SamparkAI is off or not yet known', () => {
+            mockAccess = NO_ACCESS;
+            render(<AppSidebar />);
+            fireEvent.click(sidebar().getByRole('button', { name: /explore/i }));
+            const aside = document.querySelector('aside.side-nav') as HTMLElement;
+            expect(samparkLinks(aside)).toHaveLength(0);
+            expect(screen.queryAllByTestId('sampark-entry')).toHaveLength(0);
+        });
+
+        it('appears exactly once in the sidebar and once in the rail while SamparkAI is on', () => {
             render(<AppSidebar />);
             fireEvent.click(sidebar().getByRole('button', { name: /explore/i }));
             const aside = document.querySelector('aside.side-nav') as HTMLElement;
@@ -183,14 +200,14 @@ describe('AppSidebar — information architecture', () => {
             expect(rail[0]).toHaveAttribute('aria-label', 'Open SamparkAI');
         });
 
-        it('is there for a signed-out teacher too, without the account row', () => {
+        it('is hidden for a signed-out visitor (no nav-access answer, so SamparkAI is unknown), without the account row', () => {
             (onAuthStateChanged as jest.Mock).mockImplementationOnce((_auth: unknown, cb: (u: null) => void) => {
                 cb(null);
                 return jest.fn();
             });
             render(<AppSidebar />);
             const aside = document.querySelector('aside.side-nav') as HTMLElement;
-            expect(aside.querySelectorAll('.nav-full [data-testid="sampark-entry"]')).toHaveLength(1);
+            expect(aside.querySelectorAll('[data-testid="sampark-entry"]')).toHaveLength(0);
             expect(screen.queryByText('Profile and classes')).not.toBeInTheDocument();
         });
 
