@@ -15,7 +15,7 @@
  */
 
 import { getApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { type Firestore, getFirestore } from 'firebase-admin/firestore';
 
 import { initializeFirebase } from '@/lib/firebase-admin';
 import { type AudioStore, type Clock, type SamparkRepo, type SpeechSynthesizer, type SpeechVerifier, systemClock } from '@/lib/sampark/ports';
@@ -40,6 +40,19 @@ export function assertSamparkEnvironmentSafe(env: Env = process.env): void {
             `(FIRESTORE_EMULATOR_HOST) or the named database '${SAMPARK_NONPROD_DATABASE}' ` +
             '(SAMPARK_FIRESTORE_DATABASE). Refusing to touch the production database.',
     );
+}
+
+/**
+ * The Sampark database, after the environment check: the emulator, the named non-production
+ * database, or production's default. Every Sampark store opens Firestore this way, so Sampark
+ * data never lands in the production default database from a staging or developer process
+ * (gate-sampark-stores-use-the-sampark-database).
+ */
+export async function samparkFirestore(env: Env = process.env): Promise<Firestore> {
+    assertSamparkEnvironmentSafe(env);
+    await initializeFirebase();
+    const databaseId = env.SAMPARK_FIRESTORE_DATABASE?.trim();
+    return databaseId ? getFirestore(getApp(), databaseId) : getFirestore(getApp());
 }
 
 let repoOverride: SamparkRepo | null = null;

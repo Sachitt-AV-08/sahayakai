@@ -67,8 +67,10 @@ export interface GoogleCalendarDeps {
 }
 
 export async function googleCalendarDeps(): Promise<GoogleCalendarDeps> {
-    const { getDb } = await import('@/lib/firebase-admin');
-    const db = await getDb();
+    // Sampark data (encrypted OAuth tokens, OAuth state, channels, synced events) lives in the
+    // Sampark database, behind the same environment check as every other Sampark store.
+    const { samparkFirestore } = await import('@/lib/sampark/repo/factory');
+    const db = await samparkFirestore();
     const config = readGoogleCalendarConfig();
     let api: GoogleCalendarApi | null = null;
     if (config.ok) {
