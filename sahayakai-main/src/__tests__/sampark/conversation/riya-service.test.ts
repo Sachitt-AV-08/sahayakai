@@ -518,6 +518,17 @@ describe('Test mode — ElevenLabs (mocked network)', () => {
         expect(s.fetchImpl).toHaveBeenCalledTimes(1);
     });
 
+    it('a duplicate request racing the original never frees the original’s lock (one call in flight still holds)', async () => {
+        const s = await setup({ mode: 'test' });
+        const input = await startInput(s.deps);
+        // Same idempotency key, sent twice at once: one creates the call, the other is the duplicate.
+        const [a, b] = await Promise.all([startRiyaCall(s.deps, ORG, ADMIN, input), startRiyaCall(s.deps, ORG, ADMIN, input)]);
+        expect([a.duplicate, b.duplicate].sort()).toEqual([false, true]);
+        // The original is still open, so a different family must still be refused.
+        expect(await refusalCode(startRiyaCall(s.deps, ORG, ADMIN, await startInput(s.deps, 'ptm_invitation', { guardianId: 'g2', studentId: 's2' })))).toBe('RIYA_CALL_IN_PROGRESS');
+        expect(s.fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
     it('a timeout is UNKNOWN: never retried, blocks the same announcement until a person reviews it', async () => {
         const fetchImpl = jest.fn(async () => { throw Object.assign(new Error('aborted'), { name: 'AbortError' }); });
         const s = await setup({ mode: 'test', fetchImpl });

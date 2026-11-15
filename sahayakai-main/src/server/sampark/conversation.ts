@@ -899,8 +899,12 @@ export async function startRiyaCall(deps: RiyaDeps, orgId: string, uid: string, 
 
     // 10. Create-only record BEFORE any provider contact.
     if (!(await deps.calls.createCallIfAbsent(call))) {
-        await deps.repo.releaseLock(lockName(orgId, lockSlot), callId);
         const again = await deps.calls.getCall(orgId, callId);
+        // The lock is re-entrant for the same call id, so a duplicate racing the original can hold
+        // the very slot the open original owns. Releasing it would let a different call start in
+        // parallel; release only a slot this duplicate took for itself.
+        const originalOwnsSlot = again !== null && !isTerminalConversationState(again.state) && (again.lockSlot ?? 0) === lockSlot;
+        if (!originalOwnsSlot) await deps.repo.releaseLock(lockName(orgId, lockSlot), callId);
         if (!again) throw conflict('RIYA_CALL_IN_PROGRESS', 'Please try again');
         return { call: await viewOf(deps, again), duplicate: true };
     }
