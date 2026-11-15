@@ -520,7 +520,7 @@ describe('Test mode — ElevenLabs (mocked network)', () => {
         expect(body.agent_phone_number_id).toBe(PHONE_ID);
         expect(body.conversation_initiation_client_data.user_id).toBe(`${ORG}~${call.id}`);
         expect(body.conversation_initiation_client_data.dynamic_variables).toMatchObject({ call_purpose: 'ptm_invitation', student_name: 'Asha', school_name: 'Hillview Demo School' });
-        expect(call).toMatchObject({ state: 'initiated', destination: 'test_phone', phoneLast4: '0001', providerConversationId: 'conv_abc123', agentId: '…mf5yr2' });
+        expect(call).toMatchObject({ state: 'initiated', destination: 'test_phone', phoneLast4: '0001', providerConversationId: 'conv_abc123', agentId: `…${AGENT.slice(-6)}` });
     });
 
     // consecutive_absences maps to absence_notice, a page-first purpose: refused on a real

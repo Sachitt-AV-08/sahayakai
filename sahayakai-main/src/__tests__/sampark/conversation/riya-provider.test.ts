@@ -66,7 +66,7 @@ describe('readElevenLabsConfig', () => {
         expect(readElevenLabsConfig({ ...rest })).toMatchObject({ ok: false, problems: ['ELEVENLABS_AGENT_PHONE_NUMBER_ID_MISSING'] });
     });
     it('masks ids for display', () => {
-        expect(maskId(AGENT)).toBe('…mf5yr2');
+        expect(maskId(AGENT)).toBe(`…${AGENT.slice(-6)}`);
         expect(maskId(null)).toBeNull();
     });
 });

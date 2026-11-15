@@ -100,7 +100,8 @@ const REAL_CALL = {
     // (the earlier phnum_9701… and phnum_1501… resources are superseded).
     // Riya's caller ID — never a contact's number.
     phoneNumberId: process.env.RIYA_REAL_PHONE_NUMBER_ID?.trim() ?? '',
-    sourceAgentId: 'agent_fakeagent3000000000000000000',
+    // The agent the Riya clone was copied from (webhooks from it are recognised), from this shell.
+    sourceAgentId: process.env.RIYA_REAL_SOURCE_AGENT_ID?.trim() ?? '',
     // The one authorised test phone, in E.164 (+91…), from this shell. Never committed.
     allowedNumber: process.env.RIYA_REAL_TEST_NUMBER?.trim() ?? '',
 };
@@ -590,7 +591,7 @@ async function main() {
         // The key comes only from the operator's shell; it is never printed, written or defaulted.
         const realKey = process.env.ELEVENLABS_API_KEY?.trim() ?? '';
         if (realKey.length < 20 || realKey === 'local-placeholder-not-a-key') fail('--real-call needs ELEVENLABS_API_KEY in this shell (Start-Riya-Local.ps1 -RealCall asks for it with hidden input).');
-        if (!/^agent_\w+$/.test(REAL_CALL.agentId) || !/^phnum_\w+$/.test(REAL_CALL.phoneNumberId)) fail('--real-call needs RIYA_REAL_AGENT_ID and RIYA_REAL_PHONE_NUMBER_ID in this shell (docs/sampark/RIYA_LOCAL_SETUP.md §11.6).');
+        if (!/^agent_\w+$/.test(REAL_CALL.agentId) || !/^phnum_\w+$/.test(REAL_CALL.phoneNumberId) || !/^agent_\w+$/.test(REAL_CALL.sourceAgentId)) fail('--real-call needs RIYA_REAL_AGENT_ID, RIYA_REAL_PHONE_NUMBER_ID and RIYA_REAL_SOURCE_AGENT_ID in this shell (docs/sampark/RIYA_LOCAL_SETUP.md §11.6).');
         if (!/^\+91[6-9]\d{9}$/.test(REAL_CALL.allowedNumber)) fail('--real-call needs RIYA_REAL_TEST_NUMBER in this shell: the one authorised test phone, as +91 and ten digits.');
         Object.assign(appEnv, {
             ELEVENLABS_API_KEY: realKey,

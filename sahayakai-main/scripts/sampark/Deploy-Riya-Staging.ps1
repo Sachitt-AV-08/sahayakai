@@ -22,7 +22,8 @@ param(
     [Parameter(Mandatory)][ValidateSet('Verify', 'Infra', 'Deploy', 'Webhook', 'WindowOn', 'WindowOff', 'Status')][string]$Step,
     [string]$Project = 'sahayakai-b4248',
     [string]$Region = 'asia-southeast1',
-    [string]$PhoneNumberId = 'phnum_fakenumber200000000000000000',
+    # The ElevenLabs phone-number id for staging, from this shell: the repository is public.
+    [string]$PhoneNumberId = $env:RIYA_STAGING_PHONE_NUMBER_ID,
     [string]$SourceExport = 'E:\sargvision\sahayakcallagentvarunesh.txt',
     [ValidateRange(10, 180)][int]$WindowMinutes = 60,
     # Only when the verifier cannot read the source agent (it lives in another workspace): you looked in

@@ -307,17 +307,18 @@ Opt-out on a Riya call is **spoken**. "Stop calling" or the agent's `stop_reques
 ```powershell
 # Set in this window only; never committed (the repository is public).
 $env:RIYA_REAL_TEST_NUMBER = '+91XXXXXXXXXX'          # your own authorised test phone
-$env:RIYA_REAL_AGENT_ID = 'agent_fakeagent1000000000000000000'
-$env:RIYA_REAL_PHONE_NUMBER_ID = 'phnum_fakenumber100000000000000000'
+$env:RIYA_REAL_AGENT_ID = '<agent id from the ElevenLabs dashboard>'
+$env:RIYA_REAL_PHONE_NUMBER_ID = '<phone-number id from the ElevenLabs dashboard>'
+$env:RIYA_REAL_SOURCE_AGENT_ID = '<id of the agent the Riya clone was copied from>'
 powershell -ExecutionPolicy Bypass -File scripts\sampark\Start-Riya-Local.ps1 -RealCall -RealClock
 ```
 
-The launcher refuses `-RealCall` unless all three are set. The real team roster, if you use one,
+The launcher refuses `-RealCall` unless all four are set. The real team roster, if you use one,
 goes in `scripts\sampark\sargvision-roster.local.json` (git-ignored; copy the `.example.json` and put
 in the team's own numbers); the tracked example's made-up numbers are never allow-listed.
 
 - Asks for the ElevenLabs key with hidden input (or uses `ELEVENLABS_API_KEY` already set in that window). The key stays in that process only.
-- Uses the unified SARGVISION agent `agent_fakeagent1000000000000000000` (Sampark + Athithi Vani; every Sampark call sends `product_context=sampark`, without which the agent routes to its safe-exit node) and number id `phnum_fakenumber100000000000000000` (sent as `agent_phone_number_id`; it is Riya's outbound caller ID +91 79 6585 3645 on the Vobiz TLS trunk, assigned to the unified agent on 2026-11-04 and superseding `phnum_9701…`; never a roster contact), turns on live dialling, uses the emulator's separate `sampark-nonprod` database, sets `SAMPARK_RIYA_TEST_ALLOWED_NUMBERS` to `RIYA_REAL_TEST_NUMBER` and a cap of 1 call per day, and keeps the real clock.
+- Uses the unified SARGVISION agent named by `RIYA_REAL_AGENT_ID` (Sampark + Athithi Vani; every Sampark call sends `product_context=sampark`, without which the agent routes to its safe-exit node) and the number id in `RIYA_REAL_PHONE_NUMBER_ID` (sent as `agent_phone_number_id`; it is Riya's outbound caller ID +91 79 6585 3645 on the Vobiz TLS trunk, assigned to the unified agent on 2026-11-04 and superseding `phnum_9701…`; never a roster contact), turns on live dialling, uses the emulator's separate `sampark-nonprod` database, sets `SAMPARK_RIYA_TEST_ALLOWED_NUMBERS` to `RIYA_REAL_TEST_NUMBER` and a cap of 1 call per day, and keeps the real clock.
 - Seeds the **non-demo** emulator school `riya-test-local` (admin `dev-user-123`). In the console: **Enable school calls** for *Riya Test School (local)*, then **Settings → Test phone** (the same number as `RIYA_REAL_TEST_NUMBER`) and **Test — my phone only**. Then run `npx tsx scripts/sampark/seed-emulator.ts --riya-test-student` with the launcher's values (menu key **a**) to add student **Alyssa**.
 - **Riya calls** tab → PTM invitation → Alyssa → Preview. The preview and the confirmation both show the full number that will ring. **Place call** once.
 - ElevenLabs cannot reach `localhost`, so no webhook arrives: follow the result with **Check status** (a read-only GET of the conversation).

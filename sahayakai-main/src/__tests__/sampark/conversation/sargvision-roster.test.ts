@@ -354,13 +354,15 @@ describe('Sargvision: Practice vs real calls, and Riya’s caller ID', () => {
         expect(src).not.toMatch(/'\+91[6-9]\d{9}'/);
     });
 
-    it('.env.example and the setup doc name the unified agent and the Vobiz number assigned to it (live contract)', () => {
+    it('.env.example matches the agent contract, and the setup doc takes the real ids from the shell, never inline', () => {
         const exampleAgent = read('.env.example').match(/^ELEVENLABS_AGENT_ID=(agent_\w+)/m)?.[1];
         const examplePhone = read('.env.example').match(/^ELEVENLABS_AGENT_PHONE_NUMBER_ID=(phnum_\w+)/m)?.[1];
         expect(exampleAgent).toBe(contract.agentId);
         expect(examplePhone).toBe(contract.agentPhoneNumberId);
-        expect(read('docs/sampark/RIYA_LOCAL_SETUP.md')).toContain(examplePhone);
         expect(contract.phoneNumberAssignedAgentId).toBe(contract.agentId);
+        // The repository is public: real ids live in the operator's shell (no-provider-identifiers.test.ts).
+        const setup = read('docs/sampark/RIYA_LOCAL_SETUP.md');
+        for (const v of ['RIYA_REAL_AGENT_ID', 'RIYA_REAL_PHONE_NUMBER_ID', 'RIYA_REAL_SOURCE_AGENT_ID']) expect(setup).toContain(v);
     });
 
     it('every launcher mode enables the four outreach workflows', () => {
