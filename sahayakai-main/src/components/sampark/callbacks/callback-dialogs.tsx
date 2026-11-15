@@ -37,6 +37,7 @@ import { riyaPurposeLabel } from "../riya-call-panel";
 import { errorMessage } from "../states";
 import { StatusPill } from "../status-pill";
 import { fmt } from "../labels";
+import { callbackRefusalLabel } from "../refusal-labels";
 import { fromLocalInput, toLocalInput } from "./callback-dates";
 import { CallbackStatusPill } from "./callback-status";
 
@@ -147,22 +148,6 @@ export function CallbackTimePicker({ orgId, timeZone, value, onChange }: { orgId
 
 // ── Preview ─────────────────────────────────────────────────────────────────
 
-function refusalLine(t: Translate, code: string): string {
-    switch (code) {
-        case "OUTSIDE_CALLING_HOURS": return t("Outside the school's calling hours");
-        case "TOO_SOON": return t("Choose a time at least a minute from now");
-        case "TOO_FAR": return t("Callbacks can be up to 30 days ahead");
-        case "CALLBACKS_PRACTICE_ONLY": return t("Scheduled callbacks run in Practice mode only for now");
-        case "GATE_BLOCKED": return t("This parent cannot be called then (opt-out, consent or call limits)");
-        case "RECORDING_CONSENT_REQUIRED": return t("This parent has not agreed to recorded calls");
-        case "SCHOOL_PAUSED": return t("Calls are paused for this school");
-        case "FACTS_INVALID": return t("The call's details are no longer valid at that time");
-        case "PROVIDER_UNAVAILABLE": return t("Riya calls are not available right now");
-        case "LANGUAGE_NOT_SUPPORTED": return t("Riya cannot call this parent in their language");
-        default: return code;
-    }
-}
-
 function PreviewBlock({ preview, onUseNext }: { preview: CallbackPreview; onUseNext: (iso: string) => void }) {
     const { t } = useLanguage();
     return (
@@ -180,7 +165,7 @@ function PreviewBlock({ preview, onUseNext }: { preview: CallbackPreview; onUseN
             ) : (
                 <ul className="space-y-1 text-sm text-foreground">
                     {preview.refusals.map((r, i) => (
-                        <li key={`${r.code}-${i}`} className="flex gap-2"><span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-pill bg-destructive" />{refusalLine(t, r.code)}</li>
+                        <li key={`${r.code}-${i}`} className="flex gap-2"><span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-pill bg-destructive" />{callbackRefusalLabel(t, r.code)}</li>
                     ))}
                 </ul>
             )}

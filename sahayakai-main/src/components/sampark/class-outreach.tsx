@@ -46,11 +46,12 @@ import {
     type BatchRequest,
 } from "@/lib/api/sampark-batch";
 import { BATCH_REASONS, INDIVIDUAL_ONLY_PURPOSES, batchReason, type BatchReasonId } from "@/lib/sampark/batch/reasons";
-import type { BatchExclusionReason, BatchRecipientStatus } from "@/lib/sampark/batch/types";
+import type { BatchRecipientStatus } from "@/lib/sampark/batch/types";
 import { SIMULATION_SCENARIOS, type SimulationScenario } from "@/lib/sampark/conversation/simulated-provider";
 import { MiniStat, ProgressBar } from "./console-ui";
 import { fmt } from "./labels";
-import { emptyFactsState, factsFor, FactsFields, missingFact, refusalText, RiyaCallHistory, riyaPurposeLabel, scenarioLabel, type FactsState } from "./riya-call-panel";
+import { batchBlockerLabel, batchExclusionLabel, batchPauseLabel, batchWaitingLabel, refusalText } from "./refusal-labels";
+import { emptyFactsState, factsFor, FactsFields, missingFact, RiyaCallHistory, riyaPurposeLabel, scenarioLabel, type FactsState } from "./riya-call-panel";
 import { useSamparkSchool } from "./school-context";
 import { ErrorPanel, LoadingBlock, errorMessage } from "./states";
 import { StatusPill } from "./status-pill";
@@ -64,23 +65,6 @@ export const BATCH_POLL_MS = 5_000;
 
 export function batchReasonLabel(t: Translate, id: BatchReasonId): string {
     return t(batchReason(id).label);
-}
-
-function exclusionLabel(t: Translate, r: BatchExclusionReason): string {
-    switch (r) {
-        case "missing_phone": return t("Missing or invalid phone number");
-        case "opted_out": return t("Opted out / do not call");
-        case "no_consent": return t("No consent for recorded calls");
-        case "not_allow_listed": return t("Not on the real-call allow-list");
-        case "language": return t("Riya speaks English only");
-        case "inactive": return t("Not active in school records");
-        case "sensitive": return t("Restricted: the office contacts this family");
-        case "frequency_cap": return t("Called too often recently");
-        case "same_family": return t("Same parent as another child here (one call per family)");
-        case "already_called": return t("Already called about this");
-        case "teacher_excluded": return t("Removed by you");
-        default: return t("Not allowed by the calling rules");
-    }
 }
 
 function recipientStatusLabel(t: Translate, s: BatchRecipientStatus): string {
@@ -104,30 +88,6 @@ function recipientTone(s: BatchRecipientStatus) {
     if (s === "unknown" || s === "no_answer" || s === "busy") return "warning" as const;
     if (s === "failed") return "danger" as const;
     return "neutral" as const;
-}
-
-function waitingLabel(t: Translate, code: string | null): string | null {
-    switch (code) {
-        case null: return null;
-        case "OUTSIDE_CALLING_HOURS": return t("Waiting for the school calling hours. Calls start automatically when the window opens.");
-        case "SCHOOL_PAUSED": return t("Calls are paused for this school. Calls start when the school pause is lifted.");
-        case "REAL_BATCH_DISABLED": return t("Real class-wide calls are switched off on this deployment.");
-        case "DAILY_LIMIT_REACHED": return t("Today's limit for class-wide calls has been reached. Calls continue tomorrow.");
-        case "CONCURRENCY_FULL": return t("Every calling slot is busy. The next family is called as soon as one of these calls ends.");
-        case "WAITING_FOR_INTERVAL": return t("Waiting for the minimum gap between calls.");
-        case "PROVIDER_RATE_LIMITED": return t("The calling service asked us to slow down. Calls continue automatically after a short wait.");
-        default: return code;
-    }
-}
-
-function pauseLabel(t: Translate, code: string | null): string | null {
-    switch (code) {
-        case null: return null;
-        case "PAUSED_BY_STAFF": return t("Paused. Calls already ringing finish; no new calls start until you resume.");
-        case "CREATOR_NOT_AUTHORISED": return t("Paused: the person who started it no longer manages this class.");
-        case "PROVIDER_CHANGED": return t("Paused: the school's calling provider or mode changed since the start.");
-        default: return code;
-    }
 }
 
 /** Why this campaign runs at the number of slots it does, when something lowered it. */
@@ -304,11 +264,11 @@ function ClassOutreachSetup({ cls, onStarted }: { cls: ClassRef; onStarted: (cam
 
                     {preview.blockers.length > 0 && (
                         <ul className="list-disc space-y-1 pl-5 text-sm text-destructive" aria-label={t("Why this batch cannot start")}>
-                            {preview.blockers.map((b) => <li key={b.code}>{t(b.message)}</li>)}
+                            {preview.blockers.map((b) => <li key={b.code}>{batchBlockerLabel(t, b.code)}</li>)}
                             {preview.refusals.map((r, i) => <li key={`r${i}`}>{refusalText(t, r)}</li>)}
                         </ul>
                     )}
-                    {preview.waiting && <p className="text-sm text-foreground">{waitingLabel(t, preview.waiting.code)}</p>}
+                    {preview.waiting && <p className="text-sm text-foreground">{batchWaitingLabel(t, preview.waiting.code)}</p>}
 
                     <div className="space-y-2">
                         <p className="text-sm font-medium text-foreground">{fmt(t("Families to call ({n})"), { n: String(eligible.length) })}</p>
@@ -337,7 +297,7 @@ function ClassOutreachSetup({ cls, onStarted }: { cls: ClassRef; onStarted: (cam
                                 {notEligible.map((r) => (
                                     <li key={r.studentId} className="flex flex-wrap justify-between gap-2">
                                         <span className="text-foreground">{r.studentDisplayName}</span>
-                                        <span className="text-muted-foreground">{r.exclusion ? exclusionLabel(t, r.exclusion.reason) : ""}</span>
+                                        <span className="text-muted-foreground">{r.exclusion ? batchExclusionLabel(t, r.exclusion.reason) : ""}</span>
                                     </li>
                                 ))}
                             </ul>
@@ -478,8 +438,8 @@ export function BatchCampaignPanel({ campaignId }: { campaignId: string }) {
                         {fmt(t("Callback requests: {cb} · Do-not-call requests: {stop} · Skipped: {skip} · Not called (cancelled): {cancel}"), { cb: String(p.callbackRequested), stop: String(p.stopRequested), skip: String(p.skipped), cancel: String(p.cancelled) })}
                     </p>
                 )}
-                {campaign.status === "running" && campaign.waitingReason && <p className="text-sm text-foreground">{waitingLabel(t, campaign.waitingReason)}</p>}
-                {campaign.status === "paused" && <p className="text-sm text-foreground">{pauseLabel(t, campaign.pauseReason)}</p>}
+                {campaign.status === "running" && campaign.waitingReason && <p className="text-sm text-foreground">{batchWaitingLabel(t, campaign.waitingReason)}</p>}
+                {campaign.status === "paused" && <p className="text-sm text-foreground">{batchPauseLabel(t, campaign.pauseReason)}</p>}
                 <p className="text-sm text-muted-foreground break-words">“{campaign.sampleAnnouncement}”</p>
                 <div className="flex flex-wrap gap-2">
                     {campaign.status === "running" && (
@@ -524,7 +484,7 @@ export function BatchCampaignPanel({ campaignId }: { campaignId: string }) {
                         <summary className="cursor-pointer text-muted-foreground">{fmt(t("Not included at the start ({n})"), { n: String(campaign.excluded.length) })}</summary>
                         <ul className="mt-2 space-y-1">
                             {campaign.excluded.map((e) => (
-                                <li key={e.studentId} className="flex flex-wrap justify-between gap-2"><span className="text-foreground">{e.studentDisplayName}</span><span className="text-muted-foreground">{exclusionLabel(t, e.reason)}</span></li>
+                                <li key={e.studentId} className="flex flex-wrap justify-between gap-2"><span className="text-foreground">{e.studentDisplayName}</span><span className="text-muted-foreground">{batchExclusionLabel(t, e.reason)}</span></li>
                             ))}
                         </ul>
                     </details>

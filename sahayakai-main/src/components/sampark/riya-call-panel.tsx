@@ -67,13 +67,14 @@ import { REASON_LABEL } from "@/lib/sampark/demo/script";
 import type { OutreachReason } from "@/types/attendance";
 import { SIMULATION_SCENARIOS, type SimulationScenario } from "@/lib/sampark/conversation/simulated-provider";
 import type { ConversationCallState } from "@/lib/sampark/conversation/types";
-import type { BlockReason, ClosureReason, EventType, SpokenTime } from "@/types/sampark";
-import { blockReasonLabel, closureReasonLabel, eventTypeLabel, fmt, modeBannerText, purposeLabel, relationLabel } from "./labels";
+import type { ClosureReason, EventType, SpokenTime } from "@/types/sampark";
+import { closureReasonLabel, eventTypeLabel, fmt, modeBannerText, purposeLabel, relationLabel } from "./labels";
 import { useSamparkSchool } from "./school-context";
 import { ErrorPanel, LoadingBlock, errorMessage } from "./states";
 import { StatusPill } from "./status-pill";
 import { useSamparkFormat } from "./format";
 import { useSamparkQuery } from "./use-sampark-query";
+import { refusalText, riyaBlockerLabel } from "./refusal-labels";
 
 type Translate = (key: string) => string;
 
@@ -197,27 +198,6 @@ export function scenarioLabel(t: Translate, s: SimulationScenario): string {
         case "provider_rejected": return t("Calling service refuses");
         case "provider_timeout": return t("Calling service does not reply");
         default: return s;
-    }
-}
-
-export function refusalText(t: Translate, r: RiyaPreview["refusals"][number]): string {
-    switch (r.code) {
-        case "PURPOSE_NOT_ENABLED": return t("This workflow is not switched on yet.");
-        case "PAGING_REQUIRED": return t("Same-day absence calls alert staff first. Staff alerts are not set up yet, so only Practice calls can run.");
-        case "ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED": return t("Calls asking a parent to speak with the class teacher cannot run on ElevenLabs until its voice agent is updated. Use Practice or Vobiz.");
-        case "FACTS_REQUIRED": return t("Enter the details for this call.");
-        case "FACTS_INVALID": return t("Some details are missing, in the past, or not on the school calendar.");
-        case "CAMPAIGN_FACTS_UNAVAILABLE": return t("That campaign has no details for this workflow.");
-        case "NOT_GUARDIAN_OF_RECORD": return t("This person is not a guardian of record for that student.");
-        case "STUDENT_INACTIVE": return t("That student is no longer active in the school records.");
-        case "SCHOOL_PAUSED": return t("Calls are paused for this school.");
-        case "GATE_BLOCKED": return blockReasonLabel(t, r.reason as BlockReason);
-        case "OUTSIDE_CALLING_HOURS": return t("Outside the school calling hours.");
-        case "RECORDING_CONSENT_REQUIRED": return t("This parent has not agreed to recorded calls.");
-        case "LANGUAGE_NOT_SUPPORTED": return t("Riya speaks English only; this parent is called in another language.");
-        case "PROVIDER_UNAVAILABLE": return r.message;
-        case "NUMBER_NOT_ALLOWED": return t("This contact's number is not on the list of numbers Riya may call here.");
-        default: return t("This call is not allowed.");
     }
 }
 
@@ -807,7 +787,7 @@ export function RiyaCallPanel({ fixedFamily, outreach }: { fixedFamily?: RiyaFix
                 {availability.localAfterHoursUntil && (
                     <p className="text-sm font-medium text-destructive">{fmt(t("Local after-hours test window is open until {time}. Real calls can ring outside school calling hours."), { time: f.dateTime(availability.localAfterHoursUntil) })}</p>
                 )}
-                {availability.blocker && <p className="text-sm text-muted-foreground">{availability.blocker === "LIVE_MODE_NOT_AVAILABLE" ? t("Riya calls run only in Practice or Test mode in this release.") : availability.blocker === "DEMO_SCHOOL_PRACTICE_ONLY" ? t("This is a demo school, so Riya calls stay in Practice. Real test calls need a non-demo school.") : availability.blocker === "TEST_PHONE_NOT_ALLOWED" ? t("The saved test phone is not on this deployment's list of numbers Riya may call.") : fmt(t("Riya cannot place calls yet ({reason})."), { reason: availability.blocker })}</p>}
+                {availability.blocker && <p className="text-sm text-muted-foreground">{riyaBlockerLabel(t, availability.blocker)}</p>}
                 {availability.recordingConsentRequired && <p className="text-sm text-muted-foreground">{t("Riya calls are recorded, so only parents who agreed to recorded calls can be called.")}</p>}
             </SectionCard>
 

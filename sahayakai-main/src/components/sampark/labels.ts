@@ -200,7 +200,12 @@ export function blockReasonLabel(t: Translate, reason: BlockReason): string {
         case 'not_guardian_of_record': return t("No longer the child's guardian in the school records");
         case 'custody_restricted': return t("A custody restriction on the child: the office informs this parent by hand");
         case 'test_mode_sample': return t("Test mode: only one parent per language rings the test phone");
-        default: return reason;
+        default: {
+            // A new BlockReason without words here fails tsc; a newer server's code still reads as a sentence.
+            const unhandled: never = reason;
+            void unhandled;
+            return t("The calling rules do not allow this call.");
+        }
     }
 }
 
