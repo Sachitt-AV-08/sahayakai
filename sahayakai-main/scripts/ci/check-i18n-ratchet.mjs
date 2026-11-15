@@ -28,6 +28,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// execFileSync kills the child past maxBuffer (Node default: 1 MB). Same cap
+// as every CI child call, so a verbose measurement can never crash the gate.
+// Class gate: src/__tests__/scripts/ci-git-max-buffer.test.ts.
+const CHILD_MAX_BUFFER = 256 * 1024 * 1024;
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, '..', '..'); // sahayakai-main/
 const BASELINE_PATH = path.join(HERE, 'i18n-baseline.json');
@@ -59,6 +64,7 @@ let missingKeys;
   const out = execFileSync(process.execPath, ['scripts/find-missing-i18n-keys.mjs', '--no-write'], {
     cwd: APP_ROOT,
     encoding: 'utf8',
+    maxBuffer: CHILD_MAX_BUFFER,
   });
   const m = out.match(/^MISSING \(used but not defined\): (\d+)$/m);
   if (!m) {
@@ -76,6 +82,7 @@ let hardcodedStrings;
     cwd: APP_ROOT,
     encoding: 'utf8',
     env: { ...process.env, COUNT_ONLY: '1' },
+    maxBuffer: CHILD_MAX_BUFFER,
   });
   const trimmed = out.trim();
   if (!/^\d+$/.test(trimmed)) {

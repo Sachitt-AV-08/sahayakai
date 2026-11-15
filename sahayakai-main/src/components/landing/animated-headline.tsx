@@ -53,7 +53,7 @@ export function AnimatedHeadline({ titleIndex, align = "center", className }: Pr
       className={cn(
         "font-headline font-bold tracking-tight text-foreground",
         align === "center" ? "text-center" : "text-center lg:text-left",
-        className ?? "text-[44px] leading-[1.02] sm:text-[56px] md:text-[68px]",
+        className ?? "text-web-h1",
       )}
     >
       <span className="block">{t("Give your teachers")}</span>

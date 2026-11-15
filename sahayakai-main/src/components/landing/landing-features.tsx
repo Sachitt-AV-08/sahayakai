@@ -55,14 +55,14 @@ export function LandingFeatures() {
     <section id="product" className="relative z-10 px-6 sm:px-12 py-16 scroll-mt-24">
       <div className="container-wide">
         <div className="text-center max-w-[36ch] mx-auto mb-10">
-          <div className="inline-flex items-center gap-2 text-[12px] font-medium text-saffron-700 bg-saffron-50 border border-saffron-200 rounded-full px-[14px] py-[6px] mb-5">
+          <div className="inline-flex items-center gap-2 text-xs font-medium text-saffron-700 bg-saffron-50 border border-saffron-200 rounded-full px-[14px] py-[6px] mb-5">
             <span className="w-1.5 h-1.5 rounded-full bg-saffron" />
             {t("A teacher's day")}
           </div>
-          <h2 className="font-headline font-bold text-[30px] sm:text-[38px] leading-[1.1] tracking-tight text-foreground">
+          <h2 className="font-headline font-bold text-3xl sm:text-4xl leading-[1.1] tracking-tight text-foreground">
             {t("One professional infrastructure for the entire school day")}
           </h2>
-          <p className="font-body text-[15px] sm:text-[16px] text-neutral-600 leading-[1.6] mt-4">
+          <p className="font-body text-base text-ink-600 leading-[1.6] mt-4">
             {t("Built for Indian classrooms — voice-first, offline-capable, on the cheapest smartphones.")}
           </p>
         </div>
@@ -81,17 +81,17 @@ export function LandingFeatures() {
                   <Icon className="w-[20px] h-[20px]" strokeWidth={2} />
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-saffron-600">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-saffron-600">
                     {f.kicker}
                   </p>
-                  <h3 className="font-headline font-semibold text-[17px] leading-tight text-foreground mt-1">
+                  <h3 className="font-headline font-semibold text-lg leading-tight text-foreground mt-1">
                     {f.title}
                   </h3>
-                  <p className="font-body text-[13px] leading-[1.5] text-neutral-500 mt-1.5">
+                  <p className="font-body text-tile leading-[1.5] text-ink-500 mt-1.5">
                     {f.desc}
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-saffron-700 mt-auto">
+                <span className="inline-flex items-center gap-1 text-tile font-semibold text-saffron-700 mt-auto">
                   {t("Open")}
                   <ArrowUpRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </span>

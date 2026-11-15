@@ -43,7 +43,7 @@ export function MessagesHeaderButton() {
         <span
           aria-hidden="true"
           data-testid="header-messages-badge"
-          className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-pill bg-saffron-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-surface-chrome"
+          className="absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-pill bg-saffron-500 px-1 text-xs font-semibold leading-none text-white ring-2 ring-surface-chrome"
         >
           {newCount > 9 ? "9+" : newCount}
         </span>

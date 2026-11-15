@@ -347,9 +347,10 @@ export function DashboardHome() {
               // she answers the speaker, not the room. Same session as the compact
               // orb on tool pages (VidyaLiveProvider); tap again to end.
               <div className="flex flex-col items-center gap-3" data-vidya-entry="home" data-vidya-state={liveOrbState}>
-                {/* The design-system VIDYA (VidyaPresence: saffron radial #FFD9AE → #C96A28, breathing
+                {/* The design-system VIDYA (VidyaPresence: saffron radial, breathing
                     ring, 5 s float; indigo while connecting/thinking) at ONE fixed size on Home
-                    (h-40 / md:h-52) in every state. Its own button carries data-microphone. */}
+                    (h-40 / md:h-52) in every state. Its own button carries data-microphone.
+                    Radial #FFD9AE → #C96A28 (design-token-allow: a comment quoting the orb tokens from DESIGN_TOKENS.md, not a style). */}
                 <div data-testid="vidya-home-live">
                   <VidyaPresence
                     size="compact"
