@@ -244,6 +244,17 @@ async function mayStartBatchPurpose(deps: BatchDeps, orgId: string, uid: string,
     return deps.isOrgAdmin(orgId, uid);
 }
 
+/**
+ * Resuming or retrying a campaign starts ringing families again, so it needs the same right as
+ * starting it: a class teacher must not restart an emergency closure a school admin paused or
+ * finished. Pausing and cancelling stay open to the class teacher, because stopping is always safe.
+ */
+async function requireMayRestart(deps: BatchDeps, orgId: string, uid: string, c: BatchCampaign): Promise<void> {
+    if (!(await mayStartBatchPurpose(deps, orgId, uid, c.purpose))) {
+        throw forbidden('SCHOOL_ADMIN_REQUIRED', 'Only a school admin can resume or retry an emergency closure call');
+    }
+}
+
 async function requireClass(deps: BatchDeps, orgId: string, uid: string, grade: number, section: string): Promise<void> {
     if (!(await deps.canManageClass(orgId, uid, grade, section))) {
         throw forbidden('CLASS_NOT_AUTHORISED', 'You can only call the parents of classes you manage');
@@ -1250,6 +1261,7 @@ export async function actOnBatch(deps: BatchDeps, orgId: string, uid: string, id
         }
         case 'resume': {
             if (c.status !== 'paused') throw conflict('NOT_PAUSED', 'Only a paused campaign can be resumed');
+            await requireMayRestart(deps, orgId, uid, c);
             await deps.batches.mutate(orgId, id, (x) => (x.status !== 'paused' ? null : { ...x, status: 'running', open: true, pauseReason: null, pausedAt: null, updatedAt: at }));
             await audit('resumed');
             await advanceBatch(deps, orgId, id);
@@ -1268,6 +1280,7 @@ export async function actOnBatch(deps: BatchDeps, orgId: string, uid: string, id
         }
         case 'retry': {
             if (c.status === 'cancelled') throw conflict('CANCELLED', 'A cancelled campaign cannot be retried');
+            await requireMayRestart(deps, orgId, uid, c);
             const wanted = action.recipientIds ? new Set(action.recipientIds) : null;
             const chosen = c.recipients.filter((r) => isRetryable(r) && (!wanted || wanted.has(r.id)));
             if (!chosen.length) throw conflict('NOTHING_TO_RETRY', 'No family in this campaign can be retried');
