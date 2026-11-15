@@ -70,7 +70,9 @@ import {
     type BatchRecipient,
 } from '@/lib/sampark/batch/types';
 import { runIdempotencyKey } from '@/lib/sampark/callbacks/state';
+import { purposeSpec } from '@/lib/sampark/catalogue';
 import { RiyaFactsSchema, type RiyaFacts } from '@/lib/sampark/conversation/facts';
+import { riyaPurposeSpec, type RiyaPurpose } from '@/lib/sampark/conversation/riya-purposes';
 import { SimulationScenarioSchema } from '@/lib/sampark/conversation/simulated-provider';
 import { isRealProvider, isTerminalConversationState, type ConversationCall, type ConversationCallView, type ConversationProviderKind } from '@/lib/sampark/conversation/types';
 import { hashId } from '@/lib/sampark/intents';
@@ -229,6 +231,17 @@ export async function listBatchClasses(deps: BatchDeps, orgId: string, uid: stri
         if (await deps.canManageClass(orgId, uid, c.grade, c.section)) out.push(c);
     }
     return out;
+}
+
+/**
+ * An emergency purpose (D4 emergency closure: principal-approved, may ring from 06:00 and may
+ * bypass notice consent) is a school decision, not a class one: only a school admin may start it
+ * for a class (gate-batch-emergency-needs-school-admin). Class notices (PTM, event, holiday, exam)
+ * stay with the teacher who manages the class.
+ */
+async function mayStartBatchPurpose(deps: BatchDeps, orgId: string, uid: string, purpose: RiyaPurpose): Promise<boolean> {
+    if (!purposeSpec(riyaPurposeSpec(purpose).samparkPurpose).emergency) return true;
+    return deps.isOrgAdmin(orgId, uid);
 }
 
 async function requireClass(deps: BatchDeps, orgId: string, uid: string, grade: number, section: string): Promise<void> {
@@ -534,6 +547,9 @@ export function batchAttemptKey(campaignId: string, recipientId: string, attempt
 export async function createBatch(deps: BatchDeps, orgId: string, uid: string, raw: BatchCreateInput): Promise<{ campaign: BatchCampaignView; duplicate: boolean }> {
     const input = BatchCreateSchema.parse(raw);
     await requireClass(deps, orgId, uid, input.grade, input.section);
+    if (!(await mayStartBatchPurpose(deps, orgId, uid, input.facts.purpose))) {
+        throw forbidden('SCHOOL_ADMIN_REQUIRED', 'Only a school admin can send an emergency closure call to a class');
+    }
     const id = batchCampaignId(orgId, input.requestKey);
     const existing = await deps.batches.get(orgId, id);
     if (existing) {
@@ -957,6 +973,7 @@ async function dialPass(deps: BatchDeps, start: BatchCampaign, env: Env): Promis
     const orgId = c.orgId;
     // The person who started it must still manage the class.
     if (!(await deps.canManageClass(orgId, c.createdBy, c.grade, c.section))) return pauseFor(deps, c, 'CREATOR_NOT_AUTHORISED');
+    if (!(await mayStartBatchPurpose(deps, orgId, c.createdBy, c.purpose))) return pauseFor(deps, c, 'CREATOR_NOT_AUTHORISED');
     const real = isRealProvider(c.provider);
     if (real && !realBatchCallsEnabled(env)) return setWaiting(deps, c, 'REAL_BATCH_DISABLED');
     if (real && (await batchCallsToday(deps, orgId)) >= batchDailyLimit(env)) return setWaiting(deps, c, 'DAILY_LIMIT_REACHED');
