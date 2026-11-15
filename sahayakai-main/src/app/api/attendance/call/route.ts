@@ -326,11 +326,8 @@ export async function POST(req: NextRequest) {
     // forward the outreachId + the caller identity.
     const provider = (process.env.VOICE_PROVIDER || 'twilio').toLowerCase();
     if (provider === 'exotel') {
-        // The voicebot dials the number on the outreach doc itself, so the
-        // destination is checked here first — the same boundary every provider
-        // passes through (see resolveOutreachTarget).
-        const target = await resolveOutreachTarget(await getDb(), outreachId, userId);
-        if (!target.ok) return target.response;
+        // The voicebot dials the number on the outreach doc itself; ownership, the
+        // destination and the opt-out were all checked above, before this switch.
         return forwardToExotel(userId, outreachId);
     }
     // Vobiz owns a real Indian origination number, so unlike the Twilio TRIAL

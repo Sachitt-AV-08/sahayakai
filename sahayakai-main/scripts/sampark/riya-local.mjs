@@ -738,7 +738,9 @@ async function main() {
     let dev;
     let pageStatus = 0;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-        dev = start('next-dev', NODE, [NEXT, 'dev', ...(turbo ? ['--turbopack'] : []), '-p', String(APP_PORT)], appEnv, join(STATE_DIR, 'next-dev.log'));
+        // Loopback only: in development the middleware treats a request with no token as the dev
+        // admin, so a server reachable on the LAN would let anyone on the Wi-Fi act as school admin.
+        dev = start('next-dev', NODE, [NEXT, 'dev', ...(turbo ? ['--turbopack'] : []), '-H', '127.0.0.1', '-p', String(APP_PORT)], appEnv, join(STATE_DIR, 'next-dev.log'));
         const upApp = await waitFor('Next.js', async () => (await httpStatus(`${base}/api/health`)) > 0, 300, dev);
         if (!upApp) fail(`Next.js did not start. Last output:\n${dev.log.join('').slice(-2500)}`);
         // Probe the HOME page: it compiles the root layout (and its Google fonts). The Riya page

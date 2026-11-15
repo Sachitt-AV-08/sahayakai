@@ -170,7 +170,7 @@ async function main(): Promise<void> {
             // `--sargvision-provider vobiz` (launcher --vobiz-call): Settings → Calling provider = Vobiz Calls.
             const provider = argValue(process.argv, '--sargvision-provider');
             await repo.upsertSchool({
-                ...school, mode, callingWindow: { ...school.callingWindow, startHour: 10, endHour: 20 },
+                ...school, mode, callingWindow: { ...school.callingWindow, startHour: 10, endHour: 19 },
                 ...(provider === 'vobiz' || provider === 'elevenlabs' ? { conversationProvider: provider } : {}),
                 updatedAt: nowIso,
             });
