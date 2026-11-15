@@ -207,3 +207,50 @@ def test_instruction_runtime_notes_name_no_concern(purpose: str) -> None:
 def test_other_purposes_get_no_request_to_talk_note() -> None:
     c = RiyaCall({**BASE, "call_purpose": "ptm_invitation"}, product_context="sampark")
     assert "request to talk" not in c.instruction().split("# Runtime notes", 1)[1]
+
+
+@pytest.mark.parametrize("purpose", PURPOSES)
+def test_model_never_sees_the_purpose_or_its_variable_names(purpose: str) -> None:
+    """call_purpose (classroom_behaviour) and the variable names (behaviour_summary) ARE the
+    category. Routing reads them; nothing the model reads may carry them (review 2026-11-15:
+    the base prompt rendered "the call purpose: classroom_behaviour" from the first word)."""
+    var, _line = REQUEST_LINES[purpose]
+    c = _call(purpose)
+    for text in (c.instruction(), c.instruction(opener_spoken=False), c.unlock_cue(), c.correction_cue("5 May")):
+        assert _named(text.replace("_", " "), CATEGORY_PHRASES) == [], text
+        assert purpose not in text and var not in text, text
+    assert R.NEUTRAL_CALL_PURPOSE in c.instruction()
+
+
+@pytest.mark.parametrize("purpose", PURPOSES)
+def test_base_instruction_to_say_what_the_call_is_about_is_overridden(purpose: str) -> None:
+    text = _call(purpose).instruction()
+    # Base prompt §8. If that wording changes, check the override below still answers it.
+    assert "say what the call is about" in text
+    assert "replaces any instruction above to say what the call is about" in text
+
+
+@pytest.mark.parametrize("purpose", PURPOSES)
+def test_code_guard_mutes_the_category_before_verification(purpose: str) -> None:
+    """The prompt is not the only guard: before verification the bridge mutes concern words."""
+    from sahayakai_agents.telephony.router import _riya_protected
+
+    c = _call(purpose)
+    guard = _riya_protected(c)
+    for line in (
+        "Thank you, I'm calling on behalf of the class teacher about your child's behaviour in class.",
+        "It is about Pema's marks.",
+        "This is about your child's academic progress.",
+        "It is about attendance.",
+    ):
+        assert guard.leaks(line), line
+    assert guard.leaks(c.guardian_question()) == []
+    assert guard.leaks(c.first_message()) == []
+    assert guard.leaks("Would you prefer English or Hindi?") == []
+
+
+def test_code_guard_adds_no_concern_words_to_other_purposes() -> None:
+    from sahayakai_agents.telephony.router import _riya_protected
+
+    c = RiyaCall({**BASE, "call_purpose": "ptm_invitation"}, product_context="sampark")
+    assert _riya_protected(c).leaks("It is about attendance.") == []

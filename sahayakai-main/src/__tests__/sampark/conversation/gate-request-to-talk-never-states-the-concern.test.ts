@@ -125,7 +125,14 @@ describe('gate: a request-to-talk call never states the concern', () => {
         for (const facts of factsFor(purpose)) {
             const r = buildRiyaVariables({ purpose, facts, school: SCHOOL, student: STUDENT, now: NOW });
             if (!r.ok) throw new Error(`${purpose} refused ${JSON.stringify(facts)}: ${JSON.stringify(r.problems)}`);
-            const said = [...Object.values(r.variables), r.announcement].join(' \n ');
+            // call_purpose is the routing key, not something said: the Vobiz bridge routes on it and
+            // never shows it to the model (test_telephony_riya_request_to_talk.py), and the hosted
+            // ElevenLabs agent, which would see it, is refused for these purposes until its prompt
+            // is verified (ELEVENLABS_REQUEST_TO_TALK_UNVERIFIED). Every other variable is checked
+            // with "_" read as a space: \b cannot see "behaviour" inside "classroom_behaviour".
+            const { call_purpose: routingKey, ...spoken } = r.variables as Record<string, string>;
+            expect(routingKey).toBe(purpose);
+            const said = [...Object.values(spoken), r.announcement].join(' \n ').replace(/_/g, ' ');
             const leaked = named(said, NEVER_SPOKEN);
             expect({ facts, leaked }).toEqual({ facts, leaked: [] });
         }

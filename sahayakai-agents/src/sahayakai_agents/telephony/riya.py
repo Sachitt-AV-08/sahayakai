@@ -168,6 +168,20 @@ REQUEST_TO_TALK_PURPOSES: frozenset[str] = frozenset(
     {"academic_performance", "classroom_behaviour"}
 )
 
+#: Words that would name or frame the concern. Before the listener is verified the bridge mutes
+#: any of them on a request-to-talk call (router._riya_protected), so the prompt is not the only
+#: guard. Subject names are left out on purpose: "English" and "Hindi" are also the language
+#: question, and the model is never given a subject on these calls.
+REQUEST_TO_TALK_GUARD_WORDS: tuple[str, ...] = (
+    "academic", "academics", "performance", "progress", "marks", "grades", "studies",
+    "behaviour", "behavior", "conduct", "discipline", "participation", "attention",
+    "attendance", "absent", "absence", "complaint", "concern", "concerns", "improvement",
+)
+
+#: What the model is told the call is, on a request-to-talk call. Routing already used the real
+#: call_purpose; the model never sees it, because the purpose is the concern by another name.
+NEUTRAL_CALL_PURPOSE = "request_to_talk"
+
 
 @lru_cache(maxsize=1)
 def load_workflow() -> dict[str, Any]:
@@ -620,6 +634,8 @@ class RiyaCall:
             k: (LOCKED_MARKER if k in locked and (self.variables.get(k) or "").strip() else v)
             for k, v in self.variables.items()
         }
+        if self.purpose in REQUEST_TO_TALK_PURPOSES:
+            values["call_purpose"] = NEUTRAL_CALL_PURPOSE
         body = render(self.workflow["base_prompt"], values)
         node = render(self.node["additional_prompt"], values)
         opening = self.first_message()
@@ -634,7 +650,9 @@ class RiyaCall:
         request_to_talk = (
             "- This call is a request to talk: the class teacher would like to speak with the "
             "parent. You do not know why, and you never say, hint at or guess it. If asked, say "
-            "the class teacher will explain when they speak. Never say the call purpose aloud.\n"
+            "the class teacher will explain when they speak. Never say the call purpose aloud. "
+            "Your parent or guardian question replaces any instruction above to say what the call "
+            "is about: never say what it is about, before or after the parent confirms.\n"
             if self.purpose in REQUEST_TO_TALK_PURPOSES
             else ""
         )
@@ -903,9 +921,14 @@ class RiyaCall:
         bad += [f"{h}:{mm:02d} {ap}m" for h, mm, ap in _times(text) - _times(record)]
         return ", ".join(sorted(bad)) or None
 
+    def _label(self, name: str) -> str:
+        """A variable's name as the model may read it: on a request-to-talk call the name
+        (academic_update, behaviour_summary) is the concern, so it reads as "request"."""
+        return "request" if self.purpose in REQUEST_TO_TALK_PURPOSES else name
+
     def correction_cue(self, wrong: str) -> str:
         facts = "; ".join(
-            f"{k} = {(self.variables.get(k) or '').strip() or 'not provided'}"
+            f"{self._label(k)} = {(self.variables.get(k) or '').strip() or 'not provided'}"
             for k in sorted(self.locked_vars())
         )
         return (
@@ -928,7 +951,7 @@ class RiyaCall:
         visible = _ALWAYS_VISIBLE | _VISIBLE_BEFORE_VERIFICATION.get(self.route.node_id, set())
         names = (_node_vars(self.node["additional_prompt"] or "") - visible) or self.locked_vars()
         details = [
-            f"- {k}: {(self.variables.get(k) or '').strip() or '(not provided)'}"
+            f"- {self._label(k)}: {(self.variables.get(k) or '').strip() or '(not provided)'}"
             for k in sorted(names)
         ]
         if self.purpose in REQUEST_TO_TALK_PURPOSES:

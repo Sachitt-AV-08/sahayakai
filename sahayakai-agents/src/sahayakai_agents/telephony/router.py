@@ -70,7 +70,7 @@ from .flow import (
 from .privacy import ProtectedTerms
 from .riya import Act as RiyaAct
 from .riya import _STOP as _RIYA_STOP_WORDS
-from .riya import RiyaCall, reveals_detail
+from .riya import REQUEST_TO_TALK_GUARD_WORDS, REQUEST_TO_TALK_PURPOSES, RiyaCall, reveals_detail
 from . import sampark_link
 from .dedicated_asr import ChirpStream, dedicated_asr_model, min_confidence
 from .prompt import (
@@ -2457,11 +2457,16 @@ def _riya_protected(riya: RiyaCall) -> ProtectedTerms:
     heard silence. Riya's guard covers the purpose details instead.
     """
     locked = " ".join((riya.variables.get(k) or "") for k in sorted(riya.locked_vars()))
+    # A request-to-talk call never names the concern: its vocabulary is muted before
+    # verification by code, not only by the prompt.
+    concern = (
+        " ".join(REQUEST_TO_TALK_GUARD_WORDS) if riya.purpose in REQUEST_TO_TALK_PURPOSES else None
+    )
     return ProtectedTerms.build(
         student_name=None,
         class_name=None,
         message=locked,
-        extra=None,
+        extra=concern,
         allowed=f"{riya.variables.get('school_name') or ''} {riya.variables.get('student_name') or ''}",
     )
 
