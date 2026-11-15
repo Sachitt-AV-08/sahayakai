@@ -18,6 +18,7 @@
 import crypto from 'node:crypto';
 
 import { placeVobizCallDetailed, readVobizConfig, type VobizConfig } from '@/lib/vobiz/client';
+import { warmTelephony } from '@/lib/vobiz/warm';
 import { mintVobizToken, VOBIZ_DOMAINS } from '@/lib/vobiz/tokens';
 
 import type { OutboundCallResult } from './elevenlabs-client';
@@ -125,6 +126,9 @@ export async function startVobizRiyaCall(
     const answer = await mintVobizToken(SAMPARK_VOBIZ_DOMAINS.ANSWER, ref, 15 * 60);
     const status = await mintVobizToken(SAMPARK_VOBIZ_DOMAINS.STATUS, ref, 60 * 60);
     const base = `${cfg.publicBaseUrl}/api/webhooks/vobiz-riya`;
+    // The answer streams into the telephony sidecar, which scales to zero: start its cold
+    // start now so it overlaps the ring (see warm.ts and #159). Fire-and-forget.
+    warmTelephony();
     const placed = await placeVobizCallDetailed(
         cfg.vobiz,
         {
