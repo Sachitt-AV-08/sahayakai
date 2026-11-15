@@ -12,6 +12,7 @@
  *   - per-IP sliding-window limit (in-process; the sidecar adds its own
  *     public concurrency pool + 3-minute session cap)
  */
+import { clientAddress } from '@/lib/client-address';
 import { NextResponse, type NextRequest } from 'next/server';
 import { mintPublicStreamToken } from '@/lib/sidecar/signing';
 import { logger } from '@/lib/logger';
@@ -27,8 +28,7 @@ const opensByIp = new Map<string, number[]>();
 const ALLOWED_LANGS = new Set(['en', 'hi', 'kn', 'ta', 'te', 'mr', 'bn', 'gu', 'pa', 'ml', 'or']);
 
 function clientIp(req: NextRequest): string {
-  const fwd = req.headers.get('x-forwarded-for');
-  return (fwd?.split(',')[0] ?? req.headers.get('x-real-ip') ?? 'local').trim();
+  return clientAddress(req);
 }
 
 function allow(ip: string): boolean {

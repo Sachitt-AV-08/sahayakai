@@ -1,3 +1,4 @@
+import { clientAddress } from '@/lib/client-address';
 import 'server-only';
 
 /**
@@ -129,13 +130,7 @@ function overBudget(address: string): boolean {
  * the client sent and cannot be trusted for rate limiting.
  */
 export function addressOf(req: Request): string {
-    const last = req.headers
-        .get('x-forwarded-for')
-        ?.split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .pop();
-    return last || req.headers.get('x-real-ip') || 'unknown';
+    return clientAddress(req);
 }
 
 const busy = () => NextResponse.json({ error: 'The demo is busy. Try again in a few minutes.' }, { status: 429 });

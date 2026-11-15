@@ -147,7 +147,7 @@ steps:
       # /api/sampark/** and /api/jobs/sampark-* route 404s and no non-simulated
       # carrier can be constructed. Turning either on is one reviewed PR here,
       # never a Firestore flag (those default ON when missing).
-      - --update-env-vars=NEXT_PUBLIC_FIREBASE_PROJECT_ID=sahayakai-b4248,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=auth.sahayakai.com,SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,TWILIO_PHONE_NUMBER=+18542135557,NEXT_PUBLIC_SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=sahayakai-b4248-mumbai,VIDYA_VOICE_LIVE_ENABLED=true,DEMO_CALL_ENABLED=true,DEMO_CALL_DAILY_CAP=50,VOICE_PROVIDER=vobiz,VOBIZ_STREAM_BASE_URL=https://sahayakai-telephony-zwydpvyuca-as.a.run.app,SAMPARK_ENABLED=false,SAMPARK_LIVE_DIAL_ENABLED=false,SAMPARK_ELEVENLABS_ENABLED=false
+      - --update-env-vars=NEXT_PUBLIC_FIREBASE_PROJECT_ID=sahayakai-b4248,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=auth.sahayakai.com,SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,TWILIO_PHONE_NUMBER=+18542135557,NEXT_PUBLIC_SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=sahayakai-b4248-mumbai,VIDYA_VOICE_LIVE_ENABLED=true,DEMO_CALL_ENABLED=true,DEMO_CALL_DAILY_CAP=50,VOICE_PROVIDER=vobiz,VOBIZ_STREAM_BASE_URL=https://sahayakai-telephony-zwydpvyuca-as.a.run.app,SAMPARK_ENABLED=false,SAMPARK_LIVE_DIAL_ENABLED=false,SAMPARK_ELEVENLABS_ENABLED=false,TRUSTED_PROXY_ADDRESSES=34.50.150.243
       - --quiet
     waitFor: [push-sha]
 
@@ -205,7 +205,7 @@ steps:
       # /api/sampark/** and /api/jobs/sampark-* route 404s and no non-simulated
       # carrier can be constructed. Turning either on is one reviewed PR here,
       # never a Firestore flag (those default ON when missing).
-      - --update-env-vars=NEXT_PUBLIC_FIREBASE_PROJECT_ID=sahayakai-b4248,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=auth.sahayakai.com,SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,TWILIO_PHONE_NUMBER=+18542135557,NEXT_PUBLIC_SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=sahayakai-b4248-mumbai,VIDYA_VOICE_LIVE_ENABLED=true,DEMO_CALL_ENABLED=true,DEMO_CALL_DAILY_CAP=50,VOICE_PROVIDER=vobiz,VOBIZ_STREAM_BASE_URL=https://sahayakai-telephony-zwydpvyuca-as.a.run.app,SAMPARK_ENABLED=false,SAMPARK_LIVE_DIAL_ENABLED=false,SAMPARK_ELEVENLABS_ENABLED=false
+      - --update-env-vars=NEXT_PUBLIC_FIREBASE_PROJECT_ID=sahayakai-b4248,NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=auth.sahayakai.com,SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,TWILIO_PHONE_NUMBER=+18542135557,NEXT_PUBLIC_SAHAYAKAI_AGENTS_URL=https://sahayakai-agents-zwydpvyuca-as.a.run.app,NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=sahayakai-b4248-mumbai,VIDYA_VOICE_LIVE_ENABLED=true,DEMO_CALL_ENABLED=true,DEMO_CALL_DAILY_CAP=50,VOICE_PROVIDER=vobiz,VOBIZ_STREAM_BASE_URL=https://sahayakai-telephony-zwydpvyuca-as.a.run.app,SAMPARK_ENABLED=false,SAMPARK_LIVE_DIAL_ENABLED=false,SAMPARK_ELEVENLABS_ENABLED=false,TRUSTED_PROXY_ADDRESSES=34.50.150.243
       - --quiet
     waitFor: [push-mumbai]
 
