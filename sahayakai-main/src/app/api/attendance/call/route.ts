@@ -5,8 +5,10 @@ import { isValidE164 } from '@/lib/twilio-validate';
 import { checkCallingWindow } from '@/lib/calling-hours';
 import { logger } from '@/lib/logger';
 import { classifyTwilioFailure, releasesDedupWindow } from '@/lib/twilio-errors';
+import { writeCallStatus, type CallStatusDb } from '@/lib/attendance/reconcile-call-status';
 import { getEffectiveMode } from '@/lib/voice-pipeline/health';
-import { placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
+import { refuseIfParentOptedOut } from '@/lib/call-suppression';
+import { isDestinationAllowed, placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
 import { warmTelephony } from '@/lib/vobiz/warm';
 import {
     VOBIZ_DOMAINS,
@@ -81,8 +83,9 @@ async function forwardToExotel(userId: string, outreachId: string): Promise<Next
  * of the whole feature, and when the Twilio path owned its own copy there was
  * nothing stopping a second provider from shipping with only some of them.
  */
+type ResolvedTarget = { parentPhone: string; data: FirebaseFirestore.DocumentData };
 type TargetResolution =
-    | { ok: true; parentPhone: string; data: FirebaseFirestore.DocumentData }
+    | ({ ok: true } & ResolvedTarget)
     | { ok: false; response: NextResponse };
 
 async function resolveOutreachTarget(
@@ -158,8 +161,8 @@ async function resolveOutreachTarget(
 async function forwardToVobiz(
     req: NextRequest,
     db: FirebaseFirestore.Firestore,
-    userId: string,
     outreachId: string,
+    target: ResolvedTarget,
 ): Promise<NextResponse> {
     const config = readVobizConfig();
     if (!config) {
@@ -172,14 +175,14 @@ async function forwardToVobiz(
     }
 
     // Start the sidecar's cold start now so it overlaps the ring (see warm.ts).
+    // The target was resolved and checked in POST, before the provider switch.
     warmTelephony();
-
-    const target = await resolveOutreachTarget(db, outreachId, userId);
-    if (!target.ok) return target.response;
 
     // Same escape hatch the Twilio path has: lets a teacher exercise the flow
     // without dialling a real parent. Unset it to go live.
     const callTo = process.env.VOBIZ_TEST_OVERRIDE_NUMBER || target.parentPhone;
+    const refused = await refuseIfDestinationNotAllowed(db, outreachId, callTo);
+    if (refused) return refused;
 
     const host = req.headers.get('host');
     const protocol = host?.includes('localhost') ? 'http' : 'https';
@@ -213,10 +216,8 @@ async function forwardToVobiz(
         // No call was placed, so the per-student dedup window is released for
         // the same reason the Twilio path releases it: the parent was never
         // disturbed, and holding the record "recent" only locks the teacher out.
-        await db.collection('parent_outreach').doc(outreachId).update({
-            callStatus: 'failed',
+        await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'failed', {
             callFailureCategory: result.failure.category,
-            updatedAt: new Date().toISOString(),
         }).catch((e: unknown) => {
             console.error('[attendance/call] could not mark outreach failed:', e);
         });
@@ -233,14 +234,42 @@ async function forwardToVobiz(
         );
     }
 
-    await db.collection('parent_outreach').doc(outreachId).update({
+    // Through the reconciled writer: a fast ring/hangup webhook may already have
+    // moved the record on, and this late `initiated` must not regress it.
+    await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'initiated', {
         callSid: result.handle.requestUuid,
-        callStatus: 'initiated',
         deliveryMethod: 'vobiz_call',
-        updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({ callSid: result.handle.requestUuid });
+}
+
+/**
+ * The call was never dialled (and ownership was already verified): mark the
+ * record failed so it does not read "Calling…" and does not hold the
+ * per-student dedup window. Never fatal.
+ */
+async function markNotDialled(db: unknown, outreachId: string, category: string): Promise<void> {
+    await writeCallStatus(db as CallStatusDb, outreachId, 'failed', { callFailureCategory: category })
+        .catch((e: unknown) => console.error('[attendance/call] could not mark outreach failed:', e));
+}
+
+/**
+ * Test/staging guard (`CALL_ALLOWED_DESTINATIONS`): refuse, before any provider
+ * is contacted, a destination that is not on the allowlist. No-op when unset.
+ */
+async function refuseIfDestinationNotAllowed(
+    db: unknown,
+    outreachId: string,
+    callTo: string,
+): Promise<NextResponse | null> {
+    if (isDestinationAllowed(callTo)) return null;
+    console.error('[attendance/call] DESTINATION_NOT_ALLOWED — refused by CALL_ALLOWED_DESTINATIONS; nothing dialled.');
+    await markNotDialled(db, outreachId, 'destination_not_allowed');
+    return NextResponse.json(
+        { error: 'This destination is not allowed on this server.', code: 'DESTINATION_NOT_ALLOWED', retryable: false },
+        { status: 403 },
+    );
 }
 
 export async function POST(req: NextRequest) {
@@ -280,6 +309,15 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    // Ownership, server-stored destination, and the do-not-call list. Runs ahead
+    // of the provider switch so NO provider can be contacted for a parent who
+    // asked not to be called (tests/call-suppression-gate enforces this order).
+    const db = await getDb();
+    const target = await resolveOutreachTarget(db, outreachId, userId);
+    if (!target.ok) return target.response;
+    const suppressed = await refuseIfParentOptedOut(db, target.parentPhone);
+    if (suppressed) return suppressed;
+
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone
     // sahayakai-voice-call streaming voicebot (Sarvam STT/TTS + Gemini, 11 langs,
@@ -299,30 +337,32 @@ export async function POST(req: NextRequest) {
     // account it can actually reach a parent. It streams the leg into a live
     // conversation with VIDYA rather than reading a fixed script.
     if (provider === 'vobiz') {
-        return forwardToVobiz(req, await getDb(), userId, outreachId);
+        return forwardToVobiz(req, db, outreachId, target);
     }
 
     const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = process.env;
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+        // No call can be placed: release the record rather than leave it "initiated".
+        await markNotDialled(db, outreachId, 'provider_unconfigured');
         return NextResponse.json({ error: 'Twilio not configured' }, { status: 503 });
     }
 
     try {
 
-        // Ownership + server-stored destination. Shared with the Vobiz path so
-        // the two providers cannot drift apart on the security checks.
-        const db = await getDb();
-        const target = await resolveOutreachTarget(db, outreachId, userId);
-        if (!target.ok) return target.response;
+        // Ownership, destination and suppression were verified above, shared by
+        // every provider so they cannot drift apart on the security checks.
         const parentPhone = target.parentPhone;
 
         // In test mode, override the destination number so all teachers can test
         // without calling real parents. Remove this env var to go live.
         const callTo = process.env.TWILIO_TEST_OVERRIDE_NUMBER || parentPhone;
+        const refused = await refuseIfDestinationNotAllowed(db, outreachId, callTo);
+        if (refused) return refused;
 
         // Check that the language is supported for Twilio calls
         const langCode = TWILIO_LANGUAGE_MAP[parentLanguage];
         if (!langCode) {
+            await markNotDialled(db, outreachId, 'language_unsupported');
             return NextResponse.json({
                 error: `Auto-call not supported for ${parentLanguage}. Use WhatsApp copy instead.`
             }, { status: 422 });
@@ -404,10 +444,8 @@ export async function POST(req: NextRequest) {
             // the record "recent" locks the teacher out for five minutes to
             // protect a parent who was never disturbed.
             if (releasesDedupWindow(failure)) {
-                await db.collection('parent_outreach').doc(outreachId).update({
-                    callStatus: 'failed',
+                await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'failed', {
                     callFailureCategory: failure.category,
-                    updatedAt: new Date().toISOString(),
                 }).catch((e: unknown) => {
                     // Never let bookkeeping mask the error the teacher needs.
                     console.error('[attendance/call] could not mark outreach failed:', e);
@@ -424,11 +462,9 @@ export async function POST(req: NextRequest) {
         const callSid: string = twilioData.sid;
 
         // Update outreach record with callSid
-        await db.collection('parent_outreach').doc(outreachId).update({
+        await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'initiated', {
             callSid,
-            callStatus: 'initiated',
             deliveryMethod: 'twilio_call',
-            updatedAt: new Date().toISOString(),
         });
 
         return NextResponse.json({ callSid });
