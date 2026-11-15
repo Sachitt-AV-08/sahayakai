@@ -40,7 +40,11 @@ function allow(ip: string): boolean {
   }
   recent.push(now);
   opensByIp.set(ip, recent);
-  if (opensByIp.size > 10_000) opensByIp.clear(); // bound memory under a flood
+  // Bound memory under a flood by evicting only EXPIRED windows. Clearing the whole map
+  // (as before) let a caller wipe every address's limit by sending 10,001 addresses.
+  if (opensByIp.size > 10_000) {
+    for (const [k, v] of opensByIp) if (!v.length || now - v[v.length - 1] >= WINDOW_MS) opensByIp.delete(k);
+  }
   return true;
 }
 
