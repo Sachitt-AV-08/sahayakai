@@ -6,6 +6,7 @@ import { checkCallingWindow } from '@/lib/calling-hours';
 import { logger } from '@/lib/logger';
 import { classifyTwilioFailure, releasesDedupWindow } from '@/lib/twilio-errors';
 import { getEffectiveMode } from '@/lib/voice-pipeline/health';
+import { refuseIfParentOptedOut } from '@/lib/call-suppression';
 import { placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
 import { warmTelephony } from '@/lib/vobiz/warm';
 import {
@@ -81,8 +82,9 @@ async function forwardToExotel(userId: string, outreachId: string): Promise<Next
  * of the whole feature, and when the Twilio path owned its own copy there was
  * nothing stopping a second provider from shipping with only some of them.
  */
+type ResolvedTarget = { parentPhone: string; data: FirebaseFirestore.DocumentData };
 type TargetResolution =
-    | { ok: true; parentPhone: string; data: FirebaseFirestore.DocumentData }
+    | ({ ok: true } & ResolvedTarget)
     | { ok: false; response: NextResponse };
 
 async function resolveOutreachTarget(
@@ -158,8 +160,8 @@ async function resolveOutreachTarget(
 async function forwardToVobiz(
     req: NextRequest,
     db: FirebaseFirestore.Firestore,
-    userId: string,
     outreachId: string,
+    target: ResolvedTarget,
 ): Promise<NextResponse> {
     const config = readVobizConfig();
     if (!config) {
@@ -172,10 +174,8 @@ async function forwardToVobiz(
     }
 
     // Start the sidecar's cold start now so it overlaps the ring (see warm.ts).
+    // The target was resolved and checked in POST, before the provider switch.
     warmTelephony();
-
-    const target = await resolveOutreachTarget(db, outreachId, userId);
-    if (!target.ok) return target.response;
 
     // Same escape hatch the Twilio path has: lets a teacher exercise the flow
     // without dialling a real parent. Unset it to go live.
@@ -280,6 +280,15 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    // Ownership, server-stored destination, and the do-not-call list. Runs ahead
+    // of the provider switch so NO provider can be contacted for a parent who
+    // asked not to be called (tests/call-suppression-gate enforces this order).
+    const db = await getDb();
+    const target = await resolveOutreachTarget(db, outreachId, userId);
+    if (!target.ok) return target.response;
+    const suppressed = await refuseIfParentOptedOut(db, target.parentPhone);
+    if (suppressed) return suppressed;
+
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone
     // sahayakai-voice-call streaming voicebot (Sarvam STT/TTS + Gemini, 11 langs,
@@ -288,18 +297,15 @@ export async function POST(req: NextRequest) {
     // forward the outreachId + the caller identity.
     const provider = (process.env.VOICE_PROVIDER || 'twilio').toLowerCase();
     if (provider === 'exotel') {
-        // The voicebot dials the number on the outreach doc itself, so the
-        // destination is checked here first — the same boundary every provider
-        // passes through (see resolveOutreachTarget).
-        const target = await resolveOutreachTarget(await getDb(), outreachId, userId);
-        if (!target.ok) return target.response;
+        // The voicebot dials the number on the outreach doc itself; ownership, the
+        // destination and the opt-out were all checked above, before this switch.
         return forwardToExotel(userId, outreachId);
     }
     // Vobiz owns a real Indian origination number, so unlike the Twilio TRIAL
     // account it can actually reach a parent. It streams the leg into a live
     // conversation with VIDYA rather than reading a fixed script.
     if (provider === 'vobiz') {
-        return forwardToVobiz(req, await getDb(), userId, outreachId);
+        return forwardToVobiz(req, db, outreachId, target);
     }
 
     const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = process.env;
@@ -309,11 +315,8 @@ export async function POST(req: NextRequest) {
 
     try {
 
-        // Ownership + server-stored destination. Shared with the Vobiz path so
-        // the two providers cannot drift apart on the security checks.
-        const db = await getDb();
-        const target = await resolveOutreachTarget(db, outreachId, userId);
-        if (!target.ok) return target.response;
+        // Ownership, destination and suppression were verified above, shared by
+        // every provider so they cannot drift apart on the security checks.
         const parentPhone = target.parentPhone;
 
         // In test mode, override the destination number so all teachers can test
