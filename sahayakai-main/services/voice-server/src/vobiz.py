@@ -14,6 +14,8 @@ Everything Vobiz-specific lives here so bot.py / main.py stay provider-agnostic:
     sidecar needs no web-app internal key.
   - write_call_result_firestore(): writes transcript + callSummary back onto the
     same record, which is what the Contact-Parent modal renders.
+  - persist_opt_out_firestore(): writes the do-not-call record the web app's
+    dial routes check (call_suppressions/{sha256(E.164)}).
   - hangup_vobiz_call(): ends the leg over Vobiz REST (the answer XML sets
     keepCallAlive=true, so closing the socket alone does not drop the call).
 """
@@ -128,6 +130,27 @@ async def write_call_result_firestore(
         logger.info(f"Wrote transcript+summary to parent_outreach/{outreach_id}")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Firestore result write failed for {outreach_id}: {e}")
+
+
+async def persist_opt_out_firestore(outreach_id: str, project: str) -> bool:
+    """Save "do not call this parent again" where the web app's dial check reads it.
+
+    Writes call_suppressions/{sha256(parentPhone)} (src/opt_out.py has the
+    shape and why) and flags the outreach record. True when the suppression
+    record was written. Logs the outcome; never logs the phone number.
+    """
+    from src.opt_out import persist_opt_out
+
+    try:
+        result = await persist_opt_out(_db(project), outreach_id)
+    except Exception as e:  # noqa: BLE001 — e.g. the client itself could not be built
+        logger.error(f"Opt-out write failed for {outreach_id}: {e}")
+        return False
+    if result.ok:
+        logger.info(f"Opt-out saved for parent_outreach/{outreach_id}: {result.detail}")
+    else:
+        logger.error(f"Opt-out NOT saved for parent_outreach/{outreach_id}: {result.detail}")
+    return result.ok
 
 
 def _iso_now() -> str:

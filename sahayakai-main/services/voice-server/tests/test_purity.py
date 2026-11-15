@@ -16,6 +16,7 @@ PURE_MODULES = [
     "src.call_policy",
     "src.prompts.agent_reply",
     "src.prompts.phase_guidance",
+    "src.opt_out",
 ]
 
 _PROBE = r"""

@@ -15,9 +15,10 @@ Key features:
 """
 
 import asyncio
+from typing import Awaitable, Callable
 
 from loguru import logger
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import EndFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask, PipelineParams
 from pipecat.transports.websocket.fastapi import (
@@ -49,6 +50,8 @@ from src.call_manager import CallManager
 from src.call_policy import LANGUAGE_CODES, is_positive_feedback, lang_code_for, plan_call
 from src.conversation_state import PhaseInstructor
 from src.stt_filter import STTConfidenceFilter
+from src.stop_guard import StopRequestGuard
+from src.opt_out import backstop_quote
 from src.persistence import sync_transcript
 from src.call_store import CallStore
 from src.call_analyzer import analyze_call
@@ -98,8 +101,18 @@ async def create_bot(
     call_store: CallStore | None = None,
     serializer=None,
     on_call_end=None,
-) -> PipelineTask:
+    on_opt_out: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[PipelineTask, Callable[[], Awaitable[None]]]:
     """Create the streaming Pipecat pipeline for a parent call.
+
+    Returns (task, finalize). `finalize` runs the end-of-call bookkeeping
+    exactly once, whichever of the client-disconnect event or the caller gets
+    there first; main.py awaits it after the pipeline ends, because when the
+    bot ends the call itself the transport may not report a disconnect.
+
+    `on_opt_out` writes the do-not-call record for this call's parent and
+    returns True when it was saved. It runs the moment the parent asks not to
+    be called again, and is retried once at the end of the call if it failed.
 
     Architecture:
       transport.input()
@@ -287,10 +300,43 @@ async def create_bot(
     # ── STT Quality Filter: drop garbled/empty transcriptions ──
     stt_filter = STTConfidenceFilter()
 
+    # ── Do-not-call ──
+    # The parent's own words are checked before the model sees them. A stop
+    # request is written to call_suppressions at once (not at hangup, so a
+    # dropped line cannot lose it), acknowledged with the fixed line in the
+    # call language, and the call ends. See src/opt_out.py for why this is a
+    # deterministic check and not a model tool.
+    opt_out = {"requested": False, "source": None, "write": None}
+
+    async def _write_opt_out() -> bool:
+        if on_opt_out is None:
+            logger.error(f"Opt-out for {outreach_id} NOT saved: no writer configured")
+            return False
+        try:
+            saved = bool(await on_opt_out())
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Opt-out write raised for {outreach_id}: {e}")
+            saved = False
+        if not saved:
+            logger.error(f"Opt-out for {outreach_id} NOT saved — this parent may be called again")
+        return saved
+
+    async def _on_stop_request():
+        if opt_out["requested"]:
+            return
+        opt_out["requested"] = True
+        opt_out["source"] = "parent_speech"
+        logger.info(f"Parent asked not to be called again (outreach {outreach_id}); acknowledging and ending")
+        opt_out["write"] = asyncio.ensure_future(_write_opt_out())
+        await task.queue_frames([TTSSpeakFrame(text=plan.stop_acknowledgement), EndFrame()])
+
+    stop_guard = StopRequestGuard(on_stop=_on_stop_request)
+
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
+            stop_guard,                # "Don't call me again" never reaches the model
             stt_filter,               # Filter noise/gibberish before aggregator
             context_aggregator.user(),
             phase_instructor,          # Inject phase-specific instructions before LLM
@@ -329,8 +375,7 @@ async def create_bot(
         # (TextFrame waits for LLMFullResponseEndFrame to flush, causing silence)
         await task.queue_frames([TTSSpeakFrame(text=greeting_text)])
 
-    @transport.event_handler("on_client_disconnected")
-    async def on_disconnected(transport_instance, websocket):
+    async def _finalize_once():
         """Persist final transcript and run post-call analysis."""
         transcript = call_manager.transcript
         turns = call_manager.turn_number
@@ -382,6 +427,22 @@ async def create_bot(
             except Exception as e:
                 logger.error(f"Post-call analysis failed: {e}")
 
+        # Do-not-call: make sure a spoken stop was saved (one retry), and let
+        # the post-call analysis catch a stop the phrase check missed — but
+        # only on the parent's own quoted words.
+        if opt_out["requested"]:
+            saved = await opt_out["write"] if opt_out["write"] is not None else False
+            if not saved:
+                logger.warning(f"Retrying opt-out write for {outreach_id}")
+                await _write_opt_out()
+        else:
+            quote = backstop_quote(insights, transcript)
+            if quote is not None:
+                opt_out["requested"] = True
+                opt_out["source"] = "post_call_analysis"
+                logger.warning(f"Post-call analysis found an opt-out the phrase check missed ({outreach_id})")
+                await _write_opt_out()
+
         # Provider-specific finalisation. The Vobiz path uses this to write the
         # transcript + summary to Firestore (for the modal) and to end the leg
         # over Vobiz REST — the Twilio serializer hangs up on its own instead.
@@ -391,4 +452,17 @@ async def create_bot(
             except Exception as e:
                 logger.error(f"on_call_end hook failed: {e}")
 
-    return task
+    finalizing: dict = {"task": None}
+
+    async def finalize():
+        # Shared future: a second caller waits for the first run instead of
+        # repeating it, and cannot cancel it by going away.
+        if finalizing["task"] is None:
+            finalizing["task"] = asyncio.ensure_future(_finalize_once())
+        await asyncio.shield(finalizing["task"])
+
+    @transport.event_handler("on_client_disconnected")
+    async def on_disconnected(transport_instance, websocket):
+        await finalize()
+
+    return task, finalize

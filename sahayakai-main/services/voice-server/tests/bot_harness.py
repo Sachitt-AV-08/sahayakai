@@ -616,6 +616,8 @@ def import_main(tmp_dir, monkeypatch):
         "config",
         replace(make_config(), request_signing_key=SIGNING_KEY, google_cloud_project="demo-project"),
     )
+    if hasattr(main, "_HANGUP_GRACE_SECONDS"):
+        monkeypatch.setattr(main, "_HANGUP_GRACE_SECONDS", 0)
     return main
 
 

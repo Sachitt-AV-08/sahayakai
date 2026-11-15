@@ -27,9 +27,27 @@ from src.vobiz import (
     fetch_context_firestore,
     write_call_result_firestore,
     hangup_vobiz_call,
+    persist_opt_out_firestore,
 )
 
+# After the pipeline ends on its own (last turn, or a stop request) the final
+# sentence may still be playing from the carrier's buffer: the transport sends
+# audio faster than real time. Wait this long before ending the leg.
+_HANGUP_GRACE_SECONDS = 2.0
+
 app = FastAPI(title="SahayakAI Voice Server", version="0.1.0")
+
+
+def _opt_out_writer(outreach_id: str):
+    """What create_bot calls when this call's parent asks not to be called again."""
+    async def _write() -> bool:
+        if outreach_id.startswith("__test__"):
+            logger.info(f"Test call {outreach_id}: opt-out heard, nothing persisted")
+            return True
+        return await persist_opt_out_firestore(outreach_id, config.google_cloud_project)
+
+    return _write
+
 config = load_config()
 call_store = CallStore()  # SQLite — initialized once, shared across calls
 
@@ -175,7 +193,11 @@ async def handle_call(websocket: WebSocket):
         call_context["id"] = outreach_id
 
         # Create and run the Pipecat pipeline
-        task = await create_bot(config, call_context, websocket, stream_sid, call_sid=call_sid, call_store=call_store)
+        task, _finalize = await create_bot(
+            config, call_context, websocket, stream_sid,
+            call_sid=call_sid, call_store=call_store,
+            on_opt_out=_opt_out_writer(outreach_id),
+        )
 
         logger.info(f"Bot pipeline started for outreach {outreach_id}")
         # Pipecat 1.12 moved the event loop onto the runner and dropped the
@@ -286,16 +308,25 @@ async def handle_vobiz_call(websocket: WebSocket):
         ),
     )
 
+    hung_up = False
+
+    async def _hangup_once():
+        nonlocal hung_up
+        if hung_up:
+            return
+        hung_up = True
+        await hangup_vobiz_call(call_uuid, config.vobiz_auth_id, config.vobiz_auth_token)
+
     async def _on_call_end(transcript: list[dict], turns: int, insights: dict | None):
         summary = _to_call_summary(insights) if insights else None
         if not outreach_id.startswith("__test__"):
             await write_call_result_firestore(
                 outreach_id, config.google_cloud_project, transcript, summary
             )
-        await hangup_vobiz_call(call_uuid, config.vobiz_auth_id, config.vobiz_auth_token)
+        await _hangup_once()
 
     try:
-        task = await create_bot(
+        task, finalize = await create_bot(
             config,
             call_context,
             websocket,
@@ -304,6 +335,7 @@ async def handle_vobiz_call(websocket: WebSocket):
             call_store=call_store,
             serializer=serializer,
             on_call_end=_on_call_end,
+            on_opt_out=_opt_out_writer(outreach_id),
         )
         logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
         # Pipecat 1.12 moved the event loop onto the runner and dropped the
@@ -314,6 +346,16 @@ async def handle_vobiz_call(websocket: WebSocket):
         runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
         await runner.add_workers(task)
         await runner.run()
+        # The pipeline has ended: the last turn, a stop request, or the parent
+        # hanging up. When the bot ends the call itself, on_client_disconnected
+        # may never fire (in the pipecat source we could read, 0.0.108, it only
+        # fires when the FAR end disconnects), and keepCallAlive=true means a
+        # closed socket alone leaves the parent on a silent line. So end the
+        # leg here, then run the end-of-call bookkeeping; both are no-ops if
+        # the disconnect event already ran them.
+        await asyncio.sleep(_HANGUP_GRACE_SECONDS)
+        await _hangup_once()
+        await finalize()
     except WebSocketDisconnect:
         logger.info("Vobiz stream disconnected")
     except Exception as e:

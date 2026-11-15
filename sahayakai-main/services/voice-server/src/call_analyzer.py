@@ -65,7 +65,11 @@ Respond ONLY with a JSON object (no markdown, no code fences):
       "owner": "<teacher|school|parent>",
       "priority": "<low|medium|high|urgent>"
     }}
-  ]
+  ],
+  "optOut": {{
+    "requested": <true ONLY if the parent clearly asked the school to stop calling them altogether; false for 'not now', 'call later', 'I am busy' or a preferred time>,
+    "quote": "<the parent's exact words asking not to be called again, copied character for character from a Parent line above, or empty>"
+  }}
 }}"""
 
 
