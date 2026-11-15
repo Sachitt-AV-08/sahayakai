@@ -42,10 +42,24 @@ export function needsProviderChoice(samparkPath: string): boolean {
     return first !== CHOOSER_SEGMENT;
 }
 
-/** A `next` target is only ever a path inside the /sampark tree (never another origin). */
+/**
+ * A `next` target is only ever a path on this site, never another origin. Browsers drop tabs and
+ * newlines from URLs ("/\t/evil.example" becomes "//evil.example"), so control characters and
+ * whitespace are refused outright, and the result is re-checked as a URL against a fixed origin.
+ */
+const NEXT_ORIGIN = 'https://sampark.invalid';
 export function safeNext(next: string | null | undefined, fallback: string): string {
-    if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return fallback;
-    return next;
+    if (!next || !next.startsWith('/') || next.startsWith('//') || /[\u0000-\u0020\u007F\\]/.test(next)) return fallback;
+    try {
+        const url = new URL(next, NEXT_ORIGIN);
+        if (url.origin !== NEXT_ORIGIN) return fallback;
+        const path = `${url.pathname}${url.search}${url.hash}`;
+        // Dot segments collapse during parsing ("/.//evil" becomes "//evil"), and a path that
+        // starts with two slashes is another site to the browser. Check what we return.
+        return path.startsWith('//') ? fallback : path;
+    } catch {
+        return fallback;
+    }
 }
 
 /** Query flag that asks the chooser to show even when a choice is already stored ("Switch"). */

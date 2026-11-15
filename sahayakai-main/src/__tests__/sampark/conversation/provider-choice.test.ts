@@ -56,7 +56,10 @@ describe('which pages need a provider choice', () => {
 
     it('next is only ever a same-origin path', () => {
         expect(safeNext('/sampark/demo/teacher', '/x')).toBe('/sampark/demo/teacher');
-        for (const bad of ['//evil.example', 'https://evil.example', '\\\\evil', 'javascript:alert(1)', '', null]) {
+        expect(safeNext('/sampark/workspace?tab=calls#today', '/x')).toBe('/sampark/workspace?tab=calls#today');
+        // Browsers strip tabs and newlines from URLs, so "/\t/evil" would become "//evil": every
+        // control character and whitespace variant must fall back too.
+        for (const bad of ['//evil.example', 'https://evil.example', '\\\\evil', 'javascript:alert(1)', '', null, '/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/ /evil.example', '/\u0000/evil.example', '/.//evil.example', '/..//evil.example', '/a/..//evil.example', '/%2e//evil.example', '/sampark/./..//evil.example']) {
             expect(safeNext(bad, '/sampark/demo')).toBe('/sampark/demo');
         }
     });
