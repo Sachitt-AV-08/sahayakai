@@ -5,6 +5,7 @@ import { isValidE164 } from '@/lib/twilio-validate';
 import { checkCallingWindow, outsideCallingHoursBody } from '@/lib/calling-hours';
 import { logger } from '@/lib/logger';
 import { classifyTwilioFailure, releasesDedupWindow } from '@/lib/twilio-errors';
+import { claimOutreachDial } from '@/lib/attendance/claim-dial';
 import { getEffectiveMode } from '@/lib/voice-pipeline/health';
 import { refuseIfParentOptedOut } from '@/lib/call-suppression';
 import { isDestinationAllowed, placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
@@ -364,6 +365,23 @@ async function placeOwnedCall(
     const override = provider === 'vobiz' ? process.env.VOBIZ_TEST_OVERRIDE_NUMBER : provider === 'twilio' ? process.env.TWILIO_TEST_OVERRIDE_NUMBER : undefined;
     const refusal = refuseBeforeDial(suppressed, { provider, ...ctx, destination: override || target.parentPhone });
     if (refusal) return { refused: true, ...refusal };
+
+    // One dial per outreach record, claimed atomically before ANY provider is
+    // contacted: a repeated POST (double click, retry loop, script) must not ring
+    // the same parent again. "Try again" in the UI creates a new record.
+    // NOT returned as a refusal: the first request owns this record and may be
+    // mid-call, so POST must not mark it failed (markNotDialled) here.
+    const claim = await claimOutreachDial(db as unknown as CallStatusDb, ctx.outreachId);
+    if (!claim.ok) {
+        logger.warn('Parent call refused: outreach already dialled', 'ATTENDANCE', { userId: ctx.userId, outreachId: ctx.outreachId });
+        return {
+            refused: false,
+            response: NextResponse.json(
+                { error: 'This call has already been placed. Start a new call to ring again.', code: 'ALREADY_DIALLED', retryable: false },
+                { status: 409 },
+            ),
+        };
+    }
 
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone
