@@ -778,15 +778,45 @@ _PROMISE_MARKER = _compile(
 )
 
 # Someone else as the one called ("we won't call your husband") is not the
-# parent. In English only as the call's object: "we won't call you about him
-# again" is still a promise to the parent.
+# parent. Only when that person is the OBJECT of the call verb in the same
+# clause, and the clause does not also call the parent ("आम्ही तुम्हाला पुन्हा
+# फोन करणार नाही, त्यांना सांगू" is still a promise; a bare "उन्हें" or
+# "पापा को बता दिया" elsewhere excuses nothing). English: "call your husband",
+# not "call you about him again".
 _KIN_EN = r"(?:son|daughter|child|kid|husband|wife|father|mother|dad|mom|mum|brother|sister)"
-_PROMISE_PARTY = _compile(
+_NOT_INDIC_BEFORE = rf"(?<![{_INDIC}])"
+_PROMISE_PARTY_WORDS = "|".join((
+    r"\b(?:(?:uske|unke|iske|inke)\s+)?(?:papa|mummy|pati|husband|wife|bete|beti|bachche|bachcha|bhai|behen)\s*ko\b",
+    r"\b(?:usko|unko|isko|inko|unhe|unhein)\b",
+    rf"{_NOT_INDIC_BEFORE}(?:उसको|उसे|उनको|उन्हें|इनको|इन्हें|इसको|इसे)",
+    rf"{_NOT_INDIC_BEFORE}(?:(?:उसके|उनके|इसके|इनके)\s+)?(?:पति|पत्नी|पापा|पिताजी|पिता|मम्मी|माँ|मां|बेटे|बेटी|बच्चे|बच्चा"
+    r"|भाई|बहन|दादा|दादी|नाना|नानी)\s*को",
+    rf"{_NOT_INDIC_BEFORE}(?:ওকে|ওঁকে|তাকে|তাঁকে|ওনাকে|ওদের)",
+    rf"{_NOT_INDIC_BEFORE}(?:(?:ওর|ওঁর|তার|তাঁর)\s+)?(?:স্বামী|বাবা|মা|ছেলে|মেয়ে|বাচ্চা|ভাই|বোন)কে",
+    rf"{_NOT_INDIC_BEFORE}(?:(?:त्यांच्या|त्याच्या|तिच्या)\s+)?(?:वडिलांना|आईला|बाबांना|मिस्टरांना|नवऱ्याला|बायकोला"
+    r"|सासूबाईंना|सासऱ्यांना|त्यांना|त्याला|तिला)",
+))
+_ANY_CALL_WORD = r"(?:फ़ोन|फोन|कॉल|काल|ফোন|কল|phone|fone|call)"
+_PROMISE_PARTY_OBJECT = _compile(
     rf"\b(?:call|phone|ring|contact)(?:ing)?\s+(?:him|her|them|(?:your|my|his|her|their)\s+{_KIN_EN})\b",
-    *_PARTY_PARTS[2:],
-    # Marathi: "आम्ही त्यांच्या वडिलांना फोन करणार नाही" (we won't call their father)
-    _word(r"वडिलांना|आईला|बाबांना|मिस्टरांना|नवऱ्याला|बायकोला|सासूबाईंना|सासऱ्यांना|त्यांना|त्याला|तिला"),
+    rf"(?:{_PROMISE_PARTY_WORDS})\s*(?:\S+\s+)?{_ANY_CALL_WORD}",
+    rf"(?:^|\s)(?!मुझ|हम|आप)\S+\s+को\s*{_HI_CALL}",  # "<anyone but me/us/you> को फ़ोन …"
 )
+# The parent as the object, in the same clause.
+_SECOND_PERSON_OBJECT = _compile(
+    r"\b(?:call|phone|ring|contact)(?:ing)?\s+you\b",
+    r"\b(?:aapko|apko|tumhe|tumko)\b",
+    _word(r"आपको|तुम्हें|तुमको|আপনাকে|তোমাকে|तुम्हाला|तुम्हांला|आपल्याला|તમને|આપને|ਤੁਹਾਨੂੰ"),
+    _starts(r"ನಿಮಗೆ|ನಿಮ್ಮನ್ನು|உங்களை|உங்களுக்கு|మీకు|మిమ్మల్ని|നിങ്ങളെ|നിങ്ങൾക്ക്"),
+)
+
+
+def _about_someone_else(text: str) -> bool:
+    """Is the reply's "won't call" about a person other than the parent?"""
+    return any(_PROMISE_PARTY_OBJECT.search(clause) and not _SECOND_PERSON_OBJECT.search(clause)
+               for clause, _q in _clauses(text))
+
+
 # A genuine reschedule is a time AND a "will call" ("we won't call now, the
 # teacher will call this evening", "अभी फ़ोन नहीं करेंगे, शाम को करेंगे").
 # A time word on its own ("आज के बाद", "from now on") excuses nothing.
@@ -823,7 +853,7 @@ def is_no_more_calls_promise(text: object) -> bool:
             _DISTURB_EN.search(t) or (_DISTURB.search(t) and _PROMISE_PERSON.search(t) and _PROMISE_REPEAT.search(t))
         )
     )
-    if not said or _PROMISE_PARTY.search(t):
+    if not said or _about_someone_else(text):
         return False
     return not (_TIME.search(t) and _WILL_CALL.search(t))
 

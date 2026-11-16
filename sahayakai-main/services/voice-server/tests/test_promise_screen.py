@@ -517,3 +517,42 @@ def test_through_the_handler_the_marathi_reply_about_someone_else_is_spoken(tmp_
     reply = MARATHI_SOMEONE_ELSE[0]
     _runner, _run, model_text, tts, _hangups, db = _vobiz_call("Marathi", "request_to_talk", reply, tmp_path, monkeypatch)
     assert model_text.startswith("आम्ही त्यांच्या") and tts == []
+
+
+# ── the someone-else veto is about the call's object only ───────────────────
+# Security review: the veto excused any reply that merely CONTAINED a
+# someone-else word, so a real promise to the parent that also mentions
+# someone ("आम्ही तुम्हाला पुन्हा फोन करणार नाही, त्यांना सांगू" - we won't
+# call you again, we'll tell them) was spoken. Now that person must be the
+# object of the call verb in the same clause, and the clause must not also
+# call the parent. Tightened for Marathi, Hindi, Hinglish and Bengali.
+
+PROMISES_MENTIONING_SOMEONE = [
+    ("Marathi", "आम्ही तुम्हाला पुन्हा फोन करणार नाही, त्यांना सांगू"),
+    ("Marathi", "आम्ही तुम्हाला पुन्हा फोन करणार नाही त्यांना सांगू"),
+    ("Marathi", "वडिलांना सांगितले आहे, आम्ही तुम्हाला पुन्हा फोन करणार नाही"),
+    ("Hindi", "हम आपको दोबारा फ़ोन नहीं करेंगे, उन्हें बता देंगे"),
+    ("Hindi", "पापा को बता दिया है, हम आपको दोबारा फ़ोन नहीं करेंगे"),
+    ("Hindi", "hum aapko dobara phone nahi karenge, unko bata denge"),
+    ("Hindi", "papa ko bata diya, hum aapko phone nahi karenge"),
+    ("Bengali", "আমরা আপনাকে আর ফোন করব না, ওনাকে বলে দেব"),
+    ("Bengali", "বাবাকে বলেছি, আমরা আপনাকে আর ফোন করব না"),
+]
+TRULY_SOMEONE_ELSE = ["आम्ही त्यांच्या वडिलांना फोन करणार नाही", "हम उनके पापा को फ़ोन नहीं करेंगे",
+                      "আমরা ওর বাবাকে ফোন করব না", "We will not call your husband, only you."]
+
+
+@pytest.mark.parametrize("language,text", PROMISES_MENTIONING_SOMEONE, ids=lambda v: v[:40])
+def test_a_promise_to_the_parent_that_mentions_someone_is_still_a_promise(language, text):
+    assert is_no_more_calls_promise(text), text
+
+
+@pytest.mark.parametrize("language,text", PROMISES_MENTIONING_SOMEONE[::3], ids=lambda v: v[:40])
+def test_through_the_handler_it_is_replaced(language, text, tmp_path, monkeypatch):
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, "request_to_talk", text, tmp_path, monkeypatch)
+    _assert_replaced_and_going_on(language, text, run, model_text, tts, db)
+
+
+@pytest.mark.parametrize("text", TRULY_SOMEONE_ELSE)
+def test_a_reply_about_someone_else_is_still_spoken(text):
+    assert not is_no_more_calls_promise(text), text
