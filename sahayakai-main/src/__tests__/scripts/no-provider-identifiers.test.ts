@@ -12,7 +12,7 @@
  * of the same agent (`agtvrsn_…`) stayed in three tracked files with the gate green, and any other
  * ElevenLabs id kind (conversation, batch call, tool, knowledge base) would have passed too.
  *
- * The gate scans every tracked text file in the app, the agents service and the mock CRM for an
+ * The gate scans every tracked text file in the monorepo (as the phone-number gate does) for an
  * ElevenLabs-shaped id in either form:
  *  - a known prefix (`agent_`, `phnum_`, `agtbrch_`, `agtvrsn_`) and 20 or more id characters;
  *  - ANY short lowercase prefix (2-10 letters) and the ElevenLabs id body: 4 digits (the creation
@@ -25,8 +25,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const MONOREPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
-const SCANNED = ['sahayakai-main', 'sahayakai-agents', 'mock-school-crm'];
-const BINARY = /\.(png|jpe?g|gif|webp|ico|svg|ulaw|wav|mp3|mp4|webm|pdf|woff2?|ttf|otf|zip|gz|lock)$|package-lock\.json$/i;
+/** Binary formats, by extension: they hold no text an id could be pasted into. */
+const BINARY = /\.(png|jpe?g|gif|webp|ico|icns|ulaw|wav|mp3|mp4|m4a|webm|pdf|woff2?|ttf|otf|zip|gz|jar|keystore|jks|xlsx|pptx|docx|skill)$/i;
+/** Generated files (lockfiles, build output): produced from scanned sources; their runs are hashes. */
+const GENERATED = /(^|\/)package-lock\.json$|(^|\/)[^/]+\.lock$|\.g\.dart$|(^|\/)qa\/results\/playwright-report\/|(^|\/)public\/(sw|workbox-[^/]+)\.js$/;
 /** Known ElevenLabs prefixes: any 20+ character body. */
 const NAMED_ID = /(?<![0-9a-z])(agent|phnum|agtbrch|agtvrsn)_([0-9a-z]{20,})(?![0-9a-z])/g;
 /** Any short lowercase prefix with the ElevenLabs body shape (time-prefixed base 36). */
@@ -41,8 +43,9 @@ function providerIds(text: string): Array<[string, string]> {
 }
 
 function trackedTextFiles(): string[] {
-    const out = execFileSync('git', ['ls-files', '-z', ...SCANNED], { cwd: MONOREPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    return out.split('\0').filter((f) => f && !BINARY.test(f));
+    // Every tracked text file in the monorepo, as the phone-number gate scans: the repo is public.
+    const out = execFileSync('git', ['ls-files', '-z'], { cwd: MONOREPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return out.split('\0').filter((f) => f && !BINARY.test(f) && !GENERATED.test(f));
 }
 
 describe('no real calling-provider id is committed', () => {
@@ -50,7 +53,8 @@ describe('no real calling-provider id is committed', () => {
 
     it('scans the tracked files at all', () => {
         // A gate that scans nothing reports green forever.
-        expect(files.length).toBeGreaterThan(1000);
+        expect(files.length).toBeGreaterThan(4000);
+        for (const dir of ['sahayakai-main/', 'sahayakai-agents/', 'mock-school-crm/', 'sahayakai-flutter/', 'docs/', '.github/']) expect(files.some((f) => f.startsWith(dir))).toBe(true);
         expect(files).toContain('sahayakai-main/.env.example');
     });
 
