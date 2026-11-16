@@ -280,7 +280,7 @@ describe('Sargvision roster calls (Riya service)', () => {
         const sv = schoolFixture({ orgId: SARGVISION_ORG_ID, mode: 'test', isDemo: false });
         const on = localEnv({ SAMPARK_SARGVISION_ANYTIME_CALLS: 'true' });
         expect(sargvisionAfterHoursOverride(on, sv, { phoneHash: hashPhone(ALLOWED[0]) } as never, 'guardian', SUN_2330_IST)).toMatchObject({ active: true });
-        expect(sargvisionAfterHoursOverride(on, sv, { phoneHash: hashPhone('+919876543210') } as never, 'guardian', SUN_2330_IST)).toMatchObject({ active: false, inactiveReason: 'not_allowed_number' });
+        expect(sargvisionAfterHoursOverride(on, sv, { phoneHash: hashPhone('+919800000151') } as never, 'guardian', SUN_2330_IST)).toMatchObject({ active: false, inactiveReason: 'not_allowed_number' });
         // Never outside local roster mode: production, another school, Practice mode.
         expect(sargvisionAfterHoursOverride({ ...on, NODE_ENV: 'production' }, sv, { phoneHash: hashPhone(ALLOWED[0]) } as never, 'guardian', SUN_2330_IST).active).toBe(false);
         expect(sargvisionAfterHoursOverride(on, { ...sv, orgId: 'hillview-demo' }, { phoneHash: hashPhone(ALLOWED[0]) } as never, 'guardian', SUN_2330_IST).active).toBe(false);

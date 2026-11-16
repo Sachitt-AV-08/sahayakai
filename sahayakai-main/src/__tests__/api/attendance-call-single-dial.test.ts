@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { createFakeDb, lastJsonBody, type Store } from '../helpers/fake-attendance-db';
 
-const PHONE = '+919812345678';
+const PHONE = '+919800000150';
 let store: Store;
 const jsonSpy = jest.spyOn(NextResponse, 'json');
 
