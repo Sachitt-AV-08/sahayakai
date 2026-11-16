@@ -448,6 +448,37 @@ _PROMISE_NEUTRAL = _compile(
     rf"{_TE_CALL}\s*{_N}రాదు",
     r"വിളിക്കില്ല|വിളിക്കുകയില്ല|വിളിക്കുന്നില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യുകയില്ല",
 )
+# "We won't disturb / bother you again": a promise only with a we/I subject
+# or a you object (_PROMISE_PERSON, or built into the English form), PLUS a
+# repeat word (_PROMISE_REPEAT), and no "for long / much / any further"
+# (_HOW_LONG). "I won't disturb you for long" is politeness.
+_DISTURB_EN = re.compile(
+    r"\b(?:we|i)(?:'ll)?\s+(?:will not|won't|wont|shall not|will never|never)\s+(?:disturb|bother|trouble)\s+you\s+"
+    r"(?:again|anymore|any more)\b"
+)
+_DISTURB = _compile(
+    r"(?:परेशान|डिस्टर्ब|तंग)\s*नहीं\s*(?:करेंगे|करेंगी|करूँगा|करूंगा|करूँगी|करूंगी|किया\s*जाएगा)",
+    r"\b(?:pareshan|disturb)\s*(?:nahi|nahin)\s*(?:karenge|karunga|karungi)\b",
+    r"বিরক্ত\s*(?:করবো|করব|করা\s*হবে){_END}\s*না".replace("{_END}", _END),
+    r"त्रास\s*(?:देणार\s*नाही|देणार\s*नाहीत)",
+    r"હેરાન\s*(?:(?:નહીં|નહિ)\s*(?:કરીએ|કરીશું|કરું)|(?:કરીએ|કરીશું)\s*(?:નહીં|નહિ))",
+)
+_PROMISE_REPEAT = _compile(
+    r"\b(?:again|anymore|any more|dobara|dubara|phir se|aage se)\b",
+    r"दोबारा|दुबारा|फिर\s*से|आगे\s*से|फिर\s*कभी",
+    _word(r"আর|আবার"),
+    _word(r"पुन्हा|परत"),
+    _word(r"ફરીથી|ફરી"),
+)
+_HOW_LONG = _compile(
+    r"\b(?:long|much|any further|for a while|too long)\b",
+    r"\b(?:zyada|jyada|der)\b",
+    _word(r"ज़्यादा|ज्यादा|देर|लंबा|लम्बा|ज़्यादा\s*देर"),
+    _word(r"বেশিক্ষণ|অনেকক্ষণ|বেশি"),
+    _word(r"जास्त|वेळ"),
+    _word(r"વધુ|લાંબો|વધારે"),
+)
+
 # We / I as the subject, or you as the object, in each call language.
 _PROMISE_PERSON = _compile(
     r"\b(?:hum|hamne|main|mai|aapko|apko|tumhe|tumko)\b",
@@ -527,6 +558,10 @@ def is_no_more_calls_promise(text: object) -> bool:
         return False
     said = bool(_PROMISE_FIRST.search(t)) or bool(
         _PROMISE_NEUTRAL.search(t) and (_PROMISE_PERSON.search(t) or _PROMISE_MARKER.search(t))
+    ) or (
+        not _HOW_LONG.search(t) and bool(
+            _DISTURB_EN.search(t) or (_DISTURB.search(t) and _PROMISE_PERSON.search(t) and _PROMISE_REPEAT.search(t))
+        )
     )
     if not said or _PROMISE_PARTY.search(t):
         return False
