@@ -451,12 +451,18 @@ async def create_bot(
             if callable(has_finished) and has_finished() is True:
                 return
             if call_manager.turn_number > opt_out["turn_at_notice"]:
-                return  # the model replied: CallManager said the goodbye and owns the ending
+                # The model replied: CallManager said the goodbye and owns the
+                # ending. Bound it anyway, in case it never reaches _end_call
+                # (a no-op when its own ending already armed the watchdog).
+                await _watch_ending("the close after the opt-out line")
+                return
             if stop_guard is None or not stop_guard.spoken_since_notice or window == NOTED_CLOSE_MAX_WINDOWS:
                 break
             stop_guard.spoken_since_notice = False  # the parent spoke: give the model one more window
         if not call_manager.take_goodbye():
-            return  # CallManager already said it and is ending the call
+            # CallManager already said it and is ending the call; bound that too.
+            await _watch_ending("the close after the opt-out line")
+            return
         logger.info(f"Outreach {outreach_id}: no reply after the opt-out line; closing the call")
         context.add_message({"role": "assistant", "content": plan.goodbye})
         await task.queue_frames([TTSSpeakFrame(text=plan.goodbye), EndFrame()])

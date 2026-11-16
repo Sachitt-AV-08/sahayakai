@@ -270,3 +270,27 @@ def _call_bounded(script, tmp_path, monkeypatch):
         run = run_from_recorder()
         manager = run.processor("CallManager")
     return runner, run, manager, hangups, db
+
+
+# ── the timer's early returns are bounded too ────────────────────────────────
+# Follow-up to final-0b #3: the close timer returned without arming the
+# ending watchdog when CallManager had counted a turn or claimed the goodbye.
+# If CallManager then never reached _end_call (an exception, a future change),
+# nothing ended the call. Both early returns now arm the watchdog.
+
+@pytest.mark.parametrize("claimed", ["goodbye taken", "turn counted"])
+def test_if_callmanager_claims_the_close_but_never_ends_the_call_the_watchdog_does(claimed, tmp_path, monkeypatch):
+    async def script(run):
+        await _hear(run, TRUE_STOPS["Hindi"])
+        manager = run.processor("CallManager")
+        if claimed == "goodbye taken":
+            assert manager.take_goodbye()  # claimed, and then nothing ends the call
+        else:
+            manager._turn_number += 1  # a reply counted, and then nothing ends the call
+        await asyncio.sleep(0.3)
+
+    runner, run, manager, hangups, _db = _call_bounded(script, tmp_path, monkeypatch)
+    assert not [f for f, d in manager.pushed if type(f).__name__ == "EndTaskFrame"], "CallManager never ended it"
+    assert runner.ended and not runner.timed_out, f"{claimed}: the call was left open"
+    assert run.task.cancelled_at is not None, "the ending watchdog forced it down"
+    assert len(hangups) == 1
