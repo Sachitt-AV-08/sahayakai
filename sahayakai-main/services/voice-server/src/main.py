@@ -12,9 +12,16 @@ Endpoints:
 import asyncio
 import json
 
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from loguru import logger
+
+from src.log_setup import configure_logging
+
+# First, before pipecat or anything else logs: production runs at INFO, never
+# loguru's DEBUG default (which logs the whole model context). src/log_setup.py.
+configure_logging(logger)
+
+import uvicorn  # noqa: E402
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from pipecat.workers.runner import WorkerRunner
 
 from src.config import load_config
@@ -205,7 +212,7 @@ async def handle_call(websocket: WebSocket):
                 outreach_id,
                 _TEST_SCENARIOS["__test__001"],  # default fallback
             )
-            logger.info(f"Using test scenario: {outreach_id} — {call_context.get('reason', '?')}")
+            logger.info(f"Using test scenario: {outreach_id}")
         else:
             call_context = await fetch_call_context(
                 api_url=config.sahayakai_api_url,

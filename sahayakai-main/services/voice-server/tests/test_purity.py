@@ -20,6 +20,7 @@ PURE_MODULES = [
     "src.stream_tokens",
     "src.log_redaction",
     "src.gemini_backend",
+    "src.log_setup",
 ]
 
 _PROBE = r"""

@@ -241,8 +241,36 @@ class PipelineTask(Stub):
 
 
 class _Logger:
+    """loguru stand-in. Keeps every record, so a test can read what would be logged."""
+
+    LEVELS = ("trace", "debug", "info", "success", "warning", "error", "critical", "exception")
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str]] = []
+        self.config_calls: list[tuple[str, tuple, dict]] = []
+
+    def clear(self) -> None:
+        self.records.clear()
+        self.config_calls.clear()
+
+    def remove(self, *args, **kwargs) -> None:
+        self.config_calls.append(("remove", args, kwargs))
+
+    def add(self, *args, **kwargs) -> int:
+        self.config_calls.append(("add", args, kwargs))
+        return 1
+
     def __getattr__(self, name: str):
-        return lambda *args, **kwargs: None
+        level = name.upper() if name in self.LEVELS else None
+
+        def log(message="", *args, **kwargs):
+            if level:
+                self.records.append((level, message if isinstance(message, str) else str(message)))
+
+        return log
+
+
+LOGGER = _Logger()
 
 
 _SPECIFIC: dict[str, dict[str, Any]] = {
@@ -264,7 +292,7 @@ _SPECIFIC: dict[str, dict[str, Any]] = {
     },
     "pipecat.pipeline.pipeline": {"Pipeline": Pipeline},
     "pipecat.pipeline.task": {"PipelineTask": PipelineTask},
-    "loguru": {"logger": _Logger()},
+    "loguru": {"logger": LOGGER},
     # main.py catches it, so it must be a real exception class.
     "fastapi": {"WebSocketDisconnect": type("WebSocketDisconnect", (Exception,), {})},
     "uvicorn.config": {"LOGGING_CONFIG": None},  # filled in below
@@ -337,6 +365,7 @@ def stubbed_runtime() -> Iterator[None]:
     finder = _StubFinder()
     sys.meta_path.insert(0, finder)
     RECORDER.clear()
+    LOGGER.clear()
     try:
         yield
     finally:

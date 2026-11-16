@@ -217,7 +217,7 @@ async def create_bot(
         parent_phone = call_context.get("parentPhone", "")
         parent_history = call_store.build_parent_context(parent_phone)
         if parent_history:
-            logger.info(f"Parent history injected for {parent_phone}")
+            logger.info(f"Parent history injected for outreach {outreach_id} ({len(parent_history)} chars)")
 
     plan = plan_call(call_context, parent_history=parent_history)
     greeting_text = plan.greeting
@@ -298,7 +298,7 @@ async def create_bot(
     # Pick voice gender based on teacher name
     teacher_name = call_context.get("teacherName", "")
     tts_voice = _pick_voice(teacher_name)
-    logger.info(f"TTS voice: {tts_voice} (teacher: {teacher_name})")
+    logger.info(f"TTS voice: {tts_voice}")
 
     tts = SarvamTTSService(
         api_key=config.sarvam_api_key,
@@ -393,7 +393,8 @@ async def create_bot(
         """
         logger.info(f"Waiting for pipeline warmup before greeting...")
         await asyncio.sleep(1)  # Minimal warmup — speed matters
-        logger.info(f"Playing greeting ({len(greeting_text)} chars): {greeting_text[:60]}...")
+        # Length only: the greeting can carry the teacher's own message.
+        logger.info(f"Playing greeting ({len(greeting_text)} chars, {plan.mode})")
         # TTSSpeakFrame is standalone — flushes immediately to TTS
         # (TextFrame waits for LLMFullResponseEndFrame to flush, causing silence)
         await task.queue_frames([TTSSpeakFrame(text=greeting_text)])

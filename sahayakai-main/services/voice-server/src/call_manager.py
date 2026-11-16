@@ -218,9 +218,8 @@ class CallManager(FrameProcessor):
                     await self.push_frame(frame, direction)
                     return
 
-                logger.info(
-                    f"Turn {self._turn_number}: {truncated[:80]}"
-                )
+                # Length only: what the model said is part of the conversation.
+                logger.info(f"Turn {self._turn_number}: reply of {len(truncated)} chars")
                 # Add TRUNCATED model response to LLM context
                 self._context.add_message(
                     {"role": "assistant", "content": truncated}
