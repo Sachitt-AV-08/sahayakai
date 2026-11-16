@@ -56,6 +56,21 @@ def _opt_out_writer(authenticated_outreach_id: str):
     return _write
 
 
+async def _finish(finalize) -> None:
+    """Run create_bot's end-of-call bookkeeping on every way out of a handler.
+
+    It saves an opt-out heard during the call (retrying a failed write),
+    the transcript and the summary. Idempotent and shielded, so running it
+    after the disconnect event already did is harmless. Never raises.
+    """
+    if finalize is None:
+        return  # create_bot never returned; there is no call to finish
+    try:
+        await finalize()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"End-of-call bookkeeping failed: {e}")
+
+
 config = load_config()
 call_store = CallStore()  # SQLite — initialized once, shared across calls
 
@@ -161,6 +176,7 @@ async def handle_call(websocket: WebSocket):
 
     outreach_id = ""
     call_context: dict = {}
+    finalize = None
 
     try:
         # Read Twilio's initial events to extract streamSid, callSid and outreachId
@@ -226,13 +242,16 @@ async def handle_call(websocket: WebSocket):
         runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
         await runner.add_workers(task)
         await runner.run()
+        await _finish(finalize)
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
+        await _finish(finalize)
         # Fallback: run post-call analysis if disconnect handler didn't fire
         await _post_call_cleanup(outreach_id, call_context, config)
     except Exception as e:
         logger.error(f"Bot pipeline error: {e}")
+        await _finish(finalize)
         await _post_call_cleanup(outreach_id, call_context, config)
         try:
             await websocket.close(code=1011, reason="Internal error")
@@ -343,6 +362,7 @@ async def handle_vobiz_call(websocket: WebSocket):
             )
         await _hangup_once()
 
+    finalize = None
     try:
         # outreach_id here is the one verify_stream_token returned above:
         # authenticated, so this route may record a parent's opt-out.
@@ -375,11 +395,13 @@ async def handle_vobiz_call(websocket: WebSocket):
         # the disconnect event already ran them.
         await asyncio.sleep(_HANGUP_GRACE_SECONDS)
         await _hangup_once()
-        await finalize()
+        await _finish(finalize)
     except WebSocketDisconnect:
         logger.info("Vobiz stream disconnected")
+        await _finish(finalize)
     except Exception as e:
         logger.error(f"Vobiz bot pipeline error: {e}")
+        await _finish(finalize)
         try:
             await websocket.close(code=1011, reason="Internal error")
         except Exception:
