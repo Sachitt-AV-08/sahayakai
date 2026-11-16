@@ -691,10 +691,10 @@ describe('pure scheduler rules', () => {
             return rateLimited(17);
         });
         const cfg = { authId: 'MA_TEST', authToken: 'tok', baseUrl: 'https://api.example.test', fromNumber: '+918000000000' };
-        const r = await placeVobizCallDetailed(cfg, { to: '+919800010001', answerUrl: 'https://a', hangupUrl: 'https://h' }, fetchImpl as unknown as typeof fetch);
+        const r = await placeVobizCallDetailed(cfg, { to: '+919800000501', answerUrl: 'https://a', hangupUrl: 'https://h' }, fetchImpl as unknown as typeof fetch);
         expect(r).toEqual({ ok: false, failure: { category: 'rate_limited', status: 429, retryAfterSeconds: 17 } });
         expect(bodies[0]).not.toContain('time_limit');
-        await placeVobizCallDetailed(cfg, { to: '+919800010001', answerUrl: 'https://a', hangupUrl: 'https://h', timeLimit: 660 }, fetchImpl as unknown as typeof fetch);
+        await placeVobizCallDetailed(cfg, { to: '+919800000501', answerUrl: 'https://a', hangupUrl: 'https://h', timeLimit: 660 }, fetchImpl as unknown as typeof fetch);
         expect(JSON.parse(bodies[1]).time_limit).toBe(660);
     });
 });

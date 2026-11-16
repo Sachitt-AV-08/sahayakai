@@ -48,11 +48,12 @@ const ALLOWED: Record<string, string> = {
 };
 
 /**
- * Visibly made up: the repo's one test range (98000 xxxxx), one digit seven times running
- * (98111 11111), or a counting run of eight digits (98123 45678, 98765 43210).
+ * Visibly made up: the repo's one test block (98000 00xxx, a thousand numbers), one digit seven
+ * times running (98111 11111), or a counting run of eight digits (98123 45678, 98765 43210).
+ * The block is deliberately small: the wider 98000 xxxxx series is a live mobile allocation.
  */
 function madeUp(n: string): boolean {
-    if (n.startsWith('98000')) return true;
+    if (/^9800000\d{3}$/.test(n)) return true;
     if (/(\d)\1{6}/.test(n)) return true;
     for (let i = 0; i + 8 <= n.length; i += 1) {
         const run = n.slice(i, i + 8);
@@ -63,18 +64,30 @@ function madeUp(n: string): boolean {
 
 const SEP = '[ \\-\\u00a0]';
 const MOBILE = new RegExp(
-    // Not inside a longer number, a hex hash or a decimal; a '+' always starts the prefix.
-    String.raw`(?<![\da-fA-F.+])` +
+    // Not inside a longer number, a hex hash or a decimal ("1.98..."); a '+' always starts the
+    // prefix. A dot after a word still counts ("Mob.98...", "Ph.+91...").
+    String.raw`(?<![\da-fA-F+])(?<!\d\.)` +
         String.raw`(?:(?:%2B|\+|00)?\(?\+?91\)?${SEP}{0,2}|0${SEP}?)?` +
         String.raw`([6-9](?:${SEP}?\d){9})` +
         String.raw`(?![\da-fA-F])`,
     'g',
 );
 
-/** The ten-digit mobile numbers written in `text`, in order. */
+/** Zero of each Indic script's digits: a number written in native digits is still a number. */
+const NATIVE_ZEROS = [0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+
+function asciiDigits(text: string): string {
+    return text.replace(/[\u0966-\u096f\u09e6-\u09ef\u0a66-\u0a6f\u0ae6-\u0aef\u0b66-\u0b6f\u0be6-\u0bef\u0c66-\u0c6f\u0ce6-\u0cef\u0d66-\u0d6f]/g, (c) => {
+        const cp = c.codePointAt(0)!;
+        const zero = NATIVE_ZEROS.find((z) => cp >= z && cp <= z + 9)!;
+        return String(cp - zero);
+    });
+}
+
+/** The ten-digit mobile numbers written in `text`, in order (ASCII or Indic-script digits). */
 function mobileNumbers(text: string): string[] {
     const found: string[] = [];
-    for (const m of text.matchAll(MOBILE)) {
+    for (const m of asciiDigits(text).matchAll(MOBILE)) {
         const groups = m[1].split(new RegExp(SEP));
         // A phone is written in at most four groups of two or more digits; more is SVG path data
         // or a table of digits.
@@ -112,6 +125,7 @@ describe('no real person’s mobile number is committed', () => {
     it('finds a number in every form the repo and its users write', () => {
         // Built at run time so this file holds no such number itself.
         const n = '94340' + '12345';
+        const native = (digits: string, zero: number) => [...digits].map((d) => String.fromCodePoint(zero + Number(d))).join('');
         const [a, b] = [n.slice(0, 5), n.slice(5)];
         const forms = [
             n,
@@ -130,6 +144,11 @@ describe('no real person’s mobile number is committed', () => {
             `+91 ${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}`,
             `+91 ${a} ${b}`,
             `0091 ${a} ${b}`,
+            `Mob.${n}`,
+            `Ph.+91${n}`,
+            `No.${a} ${b}`,
+            native(n, 0x0966), // Devanagari digits
+            `+91 ${native(n, 0x09e6)}`, // Bengali digits
         ];
         for (const form of forms) expect({ form, found: mobileNumbers(`x ${form} y`) }).toEqual({ form, found: [n] });
     });
@@ -144,7 +163,9 @@ describe('no real person’s mobile number is committed', () => {
     });
 
     it('treats only visibly made-up numbers as made up', () => {
-        expect(['98000' + '12345', '98111' + '11111', '98123' + '45678', '98765' + '43210', '91234' + '56789'].map(madeUp)).toEqual([true, true, true, true, true]);
+        expect(['9800000' + '123', '98111' + '11111', '98123' + '45678', '98765' + '43210', '91234' + '56789'].map(madeUp)).toEqual([true, true, true, true, true]);
+        // Only the thousand-number block is the test range: the rest of 98000 xxxxx is a live series.
+        expect(['98000' + '12345', '98000' + '10123', '9800001' + '000'].map(madeUp)).toEqual([false, false, false]);
         // The old exempt series are ordinary numbers again.
         expect(['98111', '98765', '98123', '91234', '80000', '70000', '90000'].map((p) => madeUp(p + '13579'))).toEqual([false, false, false, false, false, false, false]);
         expect(madeUp('9' + '0'.repeat(6) + '135')).toBe(false); // six zeros is no longer enough
