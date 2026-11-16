@@ -245,8 +245,8 @@ def test_an_earlier_reschedule_cannot_veto_a_later_strong_stop():
 
 def test_a_stop_is_noticed_once_per_call():
     c = StopListener()
-    assert c.on_parent_speech("don't call me") is True
-    assert c.on_parent_speech("I said don't call me") is False
+    assert c.on_parent_speech("don't call me again") is True
+    assert c.on_parent_speech("I said don't call me again") is False
 
 
 # ── the record ───────────────────────────────────────────────────────────────

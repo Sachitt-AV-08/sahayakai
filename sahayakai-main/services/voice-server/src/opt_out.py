@@ -689,34 +689,70 @@ def is_no_more_calls_promise(text: object) -> bool:
 # ── Noticing it during the call ──────────────────────────────────────────────
 
 
-class StopListener:
-    """Notice, once per call, that the parent may be asking not to be called.
+NOTICE = "notice"  # a stop: answer it now
+WAIT = "wait"      # a plain stop: hold it until the next transcription or a pause
+PASS = "pass"      # ordinary speech (or a held plain stop turned out not to be one)
 
-    Speech-to-text splits an utterance wherever the parent pauses, so each
-    transcription is checked alone, then joined to the one before. After the
-    first notice everything else is ordinary speech for the model: the engine
-    says its line once and never argues.
+# Speech-to-text splits an utterance wherever the parent pauses: a
+# transcription joins the one before it only when it follows this soon.
+JOIN_SECONDS = 2.5
+
+
+class StopListener:
+    """Notice, once per call, that the parent is asking not to be called.
+
+    A strong stop is noticed at once. A plain one ("don't call me") WAITs: the
+    next transcription may finish the sentence ("after 9 pm", "रात को",
+    "সকালে"), so it is judged again joined to that one, with every limit
+    applied; if the parent says nothing more (on_quiet), it stands. Each
+    transcription is also judged joined to the one just before it ("मेरे पति
+    को" + "फ़ोन मत करना"). After the first notice everything else is ordinary
+    speech for the model: the engine says its line once and never argues.
+    Texts are kept raw: clause boundaries (commas) matter to stop_kind.
     """
 
     def __init__(self) -> None:
-        self._previous = ""
         self._previous_raw = ""
+        self._previous_at: float | None = None
+        self.pending: str | None = None
         self.noticed = False
         self.quote: str | None = None
 
-    def on_parent_speech(self, text: object) -> bool:
-        """True exactly once: when this utterance (alone or joined) is a possible stop."""
+    def _notice(self, quote: str) -> str:
+        self.noticed, self.quote, self.pending = True, quote.strip(), None
+        return NOTICE
+
+    def hear(self, text: object, now: float | None = None) -> str:
         raw = text.strip() if isinstance(text, str) else ""
-        utterance = normalize(text)
-        if self.noticed or not utterance:
+        if self.noticed or not normalize(raw):
+            return PASS
+        recent = self._previous_raw and (now is None or self._previous_at is None
+                                         or now - self._previous_at <= JOIN_SECONDS)
+        previous = self._previous_raw if recent else ""
+        self._previous_raw, self._previous_at = raw, now
+        if self.pending is not None:
+            joined, self.pending = f"{self.pending} {raw}", None
+            self._previous_raw = joined
+            return self._notice(joined) if stop_kind(joined) else PASS
+        text_judged = f"{previous} {raw}" if previous else raw
+        kind = stop_kind(text_judged, current=raw) if previous else stop_kind(raw)
+        if kind == "strong":
+            return self._notice(raw if stop_kind(raw) == "strong" else text_judged)
+        if kind == "plain":
+            self.pending = text_judged
+            return WAIT
+        return PASS
+
+    def on_quiet(self) -> bool:
+        """The parent said nothing more after a plain stop: it stands."""
+        if self.pending is None or self.noticed:
             return False
-        previous, previous_raw = self._previous, self._previous_raw
-        self._previous, self._previous_raw = utterance, raw
-        if is_stop_request(utterance):
-            self.noticed, self.quote = True, raw
-        elif previous and is_stop_request(f"{previous} {utterance}", current=utterance):
-            self.noticed, self.quote = True, f"{previous_raw} {raw}".strip()
-        return self.noticed
+        self._notice(self.pending)
+        return True
+
+    def on_parent_speech(self, text: object, now: float | None = None) -> bool:
+        """True when this transcription is noticed as a stop (a plain one WAITs: see on_quiet)."""
+        return self.hear(text, now) == NOTICE
 
 
 # ── After the call: the analysis backstop ────────────────────────────────────

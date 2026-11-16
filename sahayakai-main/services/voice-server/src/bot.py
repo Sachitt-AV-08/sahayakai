@@ -508,6 +508,15 @@ async def create_bot(
 
     async def _finalize_once():
         """Persist final transcript and run post-call analysis."""
+        # A plain stop still held when the call ended (the parent said "don't
+        # call me" and hung up): it stands, so it is recorded like any other.
+        if stop_guard is not None and not opt_out["heard"]:
+            held = stop_guard.take_pending()
+            if held is not None:
+                utterance, quote = held
+                opt_out.update(heard=True, source=LIVE, quote=quote, at=utc_now_iso())
+                context.add_message({"role": "user", "content": utterance})
+                opt_out["write"] = asyncio.ensure_future(_record_request(quote, LIVE))
         transcript = call_manager.transcript
         turns = call_manager.turn_number
         logger.info(f"Call ended. Turns: {turns}, Transcript: {len(transcript)} entries")
