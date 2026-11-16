@@ -14,8 +14,12 @@ let store: Store;
 const jsonSpy = jest.spyOn(NextResponse, 'json');
 
 jest.mock('@/lib/firebase-admin', () => ({ getDb: async () => (global as any).__fakeDb }));
+let windowOpen = true;
 jest.mock('@/lib/calling-hours', () => ({
-    checkCallingWindow: () => ({ allowed: true, istHour: 12, istTime: '12:00 IST', reason: '', nextAllowedAt: null }),
+    checkCallingWindow: () =>
+        windowOpen
+            ? { allowed: true, istHour: 12, istTime: '12:00 IST', reason: '', nextAllowedAt: null }
+            : { allowed: false, istHour: 19, istTime: '19:05 IST', reason: 'Outside calling hours', nextAllowedAt: null },
 }));
 jest.mock('@/lib/voice-pipeline/health', () => ({ getEffectiveMode: async () => 'batch' }));
 jest.mock('@/lib/vobiz/tokens', () => ({
@@ -90,6 +94,34 @@ describe.each(Object.keys(PROVIDERS))('provider=%s', (provider) => {
         const res = await POST(req({ outreachId: 'o1', parentLanguage: 'Hindi' }));
         expect(res.status).toBe(409);
         expect(contacted()).toBe(0);
+    });
+
+    // A repeated POST arrives while the first call is live, and something that
+    // would refuse a NEW call is now true. The repeat must answer 409 and leave
+    // the live record alone: marking it failed would stick (the first final state
+    // wins) and the real outcome of the call would be lost.
+    const REFUSE_ON_REPEAT: Record<string, () => void> = {
+        'calling window closed': () => { windowOpen = false; },
+        'class no longer owned': () => { store.classes.c1.teacherUid = 'teacher-B'; },
+        'student removed': () => { delete store['classes/c1/students'].s1; },
+        'parent phone removed': () => { store['classes/c1/students'].s1.parentPhone = ''; },
+        'record lost its student': () => { store.parent_outreach.o1.studentId = ''; },
+    };
+    it.each(Object.keys(REFUSE_ON_REPEAT))('a repeated POST never marks the live call failed (%s)', async (name) => {
+        expect((await POST(req({ outreachId: 'o1', parentLanguage: 'Hindi' }))).status).toBe(200);
+        store.parent_outreach.o1.callStatus = 'in_progress';
+        const afterFirst = contacted();
+        REFUSE_ON_REPEAT[name]();
+        try {
+            const second = await POST(req({ outreachId: 'o1', parentLanguage: 'Hindi' }));
+            expect(second.status).toBe(409);
+            expect(lastJsonBody(jsonSpy).code).toBe('ALREADY_DIALLED');
+            expect(store.parent_outreach.o1.callStatus).toBe('in_progress');
+            expect(store.parent_outreach.o1.callFailureCategory).toBeUndefined();
+            expect(contacted()).toBe(afterFirst);
+        } finally {
+            windowOpen = true;
+        }
     });
 
     it("another teacher's record is still 403, and is not claimed", async () => {

@@ -100,6 +100,15 @@ async function resolveOutreachTarget(
     if (data.teacherUid !== userId) {
         return { ok: false, owned: false, response: NextResponse.json({ error: 'Unauthorized', code: 'FORBIDDEN' }, { status: 403 }) };
     }
+    // Already dialled: the record belongs to the first request, whose call may be
+    // ringing or in progress. Answer 409 BEFORE any other check, and as not-owned
+    // so POST writes nothing: a refusal here (calling window just closed, parent
+    // opted out, class or phone changed) would otherwise mark the live call
+    // failed, and the first final state wins (gate: attendance-call-single-dial).
+    // `callSid` covers records dialled before the claim existed.
+    if (data.dialClaimedAt || data.callSid) {
+        return { ok: false, owned: false, response: alreadyDialled({ userId, outreachId }) };
+    }
 
     const classId = typeof data.classId === 'string' ? data.classId : '';
     const studentId = typeof data.studentId === 'string' ? data.studentId : '';
