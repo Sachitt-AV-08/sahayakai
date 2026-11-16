@@ -1,7 +1,7 @@
 {
   "_meta": {
     "purpose": "The one line a concern call says in place of the concern (founder decision, 23 Oct 2026): who would like to speak and when, never why. Read by src/lib/attendance/request-to-talk.ts.",
-    "english": "Same sentence as REQUEST_TO_TALK_LINES.classroom_behaviour on fix/riya-sampark-onto-156 and REQUEST_TO_TALK_LINE in sahayakai-agents telephony/prompt.py.",
+    "english": "Same sentence as REQUEST_TO_TALK_LINES.classroom_behaviour on fix/riya-sampark-onto-156 and REQUEST_TO_TALK_LINE in the sahayakai-agents bridge (fix/agents-telephony-phase0). Spoken by the Twilio TwiML route and returned by /api/attendance/call-context; not yet used by services/voice-server, which speaks production Vobiz calls.",
     "reviewStatus": "draft — every non-English line needs native-speaker sign-off before it is relied on",
     "reviewedBy": null,
     "notes": [

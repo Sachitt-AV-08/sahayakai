@@ -15,7 +15,12 @@
  * that speak to a parent, or hand a voice pipeline what to speak, call `parentCallContent` and
  * never read those fields themselves (gate: src/__tests__/attendance/gate-request-to-talk-paths.test.ts).
  *
- * The same rule and the same English line live in sahayakai-agents telephony/prompt.py.
+ * Scope: the web routes that speak to a parent or serve a pipeline (the Twilio TwiML route and
+ * /api/attendance/call-context). NOT the engine that speaks production Vobiz calls: that is the
+ * Pipecat voice server (services/voice-server, deployed as sahayakai-telephony), which reads
+ * parent_outreach itself; its request-to-talk fix and gate (services/voice-server/tests/) come in
+ * a separate PR. The same English line is used by Sampark and by the sahayakai-agents bridge
+ * (fix/agents-telephony-phase0), neither of which serves production calls today.
  */
 
 import requestToTalkScript from '@/locales/call-scripts/request-to-talk.json';

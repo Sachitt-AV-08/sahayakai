@@ -33,8 +33,13 @@
  *     - a file that builds call XML (`<?xml`, `<Say>`, `<Speak>`, `<Stream>`, `<Play>`) or
  *       serves the voice pipeline (`x-internal-key`) must be a known parent-facing file or carry
  *       a stated exemption; parent-facing files read no concern field themselves;
- *     - the production Vobiz answer route is checked behaviourally too: for every reason it
- *       streams, and speaks nothing from the record.
+ *     - the Vobiz answer route's XML is checked behaviourally: for every reason it carries only
+ *       the <Stream> to the telephony service and nothing from the outreach record.
+ *
+ * NOT covered here: what is SPOKEN on a production Vobiz call. That is the Pipecat voice server
+ * (sahayakai-main/services/voice-server, deployed as sahayakai-telephony), which reads
+ * parent_outreach from Firestore itself and does not go through parentCallContent. Its gate is
+ * services/voice-server/tests/, arriving in a separate PR.
  */
 
 import fs from 'fs';
@@ -573,10 +578,12 @@ describe('structural: concern fields reach a parent only through parentCallConte
     });
 });
 
+// The answer route's XML only. The speech on a Vobiz call comes from services/voice-server,
+// which this file does not cover (see the header; its gate is services/voice-server/tests/).
 describe.each([...REQUEST_TO_TALK_REASONS, 'positive_feedback'].map((r) => [String(r), r] as const))(
-    'Vobiz answer (production path), reason=%s',
+    'Vobiz answer route XML, reason=%s',
     (_label, reason) => {
-        it('streams the call and speaks nothing from the outreach record', async () => {
+        it('carries only the stream, nothing from the outreach record', async () => {
             process.env.VOBIZ_STREAM_BASE_URL = 'https://telephony.test';
             store.set(OUTREACH, concernRecord(reason));
             const res = await vobizAnswerGET({
