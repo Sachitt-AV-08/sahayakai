@@ -63,6 +63,10 @@ TWILIO_LANG_MAP = LANGUAGE_CODES
 
 # Sarvam TTS voice mapping — male and female options
 # See: https://docs.sarvam.ai/api-reference-docs/text-to-speech
+# After a stop request the call ends gracefully (acknowledgement, then
+# EndFrame). If that has not finished by then, cancel the pipeline anyway.
+STOP_CANCEL_AFTER_SECONDS = 20.0
+
 SARVAM_VOICE_FEMALE = "priya"   # Female voice — for female teacher names
 SARVAM_VOICE_MALE = "rahul"     # Male voice — for male teacher names
                                 # bulbul:v3 male voices (verified 2026-04):
@@ -348,6 +352,21 @@ async def create_bot(
         logger.info(f"Parent asked not to be called again (outreach {outreach_id}); acknowledging and ending")
         opt_out["write"] = asyncio.ensure_future(_write_opt_out())
         await task.queue_frames([TTSSpeakFrame(text=plan.stop_acknowledgement), EndFrame()])
+        asyncio.ensure_future(_cancel_if_still_running())
+
+    async def _cancel_if_still_running():
+        await asyncio.sleep(STOP_CANCEL_AFTER_SECONDS)
+        has_finished = getattr(task, "has_finished", None)
+        if callable(has_finished) and has_finished() is True:
+            return
+        await _cancel_pipeline("stop request did not end the call in time")
+
+    async def _cancel_pipeline(why: str):
+        try:
+            await task.cancel()
+            logger.info(f"Pipeline cancelled for outreach {outreach_id}: {why}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Pipeline cancel failed for outreach {outreach_id}: {e}")
 
     if on_opt_out is not None:
         stop_stages = [StopRequestGuard(on_stop=_on_stop_request)]  # "Don't call me again" never reaches the model
@@ -481,15 +500,26 @@ async def create_bot(
 
     finalizing: dict = {"task": None}
 
+    def _start_finalize():
+        if finalizing["task"] is None:
+            finalizing["task"] = asyncio.ensure_future(_finalize_once())
+        return finalizing["task"]
+
     async def finalize():
         # Shared future: a second caller waits for the first run instead of
         # repeating it, and cannot cancel it by going away.
-        if finalizing["task"] is None:
-            finalizing["task"] = asyncio.ensure_future(_finalize_once())
-        await asyncio.shield(finalizing["task"])
+        await asyncio.shield(_start_finalize())
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport_instance, websocket):
-        await finalize()
+        # The far end is gone: the parent hung up or the carrier ended the
+        # stream. Start the bookkeeping FIRST (it owns the opt-out retry and
+        # runs as its own shielded task, so cancelling the pipeline cannot cut
+        # it short), then stop the pipeline at once. Left alone it idles until
+        # pipecat's idle timeout, about 5 minutes, holding an instance slot
+        # with CPU always allocated (seen live on 2026-11-16).
+        pending = _start_finalize()
+        await _cancel_pipeline("far end disconnected")
+        await asyncio.shield(pending)
 
     return task, finalize

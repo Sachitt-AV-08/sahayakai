@@ -239,6 +239,18 @@ class PipelineTask(Stub):
         RECORDER.add("PipelineTask.queue_frames", (frames,), {})
         self.queued.extend(frames)
 
+    # The pipeline never really runs here, so it never finishes on its own.
+    finished = False
+    cancelled_at: float | None = None
+
+    def has_finished(self) -> bool:
+        return self.finished
+
+    async def cancel(self, *, reason=None) -> None:
+        RECORDER.add("PipelineTask.cancel", (), {"reason": reason})
+        if self.cancelled_at is None:
+            self.cancelled_at = asyncio.get_running_loop().time()
+
 
 class _Logger:
     """loguru stand-in. Keeps every record, so a test can read what would be logged."""
