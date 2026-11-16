@@ -17,7 +17,7 @@ from typing import Callable, Awaitable, TYPE_CHECKING
 from loguru import logger
 from pipecat.frames.frames import (
     Frame,
-    EndFrame,
+    EndTaskFrame,
     LLMTextFrame,
     LLMFullResponseStartFrame,
     LLMFullResponseEndFrame,
@@ -101,6 +101,19 @@ class CallManager(FrameProcessor):
     @property
     def turn_number(self) -> int:
         return self._turn_number
+
+    async def _end_call(self) -> None:
+        """Ask the pipeline TASK to end, from its source.
+
+        An EndFrame pushed downstream from here (the old way) only reached TTS
+        and the output: the task never saw it, runner.run() never returned, so
+        main.py never hung up and the parent sat on a silent, billed line
+        until they hung up or pipecat's idle timeout fired. EndTaskFrame goes
+        UPSTREAM to the task, which queues an EndFrame at the source; it
+        travels behind the goodbye already on its way to TTS, so the goodbye
+        is still spoken first.
+        """
+        await self.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
 
     @property
     def transcript(self) -> list[dict]:
@@ -237,10 +250,8 @@ class CallManager(FrameProcessor):
             # End call after max turns
             if self._turn_number >= self._max_turns:
                 logger.info(f"Max turns ({self._max_turns}) reached — ending call")
-                # Pass the EndFrame AFTER the current frame so TTS
-                # can finish speaking the final response
                 await self.push_frame(frame, direction)
-                await self.push_frame(EndFrame())
+                await self._end_call()
                 return
 
             # End call after CLOSE phase goodbye is spoken
@@ -250,7 +261,7 @@ class CallManager(FrameProcessor):
                 if self._phase_instructor.phase == ConversationPhase.ENDED:
                     logger.info(f"CLOSE phase complete — ending call after turn {self._turn_number}")
                     await self.push_frame(frame, direction)
-                    await self.push_frame(EndFrame())
+                    await self._end_call()
                     return
 
         # Pass ALL frames through — CallManager is transparent

@@ -149,6 +149,14 @@ class EndFrame(Frame):
     pass
 
 
+class EndTaskFrame(Frame):
+    pass
+
+
+class CancelFrame(Frame):
+    pass
+
+
 class LLMTextFrame(TextFrame):
     pass
 
@@ -224,6 +232,13 @@ class Pipeline(Stub):
     def __init__(self, processors, *args, **kwargs) -> None:
         super().__init__(processors, *args, **kwargs)
         self.processors = list(processors)
+        self.task = None
+
+    async def queue_frame(self, frame, direction=None) -> None:
+        """A frame injected straight into the pipeline (pipecat: skips the task's push queue)."""
+        RECORDER.add("Pipeline.queue_frame", (frame,), {})
+        if isinstance(frame, CancelFrame) and self.task is not None:
+            self.task.end_reason = self.task.end_reason or "CancelFrame injected into the pipeline"
 
 
 class PipelineTask(Stub):
@@ -232,12 +247,32 @@ class PipelineTask(Stub):
     def __init__(self, pipeline, *args, **kwargs) -> None:
         super().__init__(pipeline, *args, **kwargs)
         self.pipeline = pipeline
+        if isinstance(pipeline, Pipeline):
+            pipeline.task = self
         self.queued: list[Any] = []
+
+    # How the task ends, modelled on pipecat (see ModelRunner):
+    #   an EndFrame queued at the source, or an EndTaskFrame pushed UPSTREAM to
+    #   the task, ends it; an EndFrame pushed downstream from mid-pipeline does
+    #   not. With `stall_end` set, the graceful end never completes (a
+    #   processor hangs on the EndFrame), and task.cancel() then queues behind
+    #   it and does nothing; only a CancelFrame injected into the pipeline ends it.
+    end_reason: str | None = None
+    stall_end = False
+    end_in_flight = False
+
+    def request_end(self, reason: str) -> None:
+        if self.stall_end:
+            self.end_in_flight = True
+            return
+        self.end_reason = self.end_reason or reason
 
     async def queue_frames(self, frames) -> None:
         frames = list(frames)
         RECORDER.add("PipelineTask.queue_frames", (frames,), {})
         self.queued.extend(frames)
+        if any(isinstance(f, EndFrame) for f in frames):
+            self.request_end("EndFrame queued at the source")
 
     # The pipeline never really runs here, so it never finishes on its own.
     finished = False
@@ -250,6 +285,8 @@ class PipelineTask(Stub):
         RECORDER.add("PipelineTask.cancel", (), {"reason": reason})
         if self.cancelled_at is None:
             self.cancelled_at = asyncio.get_running_loop().time()
+        if not self.end_in_flight:  # pipecat: a CancelFrame queued behind a stuck EndFrame never runs
+            self.end_reason = self.end_reason or "cancel"
 
 
 class _Logger:
@@ -289,7 +326,7 @@ _SPECIFIC: dict[str, dict[str, Any]] = {
     "pipecat.frames.frames": {
         c.__name__: c
         for c in (
-            Frame, TextFrame, TTSSpeakFrame, EndFrame, LLMTextFrame, TranscriptionFrame,
+            Frame, TextFrame, TTSSpeakFrame, EndFrame, EndTaskFrame, CancelFrame, LLMTextFrame, TranscriptionFrame,
             InterimTranscriptionFrame, LLMFullResponseStartFrame, LLMFullResponseEndFrame,
             LLMContextFrame,
         )
@@ -788,3 +825,52 @@ class ScriptedRunner:
     async def run(self) -> None:
         if ScriptedRunner.script is not None:
             await ScriptedRunner.script()
+
+
+class ModelRunner:
+    """pipecat's WorkerRunner as far as ending is concerned.
+
+    run() returns only when the task ends the way pipecat ends it (see
+    PipelineTask.request_end): an EndFrame queued at the source, an
+    EndTaskFrame pushed UPSTREAM by a processor, a cancel, or a CancelFrame
+    injected into the pipeline. An EndFrame pushed downstream from the middle
+    of the pipeline does not end it. `script` runs while the call is live and
+    may raise. If nothing ends the task within `max_wait`, run() gives up and
+    records `timed_out` (the real runner would wait for the idle timeout).
+    """
+
+    script = None
+    max_wait = 1.0
+    last = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.tasks: list = []
+        self.timed_out = False
+        self.ended = False
+        self.returned_after: float | None = None
+        ModelRunner.last = self
+
+    async def add_workers(self, task) -> None:
+        self.tasks.append(task)
+
+    async def run(self) -> None:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        task = self.tasks[0]
+        if ModelRunner.script is not None:
+            await ModelRunner.script()
+        while task.end_reason is None:
+            for processor in task.pipeline.processors:
+                if not isinstance(processor, FrameProcessor):
+                    continue  # transport ends, services: stand-ins with no frames of their own
+                for frame, direction in processor.pushed:
+                    if type(frame).__name__ == "EndTaskFrame" and direction is FrameDirection.UPSTREAM:
+                        task.request_end("EndTaskFrame reached the task")
+            if task.end_reason is not None:
+                break
+            if loop.time() - started > ModelRunner.max_wait:
+                self.timed_out = True
+                break
+            await asyncio.sleep(0.005)
+        self.ended = task.end_reason is not None
+        self.returned_after = loop.time() - started
