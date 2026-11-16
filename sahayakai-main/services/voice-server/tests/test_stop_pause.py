@@ -88,6 +88,7 @@ def _pipeline(script, monkeypatch, quiet=0.05):
         from src import stop_guard
 
         monkeypatch.setattr(stop_guard, "QUIET_SECONDS", quiet)
+        monkeypatch.setattr(stop_guard, "STT_MARGIN_SECONDS", 0.0)  # timed: tests/test_stop_hold_timing.py
 
         async def recorded(quote, source):
             calls.append((quote, source))

@@ -10,10 +10,15 @@ opt_out.StopListener:
           bot.py, which records it for the teacher, says the fixed line and
           closes the call politely.
   WAIT    a plain "don't call me". Held, unseen by the model, until the next
-          transcription or QUIET_SECONDS of quiet: "Don't call me" + "after
-          9 pm" is a limit, not a stop. If it was not a stop after all, the
+          transcription or a quiet spell: "Don't call me" + "after 9 pm" is a
+          limit, not a stop. The quiet is measured from when the parent STOPS
+          speaking (the VAD frames): their starting to speak again cancels
+          it, their stopping restarts it, with STT_MARGIN_SECONDS for the
+          final transcription to arrive. If it was not a stop after all, the
           held transcription is released to the model, in order, before the
-          next one.
+          next one. HOLD_CAP_SECONDS bounds the hold: a parent who keeps
+          talking gets a decision at the cap (released to the model; the
+          post-call check still sees it).
   PASS    ordinary speech, passed on unchanged.
 Nothing here writes anything, and nothing anywhere in the engine blocks a
 number.
@@ -29,8 +34,16 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from src.opt_out import NOTICE, WAIT, StopListener, normalize
 
-# How long a plain stop waits for the rest of the sentence.
+# How long a plain stop waits, after the parent stops speaking, for the rest
+# of the sentence; plus the time a final transcription takes to arrive after
+# the speech ends. No hold lasts longer than the cap.
 QUIET_SECONDS = 1.2
+STT_MARGIN_SECONDS = 0.6
+HOLD_CAP_SECONDS = 5.0
+# The parent starting / stopping to speak (by name: pipecat versions differ in
+# which of these the transport sends).
+_STARTED_SPEAKING = frozenset({"VADUserStartedSpeakingFrame", "UserStartedSpeakingFrame"})
+_STOPPED_SPEAKING = frozenset({"VADUserStoppedSpeakingFrame", "UserStoppedSpeakingFrame"})
 
 
 class StopRequestGuard(FrameProcessor):
@@ -48,6 +61,7 @@ class StopRequestGuard(FrameProcessor):
         self._on_stop = on_stop
         self._held: list[tuple[Frame, FrameDirection]] = []
         self._quiet: asyncio.Task | None = None
+        self._cap: asyncio.Task | None = None
         self.spoken_since_notice = False
 
     @property
@@ -63,6 +77,16 @@ class StopRequestGuard(FrameProcessor):
             self._quiet.cancel()
         self._quiet = None
 
+    def _start_quiet(self) -> None:
+        self._cancel_quiet()
+        self._quiet = asyncio.ensure_future(self._after_quiet())
+
+    def _end_hold(self) -> None:
+        self._cancel_quiet()
+        if self._cap is not None and not self._cap.done() and self._cap is not asyncio.current_task():
+            self._cap.cancel()
+        self._cap = None
+
     def _held_text(self, extra: str = "") -> str:
         texts = [f.text or "" for f, _ in self._held] + ([extra] if extra else [])
         return " ".join(t.strip() for t in texts if t and t.strip())
@@ -73,16 +97,25 @@ class StopRequestGuard(FrameProcessor):
         await self._on_stop(utterance, self._listener.quote or utterance)
 
     async def _after_quiet(self) -> None:
-        await asyncio.sleep(QUIET_SECONDS)
+        await asyncio.sleep(QUIET_SECONDS + STT_MARGIN_SECONDS)
         if self._listener.on_quiet():
+            self._end_hold()
             await self._fire()
+
+    async def _after_cap(self) -> None:
+        await asyncio.sleep(HOLD_CAP_SECONDS)
+        if self._listener.release_pending():
+            self._end_hold()
+            held, self._held = self._held, []
+            for held_frame, held_direction in held:
+                await self.push_frame(held_frame, held_direction)
 
     def take_pending(self) -> tuple[str, str] | None:
         """The call is ending with a plain stop still held: it stands.
 
         Returns (utterance, quote) and forgets it; None when nothing is held.
         """
-        self._cancel_quiet()
+        self._end_hold()
         if not self._listener.on_quiet():
             return None
         utterance = self._held_text()
@@ -91,6 +124,13 @@ class StopRequestGuard(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+
+        if self._held and not self._listener.noticed:
+            name = type(frame).__name__
+            if name in _STARTED_SPEAKING:
+                self._cancel_quiet()  # they are still talking: wait for their words
+            elif name in _STOPPED_SPEAKING:
+                self._start_quiet()   # measure the quiet from here
 
         if isinstance(frame, TranscriptionFrame):
             text = frame.text or ""
@@ -104,16 +144,17 @@ class StopRequestGuard(FrameProcessor):
                     now = None
                 decision = self._listener.hear(text, now)
                 if decision == NOTICE:
-                    self._cancel_quiet()
+                    self._end_hold()
                     await self._fire(text)
                     return
                 if decision == WAIT:
-                    self._cancel_quiet()
+                    self._end_hold()
                     self._held.append((frame, direction))
-                    self._quiet = asyncio.ensure_future(self._after_quiet())
+                    self._start_quiet()
+                    self._cap = asyncio.ensure_future(self._after_cap())
                     return
                 # Not a stop: anything held goes to the model first, in order.
-                self._cancel_quiet()
+                self._end_hold()
                 held, self._held = self._held, []
                 for held_frame, held_direction in held:
                     await self.push_frame(held_frame, held_direction)

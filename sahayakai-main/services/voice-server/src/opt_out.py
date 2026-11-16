@@ -877,6 +877,16 @@ class StopListener:
             return WAIT
         return PASS
 
+    def release_pending(self) -> bool:
+        """The hold ran out without a decision (the parent kept talking): not a live stop.
+
+        The held words go to the model; the post-call check still sees them.
+        """
+        if self.pending is None or self.noticed:
+            return False
+        self._previous_raw, self.pending = self.pending, None
+        return True
+
     def on_quiet(self) -> bool:
         """The parent said nothing more after a plain stop: it stands."""
         if self.pending is None or self.noticed:
