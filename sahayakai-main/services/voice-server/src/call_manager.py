@@ -26,6 +26,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from src.call_policy import AI_REVEAL_ORIGINAL
+from src.opt_out import is_no_more_calls_promise
 from src.conversation_state import PHASE_INSTRUCTION_PREFIX
 
 if TYPE_CHECKING:
@@ -83,6 +84,7 @@ class CallManager(FrameProcessor):
         ai_reveal_pattern: "re.Pattern[str] | None" = None,
         ai_reveal_line: str | None = None,
         closing_line: str | None = None,
+        on_promise: "Callable[[str], Awaitable[str | None]] | None" = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -107,6 +109,13 @@ class CallManager(FrameProcessor):
         # TTS for the rest of the call: the next model reply is replaced by
         # this fixed goodbye and the call ends (rereview final #1).
         self._closing_line = closing_line
+        # Every reply is screened before it is spoken: its first sentence is
+        # held until complete, and a "we won't call you again" promise is
+        # dropped and handled as a stop request (`on_promise(parent_words)`
+        # records it and returns the opt-out line to say, or None).
+        self._on_promise = on_promise
+        self._held = ""
+        self._promise_detected = False
         self._fixed_close = False
         self._replied_after_notice = False
         self._goodbye_taken = False
@@ -165,6 +174,47 @@ class CallManager(FrameProcessor):
                 await self._on_ending(why)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Ending watchdog could not start: {e}")
+
+    async def _release_held(self, direction: FrameDirection) -> None:
+        """Speak the held first sentence, unless it promises no more calls."""
+        text, self._held = self._held, ""
+        if is_no_more_calls_promise(text):
+            self._promise_detected = True
+            logger.warning(f"Turn {self._turn_number + 1}: model reply promised no more calls; dropped before speech")
+            return
+        clean = _SANITIZE_RE.sub('', text).replace('\n', ' ')
+        if clean.strip():
+            await self.push_frame(LLMTextFrame(text=clean), direction)
+
+    def _last_parent_words(self) -> str:
+        for turn in reversed(self.transcript):
+            if turn["role"] == "parent":
+                return turn["text"]
+        return ""
+
+    async def _handle_promise(self, frame: Frame, direction: FrameDirection) -> None:
+        """The model promised no more calls: never say it; treat it as the parent's stop.
+
+        With a recorder (`on_promise`), the parent's last words are recorded
+        for the teacher and the opt-out line is said; then the fixed goodbye,
+        and the call ends. From here on no model text is spoken.
+        """
+        self._turn_number += 1
+        self._fixed_close = True
+        noted = None
+        if self._on_promise is not None:
+            try:
+                noted = await self._on_promise(self._last_parent_words())
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Handling a promised stop failed: {type(e).__name__}")
+        lines = [noted] if noted else []
+        if self._closing_line and self.take_goodbye():
+            lines.append(self._closing_line)
+        for line in lines:
+            await self.push_frame(TTSSpeakFrame(text=line), direction)
+            self._context.add_message({"role": "assistant", "content": line})
+        await self.push_frame(frame, direction)
+        await self._end_call("the close after a reply the engine would not say")
 
     async def _fixed_close_frame(self, frame: Frame, direction: FrameDirection) -> None:
         """Model output after a possible stop: never spoken."""
@@ -235,47 +285,56 @@ class CallManager(FrameProcessor):
             self._current_response = ""
             self._sentence_complete = False
             self._ai_reveal_detected = False
+            self._held = ""
+            self._promise_detected = False
 
         elif isinstance(frame, LLMTextFrame):
-            if self._collecting:
-                # If AI reveal detected or first sentence complete, suppress
-                if self._ai_reveal_detected or self._sentence_complete:
-                    self._current_response += frame.text  # Still collect for context
+            if not self._collecting:
+                # Text outside a model response: screened, then passed on.
+                if self._ai_reveal_re.search(frame.text) or is_no_more_calls_promise(frame.text):
                     return
-                self._current_response += frame.text
-                # Check if first sentence is now complete
-                m = _SENTENCE_END_RE.search(self._current_response)
-                if m:
-                    self._sentence_complete = True
-                    # Truncate frame text: only keep up to the sentence end
-                    # prev text length = accumulated - this frame's text
-                    prev_len = len(self._current_response) - len(frame.text)
-                    cut_pos = m.end() - prev_len  # position within this frame
-                    if cut_pos > 0:
-                        frame = LLMTextFrame(text=frame.text[:cut_pos])
-                    else:
-                        # Sentence ended in a previous frame — suppress this one
-                        return
+                clean = _SANITIZE_RE.sub('', frame.text).replace('\n', ' ')
+                if clean.strip():
+                    await self.push_frame(LLMTextFrame(text=clean), direction)
+                return
+            self._current_response += frame.text  # still collected for context
+            # After the first sentence, or once the reply is rejected, nothing more is spoken.
+            if self._ai_reveal_detected or self._promise_detected or self._sentence_complete:
+                return
+            piece = frame.text
+            m = _SENTENCE_END_RE.search(self._current_response)
+            if m:
+                self._sentence_complete = True
+                # Keep only up to the sentence end (prev = accumulated - this frame)
+                prev_len = len(self._current_response) - len(frame.text)
+                piece = frame.text[: max(0, m.end() - prev_len)]
+            self._held += piece
             # Guard: if any AI-revealing words in accumulated response, suppress ALL text
             if self._ai_reveal_re.search(self._current_response):
                 self._ai_reveal_detected = True
-                return  # Suppress this and all future text frames
-
-            # Sanitize text for TTS — strip markdown/symbols that break Sarvam
-            clean = _SANITIZE_RE.sub('', frame.text)
-            # Replace newlines with spaces (preserve word spacing!)
-            clean = clean.replace('\n', ' ')
-            # Only strip if result is entirely whitespace
-            if not clean.strip():
+                self._held = ""
                 return
-            if clean != frame.text:
-                frame = LLMTextFrame(text=clean)
+            if self._sentence_complete:
+                await self._release_held(direction)
+            return
 
         elif isinstance(frame, LLMFullResponseEndFrame):
             self._collecting = False
 
             # Already past max turns — suppress everything
             if self._turn_number >= self._max_turns:
+                self._held = ""
+                return
+
+            # A reply with no sentence end is screened and spoken now.
+            if self._held and not self._ai_reveal_detected:
+                await self._release_held(direction)
+            # A promise wins over the identity guard ("we will never call you
+            # aGAIn" trips both): it is the parent's stop that needs handling.
+            if self._ai_reveal_detected and is_no_more_calls_promise(_first_sentence(self._current_response)):
+                self._promise_detected = True
+            if self._promise_detected:
+                await self._handle_promise(frame, direction)
                 return
 
             self._turn_number += 1

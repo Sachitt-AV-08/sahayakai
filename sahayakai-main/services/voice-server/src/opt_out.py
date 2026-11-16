@@ -158,6 +158,14 @@ _HI_CALL = r"(?:फ़ोन|फोन|कॉल|काल)"
 _HI_VERB = rf"(?:करना|करो|कीजिए|कीजिये|करें|करिए|करिएगा|किया\s*करो){_END}"
 _HI_DONT = rf"(?:मत|ना|न|नहीं)\s*{_HI_VERB}"
 _HI_AGAIN = r"(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|कभी\s*भी|कभी|आगे\s*से|अब\s*से)"
+_HI_CALLS = rf"{_HI_CALL}(?:्स|ें|े)?"  # कॉल्स, कॉलें: plural "calls"
+_HI_STOP_VERB = r"(?:करो|कीजिए|कीजिये|करें|करिए|कर\s*दो|कर\s*दीजिए)"
+# "बंद करो ये कॉल", "ये कॉल्स बंद करो": stop THESE calls. Not "फ़ोन बंद करो"
+# (hang up): the call word comes after the verb, or is plural with "these".
+_HI_STOP_THESE_CALLS = (
+    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*{_HI_CALLS}"
+    rf"|(?:ये|यह|इन|ऐसे)\s*{_HI_CALL}(?:्स|ें)\s*बंद\s*{_HI_STOP_VERB})"
+)
 _BN_CALL = r"(?:ফোন|কল)"
 _BN_DONT = r"(?:করবেন|কোরো|করো|করিস|দিবেন|দেবেন|দিও|দিয়ো|দিস)\s*না"
 _MR_CALL = r"(?:फोन|फ़ोन|कॉल)"
@@ -218,7 +226,8 @@ _STOP_PHRASES = _compile(
     rf"{_HI_CALL}\s*{_HI_DONT}",
     rf"{_HI_CALL}\s*करना\s*बंद\s*(?:करो|कीजिए|करें|कर\s*दो|कर\s*दीजिए|करिए)",
     r"(?:स्टॉप|स्टाप)\s*(?:कॉलिंग|कालिंग)",
-    rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALL}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
+    rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
+    _HI_STOP_THESE_CALLS,
     r"डोंट\s*(?:कॉल|काल)",
     r"परेशान\s*(?:मत|ना)\s*(?:करो|कीजिए|करें|करिए)",
     # Bengali
@@ -243,42 +252,85 @@ _STOP_PHRASES = _compile(
 # In the same utterance, these make "don't call" mean something else: a time
 # limit ("not now", "before 10", "today"), someone else ("my husband",
 # "उनको", "স্বামীকে"), or a redirection ("I'll come myself", "I'll call you").
-_NOT_A_STOP = _compile(
-    # Time and scope
+_TIME_PARTS = (
     r"\b(?:now|right now|at the moment|today|tonight|tomorrow|later|morning|afternoon|evening|night|"
-    r"after|before|until|till|during|weekend|weekdays?|office|work|working|busy|driving|meeting|"
+    r"after|before|until|till|during|weekend|weekdays?|"
     r"o'?clock|\d{1,2}\s*(?:am|pm)|minutes?|hours?|next week|this week|exams?)\b",
     r"\b(?:abhi|baad|kal|shaam|subah|raat|dopahar|aaj|ghante|minute|baje)\b",
-    _word(r"अभी|बाद|कल|शाम|सुबह|रात|दोपहर|आज|बिज़ी|बिजी|व्यस्त|घंटे|मिनट|बजे|ऑफिस|मीटिंग|ड्राइव"),
-    r"गाड़ी\s*चला",
-    _word(r"आता|नंतर|उद्या|संध्याकाळी|सकाळी|रात्री|दुपारी|कामात"),
-    _word(r"এখন|পরে|কাল|সন্ধ্যা|সন্ধ্যায়|সকাল|সকালে|রাতে|দুপুর|দুপুরে|আজ|ব্যস্ত|অফিস|মিটিং"),
-    r"গাড়ি\s*চালা",
-    _word(r"અત્યારે|હમણાં|પછી|કાલે|સાંજે|સવારે|રાત્રે|બપોરે|આજે|વ્યસ્ત|ઓફિસ"),
-    _word(r"ਹੁਣ|ਬਾਅਦ|ਕੱਲ੍ਹ|ਸ਼ਾਮ|ਸ਼ਾਮ|ਸਵੇਰੇ|ਰਾਤ|ਦੁਪਹਿਰ|ਅੱਜ|ਬਿਜ਼ੀ|ਰੁੱਝਿਆ"),
-    _starts(r"ಈಗ|ಆಮೇಲೆ|ನಂತರ|ನಾಳೆ|ಸಂಜೆ|ಬೆಳಿಗ್ಗೆ|ರಾತ್ರಿ|ಮಧ್ಯಾಹ್ನ|ಇವತ್ತು|ಬ್ಯುಸಿ"),
-    _starts(r"இப்போ|இப்போது|அப்புறம்|பிறகு|நாளை|சாயங்காலம்|மாலை|காலை|ராத்திரி|இரவு|மதியம்|இன்னைக்கு|இன்று|பிஸி"),
-    _starts(r"ఇప్పుడు|తర్వాత|తరువాత|రేపు|సాయంత్రం|పొద్దున|ఉదయం|రాత్రి|మధ్యాహ్నం|ఈరోజు|బిజీ"),
-    _starts(r"ഇപ്പോൾ|പിന്നെ|പിന്നീട്|നാളെ|വൈകുന്നേരം|രാവിലെ|രാത്രി|ഉച്ചയ്ക്ക്|ഇന്ന്|തിരക്ക്"),
+    _word(r"अभी|बाद|कल|शाम|सुबह|रात|दोपहर|आज|घंटे|मिनट|बजे"),
+    _word(r"आता|नंतर|उद्या|संध्याकाळी|सकाळी|रात्री|दुपारी"),
+    _word(r"এখন|পরে|কাল|সন্ধ্যা|সন্ধ্যায়|সকাল|সকালে|রাতে|দুপুর|দুপুরে|আজ"),
+    _word(r"અત્યારે|હમણાં|પછી|કાલે|સાંજે|સવારે|રાત્રે|બપોરે|આજે"),
+    _word(r"ਹੁਣ|ਬਾਅਦ|ਕੱਲ੍ਹ|ਸ਼ਾਮ|ਸ਼ਾਮ|ਸਵੇਰੇ|ਰਾਤ|ਦੁਪਹਿਰ|ਅੱਜ"),
+    _starts(r"ಈಗ|ಆಮೇಲೆ|ನಂತರ|ನಾಳೆ|ಸಂಜೆ|ಬೆಳಿಗ್ಗೆ|ರಾತ್ರಿ|ಮಧ್ಯಾಹ್ನ|ಇವತ್ತು"),
+    _starts(r"இப்போ|இப்போது|அப்புறம்|பிறகு|நாளை|சாயங்காலம்|மாலை|காலை|ராத்திரி|இரவு|மதியம்|இன்னைக்கு|இன்று"),
+    _starts(r"ఇప్పుడు|తర్వాత|తరువాత|రేపు|సాయంత్రం|పొద్దున|ఉదయం|రాత్రి|మధ్యాహ్నం|ఈరోజు"),
+    _starts(r"ഇപ്പോൾ|പിന്നെ|പിന്നീട്|നാളെ|വൈകുന്നേരം|രാവിലെ|രാത്രി|ഉച്ചയ്ക്ക്|ഇന്ന്"),
     _word(r"ଏବେ|ପରେ|କାଲି"),
-    # Someone else
-    r"\b(?:him|her|them|his|their)\b",
-    r"\bmy (?:son|daughter|child|kid|husband|wife|father|mother|dad|mom|mum|brother|sister)\b",
-    r"\bthe (?:child|kid|boy|girl)\b",
-    r"\b(?:uske|unke|iske|inke|mere)?\s*(?:papa|mummy|pati|husband|wife|bete|beti|bachche|bachcha|bhai|behen)\s*ko\b",
+)
+# Reasons, not limits: "I'm busy", "I'm driving", "at the office". They veto a
+# plain "don't call" (usually "not now"), but not a strong stop ("stop calling
+# me, I'm busy", "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ").
+_REASON_PARTS = (
+    r"\b(?:office|work|working|busy|driving|meeting)\b",
+    _word(r"बिज़ी|बिजी|व्यस्त|ऑफिस|मीटिंग|ड्राइव"),
+    r"गाड़ी\s*चला",
+    _word(r"कामात"),
+    _word(r"ব্যস্ত|অফিস|মিটিং"),
+    r"গাড়ি\s*চালা",
+    _word(r"વ્યસ્ત|ઓફિસ"),
+    _word(r"ਬਿਜ਼ੀ|ਰੁੱਝਿਆ"),
+    _starts(r"ಬ್ಯುಸಿ"),
+    _starts(r"பிஸி"),
+    _starts(r"బిజీ"),
+    _starts(r"തിരക്ക്"),
+)
+# Someone else.
+_PARTY_PARTS = (
+    r"\b(?:him|her|them)\b",
+    r"\b(?:my|your) (?:son|daughter|child|kid|husband|wife|father|mother|dad|mom|mum|brother|sister)\b",
+    r"\b(?:uske|unke|iske|inke|mere|aapke)?\s*(?:papa|mummy|pati|husband|wife|bete|beti|bachche|bachcha|bhai|behen)\s*ko\b",
     r"\b(?:usko|unko|isko|inko|use|unhe|unhein)\b",
     _word(r"उसको|उसे|उनको|उन्हें|इनको|इन्हें|इसको|इसे"),
-    rf"(?:^|\s)(?!मुझ|हम)\S+\s+को\s*{_HI_CALL}",  # "<anyone but me/us> को फ़ोन …"
+    rf"(?:^|\s)(?!मुझ|हम|आप)\S+\s+को\s*{_HI_CALL}",  # "<anyone but me/us/you> को फ़ोन …"
     _starts(r"(?:पति|पत्नी|पापा|पिताजी|पिता|मम्मी|माँ|मां|बेटे|बेटी|बच्चे|बच्चा|भाई|बहन|दादा|दादी|नाना|नानी)\s*को"),
     _word(r"ওকে|ওঁকে|তাকে|তাঁকে|ওনাকে|ওদের"),
     _starts(r"(?:স্বামী|বাবা|মা|ছেলে|মেয়ে|বাচ্চা|ভাই|বোন)কে"),  # word start: "আমাকে" (me) is not "মাকে"
-    # Redirection: "I'll come myself", "I'll call you"
+)
+_WEAK_PARTY_PARTS = (r"\b(?:his|their)\b", r"\bthe (?:child|kid|boy|girl)\b")
+# Redirection: "I'll come myself", "I'll call you".
+_REDIRECT_PARTS = (
     r"\bi(?:'ll| will) (?:call|phone|ring|come|visit|message|text)\b",
     r"\b(?:main|mai)\s*(?:khud|khudh)\b",
     r"मैं\s*(?:ख़ुद|खुद)",
     r"\bkhud\b",
     _word(r"ख़ुद|खुद"),
     r"আমি\s*নিজে",
+)
+_NOT_A_STOP = _compile(*_TIME_PARTS, *_REASON_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
+_LIMITS = _compile(*_TIME_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
+
+# A strong stop: "stop calling", "no more calls", "I don't want these calls",
+# or any "don't call" said with "again"/"anymore" in the call language. Only a
+# limit (time, someone else, redirection) vetoes it, not a reason.
+_STRONG_STOP = _compile(
+    r"\bstop (?:calling|phoning|ringing|these calls|the calls|your calls)\b",
+    r"\bno more (?:phone )?calls\b",
+    r"\b(?:i|we) (?:do not|don't|dont) want (?:any )?(?:more )?(?:these |your |such |any )?(?:phone )?calls\b",
+    rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
+    _HI_STOP_THESE_CALLS,
+    rf"{_HI_CALL}\s*करना\s*बंद",
+    r"\b(?:again|anymore|any more|ever)\b",
+    r"\b(?:dobara|dubara|phir se|aage se|ab se)\b",
+    _HI_AGAIN,
+    _word(r"আর|আবার"),
+    _word(r"पुन्हा|परत"),
+    _word(r"ફરીથી|ફરી"),
+    _word(r"ਦੁਬਾਰਾ|ਫਿਰ"),
+    _starts(r"ಮತ್ತೆ|ಇನ್ನು"),
+    _starts(r"இனிமேல்|இனி|மறுபடியும்"),
+    _starts(r"మళ్ళీ|ఇంకెప్పుడూ"),
+    _starts(r"ഇനി|വീണ്ടും"),
 )
 
 # Punctuation that only separates words (kept: apostrophes, Indic marks).
@@ -296,21 +348,83 @@ def normalize(text: object) -> str:
 def is_stop_request(text: object) -> bool:
     """Should the engine ASK whether this parent wants the calls to stop?
 
-    True for an unambiguous phrase ("remove my number"), or for a "don't call"
-    phrase in an utterance with no time, third-party or redirection cue. A
-    True only ever leads to a flag for the teacher (StopListener).
+    True for an unambiguous phrase ("remove my number"); for a "don't call"
+    phrase in an utterance with no time, reason, third-party or redirection
+    cue; or for a strong stop ("stop calling me, I'm busy") with no time,
+    third-party or redirection cue. A True only ever leads to a flag for the
+    teacher (StopListener).
     """
     t = normalize(text)
     if not t:
         return False
     if _UNAMBIGUOUS.search(t):
         return True
-    return bool(_STOP_PHRASES.search(t)) and not _NOT_A_STOP.search(t)
+    if not _STOP_PHRASES.search(t):
+        return False
+    if not _NOT_A_STOP.search(t):
+        return True
+    return bool(_STRONG_STOP.search(t)) and not _LIMITS.search(t)
 
 
 def has_reschedule_cue(text: object) -> bool:
     """Any time, third-party or redirection cue (used by the post-call flag too)."""
     return bool(_NOT_A_STOP.search(normalize(text)))
+
+
+# ── What the engine must never say ───────────────────────────────────────────
+#
+# Nothing on this engine blocks a number, so a model reply promising that the
+# school will not call again is a promise the school may break. CallManager
+# checks every model reply against these before it is spoken, in both call
+# modes; a match is dropped and handled as a stop request.
+
+_N = r"(?:\S+\s+){0,2}"  # up to two words between the call word and the negation
+_PROMISES = _compile(
+    # English
+    r"\b(?:won't|wont|will not|shall not|would not|wouldn't)\s+(?:be\s+)?(?:call|phone|ring|contact|disturb|bother)(?:ing|ed)?\b",
+    r"\bnever\s+(?:call|phone|ring|contact|disturb|bother)\b",
+    r"\bno (?:more|further) (?:phone )?calls?\b",
+    r"\b(?:will|we'll|i'll|shall)\s+stop\s+(?:calling|the calls|these calls|contacting)\b",
+    r"\bnot\s+(?:call|phone|ring|contact)(?:ing)?\s+(?:you\s+)?(?:again|anymore|any more)\b",
+    r"\b(?:take|remove)\s+(?:you|your number)\s+(?:off|from)\b",
+    # Hinglish
+    r"\b(?:phone|fone|call)\s*(?:nahi|nahin|nhi)\s*(?:karenge|karunga|karungi|karega|aayega|ayega|aayenge|kiya jayega)\b",
+    r"\b(?:pareshan|disturb)\s*(?:nahi|nahin)\s*(?:karenge|karunga|karungi)\b",
+    # Hindi
+    rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करेंगे|करेंगी|करूँगा|करूंगा|करूँगी|करूंगी|करेगा|करेगी|आएगा|आयेगा|आएगी|आएँगे|आएंगे|आयेंगे"
+    r"|आएँगी|आएंगी|किया\s*जाएगा|किया\s*जायेगा)",
+    r"(?:परेशान|डिस्टर्ब)\s*नहीं\s*(?:करेंगे|करूँगा|करूंगा|करूँगी|करूंगी|किया\s*जाएगा)",
+    rf"{_HI_CALLS}\s*{_N}बंद\s*(?:कर\s*देंगे|कर\s*दी\s*जाएँगी|कर\s*दी\s*जाएंगी|हो\s*जाएँगे|हो\s*जाएंगे|हो\s*जाएँगी|हो\s*जाएंगी)",
+    # Bengali
+    rf"{_BN_CALL}\s*{_N}(?:করব|করবো|করা\s*হবে|আসবে|দেব|দেবো)\s*না",
+    r"বিরক্ত\s*করব\s*না",
+    # Marathi
+    rf"{_MR_CALL}\s*{_N}(?:करणार\s*नाही|करणार\s*नाहीत|येणार\s*नाही|केला\s*जाणार\s*नाही)",
+    r"त्रास\s*देणार\s*नाही",
+    # Gujarati
+    rf"{_GU_CALL}\s*{_N}(?:(?:નહીં|નહિ)\s*(?:કરીએ|કરીશું|કરું|કરીશ|આવે)|(?:કરીએ|કરીશું|કરીશ)\s*(?:નહીં|નહિ))",
+    r"હેરાન\s*(?:નહીં|નહિ)\s*કરીએ",
+    # Punjabi
+    rf"{_PA_CALL}\s*{_N}(?:ਨਹੀਂ|ਨਹੀ)\s*(?:ਕਰਾਂਗੇ|ਕਰਾਂਗਾ|ਕਰਾਂਗੀ|ਕਰੇਗਾ|ਆਵੇਗਾ|ਆਉਣਗੇ)",
+    # Kannada
+    rf"{_KN_CALL}\s*{_N}(?:ಮಾಡುವುದಿಲ್ಲ|ಮಾಡಲ್ಲ|ಮಾಡೋದಿಲ್ಲ|ಮಾಡುವುದು\s*ಇಲ್ಲ|ಬರುವುದಿಲ್ಲ|ಬರಲ್ಲ)",
+    # Tamil
+    rf"{_TA_CALL}\s*{_N}(?:பண்ண\s*மாட்டோம்|பண்ணமாட்டோம்|செய்ய\s*மாட்டோம்|வராது)",
+    r"(?:அழைக்க|கூப்பிட)\s*மாட்டோம்",
+    # Telugu
+    rf"{_TE_CALL}\s*{_N}(?:చేయము|చేయం|చేయను|చెయ్యము|చెయ్యం|చెయ్యను|రాదు)",
+    # Malayalam
+    r"വിളിക്കില്ല|വിളിക്കുകയില്ല|വിളിക്കുന്നില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യുകയില്ല",
+)
+# A reply about a time ("we won't call now, the teacher will call this
+# evening") or someone else ("we won't call your husband") is not a promise.
+_PROMISE_VETO = _compile(*_TIME_PARTS, *_PARTY_PARTS)
+
+
+def is_no_more_calls_promise(text: object) -> bool:
+    """Would saying this promise the parent that the school will not call again?"""
+    t = normalize(text)
+    return bool(t) and bool(_PROMISES.search(t)) and not _PROMISE_VETO.search(t)
 
 
 # ── Noticing it during the call ──────────────────────────────────────────────
