@@ -75,10 +75,8 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Same heap the production image builds with (Dockerfile: NODE_OPTIONS
-          # --max-old-space-size=4096). Node 20's default cap is near 2 GB, and
-          # `next build` ran out of memory there on PR #156
-          # (gate: src/__tests__/scripts/workflow-build-heap.test.ts).
+          # Same heap as the production image (sahayakai-main/Dockerfile).
+          # Gate: src/__tests__/scripts/workflow-build-heap.test.ts.
           NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Run @smoke suite
