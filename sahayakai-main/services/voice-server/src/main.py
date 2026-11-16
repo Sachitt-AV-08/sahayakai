@@ -28,7 +28,9 @@ from src.vobiz import (
     write_call_result_firestore,
     hangup_vobiz_call,
     persist_opt_out_firestore,
+    consume_stream_token_firestore,
 )
+from src.stream_tokens import StreamUse
 
 # After the pipeline ends on its own (last turn, or a stop request) the final
 # sentence may still be playing from the carrier's buffer: the transport sends
@@ -309,6 +311,19 @@ async def handle_vobiz_call(websocket: WebSocket):
     if not outreach_id:
         logger.error("Vobiz stream rejected — bad or expired token")
         await websocket.close(code=1008, reason="Unauthorized")
+        return
+    # Single use. A genuine token stays valid until it expires, and the
+    # stream URL that carries it is in Vobiz's answer XML and the request
+    # log, so a replay would hear this call's greeting and write onto its
+    # record. The first connection consumes the token; any later one is
+    # refused here, before any call context is loaded.
+    use = await consume_stream_token_firestore(token, outreach_id, config.google_cloud_project)
+    if use is not StreamUse.FIRST:
+        logger.error(f"Vobiz stream refused for outreach {outreach_id}: token {use.value}")
+        await websocket.close(
+            code=1008 if use is StreamUse.REPLAY else 1011,
+            reason="Stream already used" if use is StreamUse.REPLAY else "Could not verify stream",
+        )
         return
     logger.info(f"Vobiz stream authorized: outreach={outreach_id}, cuid={call_uuid}")
 

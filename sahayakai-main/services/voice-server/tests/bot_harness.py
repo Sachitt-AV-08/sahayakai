@@ -553,6 +553,16 @@ class FakeWebSocket:
         self.closed = (code, reason)
 
 
+class Conflict(Exception):
+    """Same names and code as google.api_core.exceptions (AlreadyExists is a Conflict, 409)."""
+
+    code = 409
+
+
+class AlreadyExists(Conflict):
+    pass
+
+
 class _Snapshot:
     def __init__(self, data):
         self.exists = data is not None
@@ -577,6 +587,13 @@ class _AsyncDoc:
         self._db.writes.append(("set", *self._key, dict(data), merge))
         base = dict(self._db.docs.get(self._key) or {}) if merge else {}
         self._db.docs[self._key] = {**base, **data}
+
+    async def create(self, data):
+        """Firestore create(): atomic, refuses an existing document."""
+        if self._key in self._db.docs:
+            raise AlreadyExists(f"{self._key} already exists")
+        self._db.writes.append(("create", *self._key, dict(data), None))
+        self._db.docs[self._key] = dict(data)
 
     async def update(self, data):
         if self._key not in self._db.docs:

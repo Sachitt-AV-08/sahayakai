@@ -408,5 +408,6 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
                 await asyncio.sleep(0)
             return run
         run = asyncio.run(go())
-    assert db.writes == [] and db.reads == []
+    # Only the stream-token consumption touches Firestore on a built-in test call.
+    assert [w[1] for w in db.writes] == ["vobiz_stream_tokens"] and db.reads == []
     assert [type(f).__name__ for f in run.task.queued][-2:] == ["TTSSpeakFrame", "EndFrame"]

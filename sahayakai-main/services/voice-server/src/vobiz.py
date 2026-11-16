@@ -16,6 +16,7 @@ Everything Vobiz-specific lives here so bot.py / main.py stay provider-agnostic:
     same record, which is what the Contact-Parent modal renders.
   - persist_opt_out_firestore(): writes the do-not-call record the web app's
     dial routes check (call_suppressions/{sha256(E.164)}).
+  - consume_stream_token_firestore(): makes each stream token single-use.
   - hangup_vobiz_call(): ends the leg over Vobiz REST (the answer XML sets
     keepCallAlive=true, so closing the socket alone does not drop the call).
 """
@@ -151,6 +152,20 @@ async def persist_opt_out_firestore(outreach_id: str, project: str) -> bool:
     else:
         logger.error(f"Opt-out NOT saved for parent_outreach/{outreach_id}: {result.detail}")
     return result.ok
+
+
+async def consume_stream_token_firestore(token: str, outreach_id: str, project: str):
+    """Mark a verified stream token as used; returns a StreamUse (see src/stream_tokens.py).
+
+    Fails closed: if Firestore cannot record the use, the stream is refused.
+    """
+    from src.stream_tokens import StreamUse, consume_stream_token
+
+    try:
+        return await consume_stream_token(_db(project), token, outreach_id)
+    except Exception as e:  # noqa: BLE001 — e.g. the client itself could not be built
+        logger.error(f"Could not record stream use for {outreach_id}: {e}")
+        return StreamUse.ERROR
 
 
 def _iso_now() -> str:

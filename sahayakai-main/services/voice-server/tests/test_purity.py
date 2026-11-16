@@ -17,6 +17,7 @@ PURE_MODULES = [
     "src.prompts.agent_reply",
     "src.prompts.phase_guidance",
     "src.opt_out",
+    "src.stream_tokens",
 ]
 
 _PROBE = r"""
