@@ -5,6 +5,7 @@ import { isValidE164 } from '@/lib/twilio-validate';
 import { checkCallingWindow, outsideCallingHoursBody } from '@/lib/calling-hours';
 import { logger } from '@/lib/logger';
 import { classifyTwilioFailure, releasesDedupWindow } from '@/lib/twilio-errors';
+import { claimOutreachDial } from '@/lib/attendance/claim-dial';
 import { getEffectiveMode } from '@/lib/voice-pipeline/health';
 import { refuseIfParentOptedOut } from '@/lib/call-suppression';
 import { isDestinationAllowed, placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
@@ -98,6 +99,15 @@ async function resolveOutreachTarget(
     const data = snap.data()!;
     if (data.teacherUid !== userId) {
         return { ok: false, owned: false, response: NextResponse.json({ error: 'Unauthorized', code: 'FORBIDDEN' }, { status: 403 }) };
+    }
+    // Already dialled: the record belongs to the first request, whose call may be
+    // ringing or in progress. Answer 409 BEFORE any other check, and as not-owned
+    // so POST writes nothing: a refusal here (calling window just closed, parent
+    // opted out, class or phone changed) would otherwise mark the live call
+    // failed, and the first final state wins (gate: attendance-call-single-dial).
+    // `callSid` covers records dialled before the claim existed.
+    if (data.dialClaimedAt || data.callSid) {
+        return { ok: false, owned: false, response: alreadyDialled({ userId, outreachId }) };
     }
 
     const classId = typeof data.classId === 'string' ? data.classId : '';
@@ -343,6 +353,15 @@ function refuseBeforeDial(
     return null;
 }
 
+/** 409 for a repeated POST on an outreach record that has already been dialled. */
+function alreadyDialled(ctx: { userId: string; outreachId: string }): NextResponse {
+    logger.warn('Parent call refused: outreach already dialled', 'ATTENDANCE', { userId: ctx.userId, outreachId: ctx.outreachId });
+    return NextResponse.json(
+        { error: 'This call has already been placed. Start a new call to ring again.', code: 'ALREADY_DIALLED', retryable: false },
+        { status: 409 },
+    );
+}
+
 /** A refused call (to be released by POST) or the response of a call attempt. */
 type CallOutcome =
     | { refused: true; category: string; response: NextResponse }
@@ -364,6 +383,14 @@ async function placeOwnedCall(
     const override = provider === 'vobiz' ? process.env.VOBIZ_TEST_OVERRIDE_NUMBER : provider === 'twilio' ? process.env.TWILIO_TEST_OVERRIDE_NUMBER : undefined;
     const refusal = refuseBeforeDial(suppressed, { provider, ...ctx, destination: override || target.parentPhone });
     if (refusal) return { refused: true, ...refusal };
+
+    // One dial per outreach record, claimed atomically before ANY provider is
+    // contacted: a repeated POST (double click, retry loop, script) must not ring
+    // the same parent again. "Try again" in the UI creates a new record.
+    // NOT a refusal for POST to release: the first request owns this record and may be mid-call,
+    // so markNotDialled must not mark it failed (gate: attendance-call-refusals-gate.test.ts).
+    const claim = await claimOutreachDial(db as unknown as CallStatusDb, ctx.outreachId);
+    if (!claim.ok) return { refused: false, response: alreadyDialled(ctx) };
 
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone

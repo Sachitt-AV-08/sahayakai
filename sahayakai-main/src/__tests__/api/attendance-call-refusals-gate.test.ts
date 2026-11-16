@@ -219,7 +219,9 @@ describe('structural: no refusal after ownership can skip the release', () => {
     });
 
     it('placeOwnedCall hands back only a refuseBeforeDial refusal or a provider response', () => {
-        const allowed = /^return \{ refused: (true, \.\.\.refusal \}|false, response: await (forwardToExotel|forwardToVobiz|placeTwilioCall)\()/;
+        // alreadyDialled: a repeated POST on a record the first request already dialled. Not
+        // released on purpose: marking it failed would overwrite a call that may be in progress.
+        const allowed = /^return \{ refused: (true, \.\.\.refusal \}|false, response: (await (forwardToExotel|forwardToVobiz|placeTwilioCall)\(|alreadyDialled\(ctx\) \}))/;
         const returns = returnsIn(fnBody('placeOwnedCall'));
         expect(returns.length).toBeGreaterThanOrEqual(4);
         expect(returns.filter((r) => !allowed.test(r))).toEqual([]);
