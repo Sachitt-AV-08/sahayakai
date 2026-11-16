@@ -337,24 +337,37 @@ function resolveSource(id) {
 
 // ── 3. Match dynamic calls against the registry ───────────────────────────────
 
+/**
+ * A registry entry is either a list of source ids (it covers exactly one call) or
+ * { sources: [...], count: N } (it covers N calls with the same argument text in that file).
+ * The count is pinned so a NEW call that happens to read the same (often generic) expression,
+ * say a second `t(f.label)` over a different list, cannot ride on the first call's entry.
+ */
+const entrySources = (entry) => (Array.isArray(entry) ? entry : entry?.sources);
+const entryCount = (entry) => (Array.isArray(entry) ? 1 : entry?.count ?? 1);
+
 const unregistered = [];
-const matchedSites = new Set();
+const siteCounts = new Map();
 for (const s of dynamicSites) {
-    const ids = sites[s.file]?.[s.expr];
+    const ids = entrySources(sites[s.file]?.[s.expr]);
     if (!Array.isArray(ids) || ids.length === 0) {
         unregistered.push(s);
         continue;
     }
-    matchedSites.add(`${s.file}\u0000${s.expr}`);
+    const k = `${s.file}\u0000${s.expr}`;
+    siteCounts.set(k, (siteCounts.get(k) ?? 0) + 1);
     for (const id of ids) for (const key of resolveSource(id)) useKey(key, `${s.file}:${s.line} via ${id}`);
 }
 
 const referenced = new Set();
 for (const [file, exprs] of Object.entries(sites)) {
-    for (const [expr, ids] of Object.entries(exprs)) {
+    for (const [expr, entry] of Object.entries(exprs)) {
+        const ids = entrySources(entry);
         if (!Array.isArray(ids) || ids.length === 0) registryErrors.push(`site ${file} :: ${expr} lists no sources`);
         else ids.forEach((id) => referenced.add(id));
-        if (!matchedSites.has(`${file}\u0000${expr}`)) registryErrors.push(`stale site: ${file} has no dynamic t() call on \`${expr}\` (update or remove the entry)`);
+        const actual = siteCounts.get(`${file}\u0000${expr}`) ?? 0;
+        if (actual === 0) registryErrors.push(`stale site: ${file} has no dynamic t() call on \`${expr}\` (update or remove the entry)`);
+        else if (actual !== entryCount(entry)) registryErrors.push(`site ${file} :: ${expr} covers ${entryCount(entry)} call(s) but the file has ${actual}: check the new call reads the same sources, then set "count": ${actual} (or give it its own entry)`);
     }
 }
 for (const id of Object.keys(sources)) {

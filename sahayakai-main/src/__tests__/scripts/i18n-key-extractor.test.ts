@@ -65,11 +65,11 @@ const REGISTRY = {
 
 let root: string;
 
-function writeApp(registry: unknown): void {
+function writeApp(registry: unknown, page: string = PAGE): void {
     rmSync(path.join(root, "src"), { recursive: true, force: true });
     mkdirSync(path.join(root, "src", "locales"), { recursive: true });
     mkdirSync(path.join(root, "scripts"), { recursive: true });
-    writeFileSync(path.join(root, "src", "page.tsx"), PAGE);
+    writeFileSync(path.join(root, "src", "page.tsx"), page);
     for (const [name, dict] of Object.entries(LOCALES)) writeFileSync(path.join(root, "src", "locales", name), JSON.stringify(dict));
     writeFileSync(path.join(root, "scripts", "i18n-dynamic-keys.json"), JSON.stringify(registry));
 }
@@ -130,6 +130,19 @@ describe("Gate 9 key scanner sees every key and checks every locale", () => {
         const r = scan();
         expect(r.count("UNREGISTERED DYNAMIC t() CALLS")).toBe(1);
         expect(r.raw).toMatch(/src\/page\.tsx:\d+ {2}t\(label\)/);
+        expect(r.count("REGISTRY ERRORS")).toBe(0);
+    });
+
+    it("refuses a new call that reuses a registered expression until it is declared", () => {
+        // Review 2026-11-16: a second t(f.label) over a different list rode on the first call's
+        // entry and was never checked. Entries now pin how many calls they cover.
+        const twice = PAGE.replace("t(REFUSAL_TEXT[why]),", "t(REFUSAL_TEXT[why]),\n        t(REFUSAL_TEXT[why]),");
+        writeApp(REGISTRY, twice);
+        let r = scan();
+        expect(r.count("REGISTRY ERRORS")).toBe(1);
+        expect(r.raw).toContain("src/page.tsx :: REFUSAL_TEXT[why] covers 1 call(s) but the file has 2");
+        writeApp({ ...REGISTRY, sites: { "src/page.tsx": { "REFUSAL_TEXT[why]": { sources: ["fixture-refusal-text"], count: 2 } } } }, twice);
+        r = scan();
         expect(r.count("REGISTRY ERRORS")).toBe(0);
     });
 

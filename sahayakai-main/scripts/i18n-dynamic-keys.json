@@ -7,7 +7,8 @@
     "  Optional: \"props\" (only strings under these property names), \"take\": \"keys\" (object property names, not values), \"transform\": \"capitalize\", \"format\": [\"prefix.{}.suffix\"] (keys built from each value).",
     "  { \"runtime\": \"<reason>\" } declares a value that is not a fixed set of keys (text the caller already translated, AI or user text, a raw value shown as a last resort). Say why.",
     "Vocabulary sources (vocab-*) cover runtime values drawn from the app's shared lists (subjects, classes, boards, languages).",
-    "The gate fails on an unlisted dynamic call, a site that no longer matches the code, a source it cannot read, and a source no site uses."
+    "The gate fails on an unlisted dynamic call, a site that no longer matches the code, a source it cannot read, and a source no site uses.",
+    "An entry may be { \"sources\": [...], \"count\": N } when N calls in the file share the same argument text; a plain list covers exactly one call. The count is pinned so a new call reading the same (often generic) expression must be checked and declared, not ride on the first call's entry."
   ],
   "sources": {
     "vocab-grades": { "file": "src/types/index.ts", "name": "GRADE_LEVELS", "note": "class names stored on profiles, classes, resources and AI requests" },
@@ -116,7 +117,7 @@
     "src/app/attendance/page.tsx": { "cls.gradeLevel": ["vocab-grades"], "cls.subject": ["vocab-subjects"] },
     "src/app/community-library/page.tsx": { "resource.titleKey": ["community-library-mock"] },
     "src/app/community/page.tsx": { "cfg.label": ["community-post-types"], "prompt.text": ["community-prompts"] },
-    "src/app/exam-paper/components/exam-paper-document.tsx": { "paper.board": ["vocab-boards"], "paper.gradeLevel": ["vocab-grades"], "paper.subject": ["vocab-subjects"] },
+    "src/app/exam-paper/components/exam-paper-document.tsx": { "paper.board": { "sources": ["vocab-boards"], "count": 2 }, "paper.gradeLevel": { "sources": ["vocab-grades"], "count": 2 }, "paper.subject": { "sources": ["vocab-subjects"], "count": 2 } },
     "src/app/exam-paper/components/exam-paper-form.tsx": {
       "b": ["vocab-boards"],
       "g": ["exam-grade-options-app"],
@@ -125,9 +126,9 @@
       "l": ["vocab-languages"]
     },
     "src/app/exam-paper/components/paper-plan.tsx": {
-      "board": ["vocab-boards"],
+      "board": { "sources": ["vocab-boards"], "count": 2 },
       "subject": ["vocab-subjects"],
-      "gradeLevel": ["vocab-grades"],
+      "gradeLevel": { "sources": ["vocab-grades"], "count": 2 },
       "difficulty.charAt(0).toUpperCase() + difficulty.slice(1)": ["exam-difficulty-app"],
       "language": ["vocab-languages"]
     },
@@ -139,13 +140,13 @@
       "opt.hint": ["onboarding-role-options-hint"]
     },
     "src/app/organization/dashboard/dashboard-client.tsx": { "dictKey": ["org-feature-dict"] },
-    "src/app/pricing/page.tsx": { "text": ["pricing-included", "pricing-enterprise"] },
+    "src/app/pricing/page.tsx": { "text": { "sources": ["pricing-included", "pricing-enterprise"], "count": 2 } },
     "src/app/sampark/demo/admin/classes/page.tsx": { "cls.subject": ["demo-teacher-subjects", "demo-sample-class-subject"] },
     "src/app/sampark/demo/admin/page.tsx": {
       "COMPLAINT_LABEL[c.complaintStatus]": ["demo-complaint-label"],
       "SENTIMENT_LABEL[c.summary.parentSentiment]": ["demo-sentiment-label"],
       "REASON_LABEL[cb.reason]": ["demo-reason-label"],
-      "REASON_LABEL[r.reason]": ["demo-reason-label"],
+      "REASON_LABEL[r.reason]": { "sources": ["demo-reason-label"], "count": 2 },
       "REASON_LABEL[c.reason]": ["demo-reason-label"],
       "STATUS_LABEL[c.status]": ["demo-status-label"],
       "row.teacher.subject": ["demo-teacher-subjects"]
@@ -159,13 +160,13 @@
     "src/app/settings/page.tsx": { "b": ["vocab-boards"] },
     "src/app/teacher-training/page.tsx": {
       "proTipKey": ["teacher-training-pro-tips"],
-      "teacherProfile.preferredGrade": ["vocab-grades"],
-      "teacherProfile.preferredSubject": ["vocab-subjects"]
+      "teacherProfile.preferredGrade": { "sources": ["vocab-grades"], "count": 5 },
+      "teacherProfile.preferredSubject": { "sources": ["vocab-subjects"], "count": 5 }
     },
     "src/app/usage/page.tsx": {
       "PLAN_DISPLAY_NAMES[plan as PlanType]": ["plan-display-names"],
       "plan.charAt(0).toUpperCase() + plan.slice(1)": ["runtime-plan-id"],
-      "meta.label": ["usage-feature-meta"]
+      "meta.label": { "sources": ["usage-feature-meta"], "count": 2 }
     },
     "src/app/video-storyteller/page.tsx": { "cat.titleKey": ["video-categories"], "found.titleKey": ["video-categories"] },
     "src/components/assessment-scanner/assessment-result-card.tsx": { "patternInfo.label": ["mistake-pattern-labels"] },
@@ -174,7 +175,7 @@
     "src/components/attendance/attendance-calendar.tsx": { "MONTH_NAMES[month - 1]": ["attendance-month-names"] },
     "src/components/attendance/contact-parent-modal.tsx": {
       "placeholderKeyFor(reason)": ["contact-parent-placeholder"],
-      "r.labelKey": ["contact-parent-reasons-label"],
+      "r.labelKey": { "sources": ["contact-parent-reasons-label"], "count": 2 },
       "r.descriptionKey": ["contact-parent-reasons-description"]
     },
     "src/components/auth/auth-gate.tsx": { "title": ["runtime-caller-translated"], "description": ["runtime-caller-translated"] },
@@ -214,7 +215,7 @@
     },
     "src/components/dashboard/recent-work-strip.tsx": { "item.subject": ["vocab-subjects"], "item.gradeLevel": ["vocab-grades"] },
     "src/components/difficulty-selector.tsx": { "level.labelKey": ["difficulty-levels"] },
-    "src/components/grade-level-selector.tsx": { "grade": ["grade-selector-keys"] },
+    "src/components/grade-level-selector.tsx": { "grade": { "sources": ["grade-selector-keys"], "count": 2 } },
     "src/components/landing/landing-footer.tsx": { "key": ["landing-footer-keys"] },
     "src/components/landing/landing-quote.tsx": { "key": ["landing-quote-keys"] },
     "src/components/landing/landing-voice-orb.tsx": {
@@ -319,8 +320,8 @@
     "src/features/exam-paper/components/exam-paper-preview.tsx": { "paper.board": ["vocab-boards"], "paper.gradeLevel": ["vocab-grades"], "paper.subject": ["vocab-subjects"] },
     "src/features/quiz-generator/components/quiz-generator-view.tsx": {
       "item.labelKey": ["quiz-question-types"],
-      "level": ["quiz-bloom-levels"],
-      "BLOOM_HINTS[level]": ["quiz-bloom-hints"]
+      "level": { "sources": ["quiz-bloom-levels"], "count": 4 },
+      "BLOOM_HINTS[level]": { "sources": ["quiz-bloom-hints"], "count": 2 }
     },
     "src/features/worksheet-wizard/components/worksheet-sheet-preview.tsx": { "subject": ["vocab-subjects"], "gradeLevel": ["vocab-grades"] },
     "src/features/worksheet-wizard/components/worksheet-wizard-view.tsx": { "languageName": ["vocab-languages"] },
@@ -329,7 +330,7 @@
       "p.text": ["community-prompts"],
       "c.topic": ["community-sample-topics"],
       "c.persona": ["community-sample-personas"],
-      "c.text": ["community-sample-texts"],
+      "c.text": { "sources": ["community-sample-texts"], "count": 2 },
       "c.reply.persona": ["community-sample-personas"],
       "c.reply.text": ["community-sample-texts"]
     }
