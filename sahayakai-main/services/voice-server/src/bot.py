@@ -55,7 +55,7 @@ from src.opt_out import ANALYSIS, LIVE, StopListener, backstop_quote, utc_now_is
 from src.gemini_backend import resolve_gemini_backend
 from src.persistence import sync_transcript
 from src.call_store import CallStore
-from src.call_analyzer import analyze_call
+from src.call_analyzer import analyze_call, bounded_analysis
 
 # Parent language → speech code. Lives in call_policy (pure) so the
 # language-coverage test enumerates the same map; kept under its old name.
@@ -520,16 +520,27 @@ async def create_bot(
             call_status="completed",
         )
 
-        # Run post-call analysis (async, non-blocking)
+        # A stop heard on the call: make sure it was recorded (one retry)
+        # BEFORE anything slow, so the record never waits on the analysis.
+        if on_opt_out_request is not None and opt_out["heard"] and opt_out["source"] == LIVE:
+            saved = await opt_out["write"] if opt_out["write"] is not None else False
+            if not saved:
+                logger.warning(f"Retrying the opt-out request record for {outreach_id}")
+                await _record_request(opt_out["quote"], LIVE)
+
+        # Post-call analysis, bounded: it is a second call to the same Gemini
+        # API whose stall may be why the call ended badly, and the record,
+        # the summary and the handler's slot must not wait on it
+        # (final-0b #5; call_analyzer.ANALYSIS_TIMEOUT_SECONDS).
         insights = None
         if transcript:
             try:
-                insights = await analyze_call(
+                insights = await bounded_analysis(analyze_call(
                     call_context, transcript, api_key=config.google_api_key,
                     backend=gemini,
                     # The teacher's note quotes these words; ask for them in English.
                     flagged_words=opt_out["quote"] if opt_out["source"] == LIVE else None,
-                )
+                ))
                 if insights and call_store:
                     call_store.save_insights(outreach_id, insights)
                     parent_phone = call_context.get("parentPhone", "")
@@ -552,18 +563,12 @@ async def create_bot(
             except Exception as e:
                 logger.error(f"Post-call analysis failed: {e}")
 
-        # Do-not-call: make sure a stop heard on the call was recorded (one
-        # retry), and let the post-call analysis catch one the phrase check
-        # missed, but only on the parent's own quoted words. Either way it is
-        # only recorded for the teacher; nothing is blocked.
+        # Do-not-call: let the post-call analysis catch a stop the phrase
+        # check missed, but only on the parent's own quoted words. Either way
+        # it is only recorded for the teacher; nothing is blocked.
         if on_opt_out_request is None:
             pass  # unauthenticated route: nothing may be written for this id
-        elif opt_out["heard"]:
-            saved = await opt_out["write"] if opt_out["write"] is not None else False
-            if not saved:
-                logger.warning(f"Retrying the opt-out request record for {outreach_id}")
-                await _record_request(opt_out["quote"], LIVE)
-        else:
+        elif not opt_out["heard"]:
             quote = backstop_quote(insights, transcript)
             if quote is not None:
                 logger.warning(f"Post-call analysis found a possible stop request ({outreach_id}); recording it for the teacher")

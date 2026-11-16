@@ -28,7 +28,7 @@ from src.config import load_config
 from src.bot import create_bot
 from src.persistence import fetch_call_context
 from src.call_store import CallStore
-from src.call_analyzer import analyze_call
+from src.call_analyzer import analyze_call, bounded_analysis
 from src.vobiz import (
     verify_stream_token,
     fetch_context_firestore,
@@ -316,9 +316,9 @@ async def _post_call_cleanup(outreach_id: str, call_context: dict, cfg):
             return  # Already analyzed
 
         logger.info(f"Running fallback post-call analysis for {outreach_id}")
-        insights = await analyze_call(
+        insights = await bounded_analysis(analyze_call(
             call_context, transcript, api_key=cfg.google_api_key, backend=resolve_gemini_backend(cfg),
-        )
+        ))
         if insights:
             call_store.save_insights(outreach_id, insights)
             parent_phone = call_context.get("parentPhone", "")

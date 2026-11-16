@@ -14,6 +14,7 @@ Runs asynchronously after call ends — doesn't block the call pipeline.
 Output feeds into call_store.py tables: call_insights, parent_concerns, follow_ups.
 """
 
+import asyncio
 import json
 import os
 
@@ -25,6 +26,25 @@ try:
 except ImportError:
     _HAS_GENAI = False
     logger.warning("google-genai not available — call analysis disabled")
+
+
+# Every post-call analysis gets at most this long. google-genai sets no
+# client timeout by default, and the analysis runs after the call: the
+# transcript, the summary and the handler's Cloud Run slot wait on it
+# (final-0b #5). Both the request itself and each caller's await are bounded.
+ANALYSIS_TIMEOUT_SECONDS = 20.0
+
+
+async def bounded_analysis(analysis):
+    """Await `analysis` (an analyze_call coroutine) for at most ANALYSIS_TIMEOUT_SECONDS.
+
+    A timeout is reported and gives None, like any other failed analysis.
+    """
+    try:
+        return await asyncio.wait_for(analysis, ANALYSIS_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.error(f"Post-call analysis gave no answer within {ANALYSIS_TIMEOUT_SECONDS:.0f}s; going on without it")
+        return None
 
 
 _ANALYSIS_PROMPT = """Analyze this parent-teacher phone call transcript. The teacher called the parent about a student.
@@ -130,14 +150,14 @@ async def analyze_call(
 
     try:
         client = genai.Client(**backend.genai_client_kwargs()) if use_vertex else genai.Client(api_key=key)
-        response = await client.aio.models.generate_content(
+        response = await asyncio.wait_for(client.aio.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
             config=genai.types.GenerateContentConfig(
                 temperature=0.1,
                 max_output_tokens=800,
             ),
-        )
+        ), ANALYSIS_TIMEOUT_SECONDS)
 
         text = response.text.strip()
         if text.startswith("```"):
