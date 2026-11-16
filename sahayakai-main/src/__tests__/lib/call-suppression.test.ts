@@ -14,8 +14,9 @@ import {
 import { NextResponse } from 'next/server';
 import { createFakeDb, lastJsonBody } from '../helpers/fake-attendance-db';
 
-const FIXTURE_PHONE = '+919876543210';
-const FIXTURE_DIGEST = 'f3a47ce5ce3d4ca8ad15225a245b2759022f79489f5c62719b8c9490f7aab90e';
+// A made-up number from the +9198000001xx test range, never a real family's.
+const FIXTURE_PHONE = '+919800000101';
+const FIXTURE_DIGEST = '1775163af1a0b1e46b138f7908ca90c7faa36273ae53b36a40640bba2b0ba8bd';
 
 describe('phoneSuppressionId', () => {
     it('matches the digest the Python bridge computes for the same number', () => {
@@ -23,7 +24,7 @@ describe('phoneSuppressionId', () => {
     });
 
     it('never contains the raw number', () => {
-        expect(phoneSuppressionId(FIXTURE_PHONE)).not.toContain('9876543210');
+        expect(phoneSuppressionId(FIXTURE_PHONE)).not.toContain('9800000101');
     });
 });
 

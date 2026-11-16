@@ -11,6 +11,7 @@
     "An entry may be { \"sources\": [...], \"count\": N } when N calls in the file share the same argument text; a plain list covers exactly one call. The count is pinned so a new call reading the same (often generic) expression must be checked and declared, not ride on the first call's entry."
   ],
   "sources": {
+    "attendance-call-refusal-labels": { "file": "src/lib/attendance/call-refusal-messages.ts", "name": "CALL_REFUSAL_LABELS", "note": "teacher-facing labels for the call and outreach routes' error codes" },
     "vocab-grades": { "file": "src/types/index.ts", "name": "GRADE_LEVELS", "note": "class names stored on profiles, classes, resources and AI requests" },
     "vocab-subjects": { "file": "src/types/index.ts", "name": "SUBJECTS", "note": "subject names stored on profiles, classes, resources and AI requests" },
     "vocab-boards": { "file": "src/types/index.ts", "name": "EDUCATION_BOARDS" },
@@ -110,6 +111,7 @@
     "runtime-raw-venue-id": { "runtime": "a demo venue id missing from DEMO_VENUES, shown as its id as a last resort" }
   },
   "sites": {
+    "src/lib/attendance/call-refusal-messages.ts": { "label": ["attendance-call-refusal-labels"] },
     "src/app/(marketing)/school-pricing/school-pricing-client.tsx": { "c.name": ["school-pricing-savings"] },
     "src/app/(marketing)/terms/terms-client.tsx": { "key": ["terms-tldr"] },
     "src/app/assess-assignment/assess-client.tsx": { "s": ["assess-processing-stages"] },

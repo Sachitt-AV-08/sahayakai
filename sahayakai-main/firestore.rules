@@ -420,6 +420,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Do-not-call list: call_suppressions/{sha256(E.164)}. Written by the
+    // telephony engine that hears a parent ask not to be called again
+    // (sahayakai-agents `_persist_opt_out`); read by /api/attendance/call and
+    // /api/attendance/outreach before any dial (src/lib/call-suppression.ts).
+    // Admin SDK only: a client that could delete one would re-enable calls to
+    // a parent who said no, and the records name the teacher, class and
+    // student. Explicit, although the default is also deny.
+    match /call_suppressions/{phoneHash} {
+      allow read, write: if false;
+    }
+
     // =============================================
     // PRESENCE + TYPING (migrated off RTDB → Firestore/Mumbai, 2026-07-04)
     // Ephemeral, non-personal session state. See use-presence.ts /

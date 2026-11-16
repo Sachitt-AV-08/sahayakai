@@ -21,8 +21,8 @@ from sahayakai_agents.telephony.suppression import (
 )
 
 # Shared fixture: the TS test asserts the identical digest.
-FIXTURE_PHONE = "+919876543210"
-FIXTURE_DIGEST = "f3a47ce5ce3d4ca8ad15225a245b2759022f79489f5c62719b8c9490f7aab90e"
+FIXTURE_PHONE = "+919800000101"
+FIXTURE_DIGEST = "1775163af1a0b1e46b138f7908ca90c7faa36273ae53b36a40640bba2b0ba8bd"
 
 
 def test_hash_matches_shared_fixture() -> None:

@@ -3546,5 +3546,18 @@
   "{pct}% of this week's calls": "এই সপ্তাহের কলের {pct}%",
   "{teacher}'s note": "{teacher}-এর মন্তব্য",
   "{{count}} question(s) marked \"New\" matched a past-paper question and were relabeled.": "\"নতুন\" চিহ্নিত {{count}}টি প্রশ্ন আগের প্রশ্নপত্রের কোনো প্রশ্নের সঙ্গে মিলেছে এবং সেগুলির লেবেল বদলানো হয়েছে।",
-  "₹10,000 per teacher a year — about ₹833 a month, billed annually. Prefer month-to-month, no commitment? ₹1,600 per teacher a month. AI parent calls are billed only for the minutes you use, at ₹4 a minute. Chains and larger schools get a further discount, confirmed in a written quote.": "প্রতি শিক্ষক বছরে ₹10,000 — মাসে প্রায় ₹833, বার্ষিক বিল। কোনো বাধ্যবাধকতা ছাড়া মাসিক চান? প্রতি শিক্ষক মাসে ₹1,600। AI অভিভাবক কলের বিল শুধু ব্যবহৃত মিনিটের জন্য, মিনিটে ₹4। স্কুল-গোষ্ঠী ও বড় স্কুল আরও ছাড় পায়, যা লিখিত কোটেশনে নিশ্চিত করা হয়।"
+  "₹10,000 per teacher a year — about ₹833 a month, billed annually. Prefer month-to-month, no commitment? ₹1,600 per teacher a month. AI parent calls are billed only for the minutes you use, at ₹4 a minute. Chains and larger schools get a further discount, confirmed in a written quote.": "প্রতি শিক্ষক বছরে ₹10,000 — মাসে প্রায় ₹833, বার্ষিক বিল। কোনো বাধ্যবাধকতা ছাড়া মাসিক চান? প্রতি শিক্ষক মাসে ₹1,600। AI অভিভাবক কলের বিল শুধু ব্যবহৃত মিনিটের জন্য, মিনিটে ₹4। স্কুল-গোষ্ঠী ও বড় স্কুল আরও ছাড় পায়, যা লিখিত কোটেশনে নিশ্চিত করা হয়।",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "অভিভাবকদের কল শুধু 10:00 থেকে 19:00 IST-এর মধ্যে করা হয়। অনুগ্রহ করে কলের সময়ের মধ্যে আবার চেষ্টা করুন।",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "এই অভিভাবক আর কল না করার অনুরোধ করেছেন, তাই আমরা কলটি করিনি। অনুগ্রহ করে অন্য কোনো উপায়ে যোগাযোগ করুন, যেমন WhatsApp মেসেজ বা বাড়িতে পাঠানো একটি চিঠি।",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "এই মুহূর্তে আমরা এই অভিভাবকের কল-সংক্রান্ত পছন্দ যাচাই করতে পারিনি। অনুগ্রহ করে এক মিনিট পরে আবার চেষ্টা করুন।",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "এই আউটরিচে থাকা অভিভাবকের ফোন নম্বর আর ছাত্রের রেকর্ডের সঙ্গে মিলছে না। একটি নতুন আউটরিচ শুরু করুন।",
+  "This outreach record could not be found. Please start a new outreach.": "এই আউটরিচ রেকর্ডটি পাওয়া যায়নি। একটি নতুন আউটরিচ শুরু করুন।",
+  "You can only contact parents of students in your own classes.": "আপনি শুধু নিজের শ্রেণির ছাত্রছাত্রীদের অভিভাবকদের সঙ্গেই যোগাযোগ করতে পারেন।",
+  "This student is no longer in this class.": "এই ছাত্র বা ছাত্রী আর এই শ্রেণিতে নেই।",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "এই ছাত্রের রেকর্ডে অভিভাবকের কোনো বৈধ ফোন নম্বর নেই। অনুগ্রহ করে আগে ছাত্রের বিবরণে এটি যোগ করুন।",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "অভিভাবকদের কল করার সুবিধা এখন পাওয়া যাচ্ছে না। অনুগ্রহ করে পরিবর্তে WhatsApp কপি ব্যবহার করুন।",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "এই অভিভাবকের ভাষায় স্বয়ংক্রিয় কল এখনও পাওয়া যায় না। অনুগ্রহ করে পরিবর্তে WhatsApp কপি ব্যবহার করুন।",
+  "We could not place the call just now. Please try again in a few minutes.": "আমরা এই মুহূর্তে কলটি করতে পারিনি। অনুগ্রহ করে কয়েক মিনিট পরে আবার চেষ্টা করুন।",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "আপনি কয়েক মিনিট আগে এই অভিভাবকের সঙ্গে যোগাযোগ করেছেন। আবার চেষ্টা করার আগে অনুগ্রহ করে কয়েক মিনিট অপেক্ষা করুন।",
+  "Calls to this number are not allowed on this server.": "এই সার্ভার থেকে এই নম্বরে কল করার অনুমতি নেই।"
 }

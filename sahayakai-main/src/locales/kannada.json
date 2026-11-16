@@ -3556,5 +3556,18 @@
   "{pct}% of this week's calls": "ಈ ವಾರದ ಕರೆಗಳ {pct}%",
   "{teacher}'s note": "{teacher} ಅವರ ಟಿಪ್ಪಣಿ",
   "{{count}} question(s) marked \"New\" matched a past-paper question and were relabeled.": "\"ಹೊಸದು\" ಎಂದು ಗುರುತಿಸಿದ {{count}} ಪ್ರಶ್ನೆ(ಗಳು) ಹಿಂದಿನ ಪ್ರಶ್ನೆಪತ್ರಿಕೆಯ ಪ್ರಶ್ನೆಯೊಂದಿಗೆ ಹೊಂದಿಕೆಯಾಗಿ ಮರು ಲೇಬಲ್ ಮಾಡಲಾಗಿದೆ.",
-  "₹10,000 per teacher a year — about ₹833 a month, billed annually. Prefer month-to-month, no commitment? ₹1,600 per teacher a month. AI parent calls are billed only for the minutes you use, at ₹4 a minute. Chains and larger schools get a further discount, confirmed in a written quote.": "ಪ್ರತಿ ಶಿಕ್ಷಕರಿಗೆ ವರ್ಷಕ್ಕೆ ₹10,000 — ತಿಂಗಳಿಗೆ ಸುಮಾರು ₹833, ವಾರ್ಷಿಕ ಬಿಲ್ಲಿಂಗ್. ಯಾವುದೇ ಬದ್ಧತೆಯಿಲ್ಲದೆ ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ ಬೇಕೇ? ಪ್ರತಿ ಶಿಕ್ಷಕರಿಗೆ ತಿಂಗಳಿಗೆ ₹1,600. AI ಪೋಷಕರ ಕರೆಗಳಿಗೆ ನೀವು ಬಳಸಿದ ನಿಮಿಷಗಳಿಗೆ ಮಾತ್ರ ಬಿಲ್, ನಿಮಿಷಕ್ಕೆ ₹4. ಶಾಲಾ ಸಮೂಹಗಳು ಮತ್ತು ದೊಡ್ಡ ಶಾಲೆಗಳಿಗೆ ಹೆಚ್ಚಿನ ರಿಯಾಯಿತಿ, ಲಿಖಿತ ದರಪಟ್ಟಿಯಲ್ಲಿ ದೃಢಪಡಿಸಲಾಗುತ್ತದೆ."
+  "₹10,000 per teacher a year — about ₹833 a month, billed annually. Prefer month-to-month, no commitment? ₹1,600 per teacher a month. AI parent calls are billed only for the minutes you use, at ₹4 a minute. Chains and larger schools get a further discount, confirmed in a written quote.": "ಪ್ರತಿ ಶಿಕ್ಷಕರಿಗೆ ವರ್ಷಕ್ಕೆ ₹10,000 — ತಿಂಗಳಿಗೆ ಸುಮಾರು ₹833, ವಾರ್ಷಿಕ ಬಿಲ್ಲಿಂಗ್. ಯಾವುದೇ ಬದ್ಧತೆಯಿಲ್ಲದೆ ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ ಬೇಕೇ? ಪ್ರತಿ ಶಿಕ್ಷಕರಿಗೆ ತಿಂಗಳಿಗೆ ₹1,600. AI ಪೋಷಕರ ಕರೆಗಳಿಗೆ ನೀವು ಬಳಸಿದ ನಿಮಿಷಗಳಿಗೆ ಮಾತ್ರ ಬಿಲ್, ನಿಮಿಷಕ್ಕೆ ₹4. ಶಾಲಾ ಸಮೂಹಗಳು ಮತ್ತು ದೊಡ್ಡ ಶಾಲೆಗಳಿಗೆ ಹೆಚ್ಚಿನ ರಿಯಾಯಿತಿ, ಲಿಖಿತ ದರಪಟ್ಟಿಯಲ್ಲಿ ದೃಢಪಡಿಸಲಾಗುತ್ತದೆ.",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "ಪೋಷಕರಿಗೆ ಕರೆಗಳನ್ನು 10:00 ರಿಂದ 19:00 IST ನಡುವೆ ಮಾತ್ರ ಮಾಡಲಾಗುತ್ತದೆ. ದಯವಿಟ್ಟು ಕರೆ ಸಮಯದಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "ಈ ಪೋಷಕರು ಮತ್ತೆ ಕರೆ ಮಾಡಬೇಡಿ ಎಂದು ಕೇಳಿದ್ದಾರೆ, ಆದ್ದರಿಂದ ನಾವು ಕರೆ ಮಾಡಿಲ್ಲ. ದಯವಿಟ್ಟು WhatsApp ಸಂದೇಶ ಅಥವಾ ಮನೆಗೆ ಕಳುಹಿಸುವ ಟಿಪ್ಪಣಿಯಂತಹ ಬೇರೆ ರೀತಿಯಲ್ಲಿ ಅವರನ್ನು ಸಂಪರ್ಕಿಸಿ.",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "ಈ ಪೋಷಕರ ಕರೆ ಆದ್ಯತೆಗಳನ್ನು ಈಗ ಪರಿಶೀಲಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಒಂದು ನಿಮಿಷದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "ಈ ಔಟ್‌ರೀಚ್‌ನಲ್ಲಿರುವ ಪೋಷಕರ ಫೋನ್ ಸಂಖ್ಯೆ ಈಗ ವಿದ್ಯಾರ್ಥಿಯ ದಾಖಲೆಗೆ ಹೊಂದಿಕೆಯಾಗುವುದಿಲ್ಲ. ಹೊಸ ಔಟ್‌ರೀಚ್ ಪ್ರಾರಂಭಿಸಿ.",
+  "This outreach record could not be found. Please start a new outreach.": "ಈ ಔಟ್‌ರೀಚ್ ದಾಖಲೆ ಸಿಗಲಿಲ್ಲ. ಹೊಸ ಔಟ್‌ರೀಚ್ ಪ್ರಾರಂಭಿಸಿ.",
+  "You can only contact parents of students in your own classes.": "ನಿಮ್ಮ ಸ್ವಂತ ತರಗತಿಗಳ ವಿದ್ಯಾರ್ಥಿಗಳ ಪೋಷಕರನ್ನು ಮಾತ್ರ ನೀವು ಸಂಪರ್ಕಿಸಬಹುದು.",
+  "This student is no longer in this class.": "ಈ ವಿದ್ಯಾರ್ಥಿ ಈಗ ಈ ತರಗತಿಯಲ್ಲಿ ಇಲ್ಲ.",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "ಈ ವಿದ್ಯಾರ್ಥಿಯ ದಾಖಲೆಯಲ್ಲಿ ಪೋಷಕರ ಮಾನ್ಯ ಫೋನ್ ಸಂಖ್ಯೆ ಇಲ್ಲ. ದಯವಿಟ್ಟು ಮೊದಲು ವಿದ್ಯಾರ್ಥಿಯ ವಿವರಗಳಲ್ಲಿ ಅದನ್ನು ಸೇರಿಸಿ.",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "ಪೋಷಕರಿಗೆ ಕರೆ ಮಾಡುವ ಸೌಲಭ್ಯ ಈಗ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಬದಲಿಗೆ WhatsApp ನಕಲನ್ನು ಬಳಸಿ.",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "ಈ ಪೋಷಕರ ಭಾಷೆಯಲ್ಲಿ ಸ್ವಯಂಚಾಲಿತ ಕರೆಗಳು ಇನ್ನೂ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಬದಲಿಗೆ WhatsApp ನಕಲನ್ನು ಬಳಸಿ.",
+  "We could not place the call just now. Please try again in a few minutes.": "ಈಗ ಕರೆ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಕೆಲವು ನಿಮಿಷಗಳ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "ನೀವು ಕೆಲವು ನಿಮಿಷಗಳ ಹಿಂದೆ ಈ ಪೋಷಕರನ್ನು ಸಂಪರ್ಕಿಸಿದ್ದೀರಿ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸುವ ಮೊದಲು ದಯವಿಟ್ಟು ಕೆಲವು ನಿಮಿಷ ಕಾಯಿರಿ.",
+  "Calls to this number are not allowed on this server.": "ಈ ಸರ್ವರ್‌ನಿಂದ ಈ ಸಂಖ್ಯೆಗೆ ಕರೆ ಮಾಡಲು ಅನುಮತಿ ಇಲ್ಲ."
 }

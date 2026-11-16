@@ -111,7 +111,8 @@ import { NextResponse } from 'next/server';
 import { createFakeDb, lastJsonBody, type Store } from '../helpers/fake-attendance-db';
 import { phoneSuppressionId } from '@/lib/call-suppression';
 
-const PHONE = '+919812345678';
+// Made-up number from the +9198000001xx test range.
+const PHONE = '+919800000102';
 let store: Store;
 const jsonSpy = jest.spyOn(NextResponse, 'json');
 

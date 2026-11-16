@@ -22,7 +22,7 @@ import { writeCallStatus, type CallStatusDb } from '@/lib/attendance/reconcile-c
 import { logger } from '@/lib/logger';
 import { buildVobizAnswerXml, toWebSocketOrigin } from '@/lib/vobiz/answer-xml';
 import { testHoursOverrideApplies } from '@/lib/vobiz/test-hours-override';
-import { VOBIZ_DOMAINS, mintVobizToken, verifyVobizToken } from '@/lib/vobiz/tokens';
+import { VOBIZ_DOMAINS, VOBIZ_STREAM_TTL_SECONDS, mintVobizToken, verifyVobizToken } from '@/lib/vobiz/tokens';
 
 /** An XML document that simply ends the call. Used for every refusal. */
 const EMPTY_RESPONSE = '<?xml version="1.0" encoding="UTF-8"?><Response/>';
@@ -143,7 +143,8 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     // A separate, purpose-scoped token: this one authorises the billable media
     // socket and nothing else. It is minted here rather than at dial time so its
     // lifetime starts when the parent actually answers.
-    const { token: streamToken } = await mintVobizToken(VOBIZ_DOMAINS.STREAM, outreachId);
+    // Only the answer-to-connect gap: see VOBIZ_STREAM_TTL_SECONDS.
+    const { token: streamToken } = await mintVobizToken(VOBIZ_DOMAINS.STREAM, outreachId, VOBIZ_STREAM_TTL_SECONDS);
     // Correlation point: the telephony bridge logs `answer_to_socket_ms` against
     // this moment (the stream token's mint time) under the same outreach id.
     logger.info('Vobiz answer: stream issued', 'ATTENDANCE', { outreachId, hasCallUuid: Boolean(callUuid) });
