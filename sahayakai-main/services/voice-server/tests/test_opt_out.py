@@ -572,3 +572,28 @@ def test_through_the_handler_a_never_again_stop_is_recorded(tmp_path, monkeypatc
     db, _persisted, _spoken, _passed = _run_call("Hindi", (EVER_AGAIN_STOPS[0],), tmp_path, monkeypatch)
     [request] = opt_out_requests(db)
     assert request["quote"] == EVER_AGAIN_STOPS[0]
+
+
+
+# ── "बंद करो ये फ़ोन" with more said (review #5) ─────────────────────────────
+
+STOP_THESE_PHONE_CALLS = ["बंद करो ये फ़ोन कॉल्स", "बंद करो ये फ़ोन, दोबारा मत करना", "बंद कर दो ये फोन कॉल"]
+HANG_UPS = ["बंद करो ये फ़ोन", "बंद करो यह फ़ोन", "बंद कर दो ये फ़ोन", "फ़ोन बंद करो"]
+
+
+@pytest.mark.parametrize("text", STOP_THESE_PHONE_CALLS)
+def test_stop_these_phone_calls_is_a_stop(text):
+    assert is_stop_request(text), text
+
+
+@pytest.mark.parametrize("text", HANG_UPS)
+def test_hang_up_this_phone_is_still_not_a_stop(text):
+    assert not is_stop_request(text), text
+
+
+def test_through_the_handler_stop_these_phone_calls_is_recorded(tmp_path, monkeypatch):
+    from test_opt_out_never_suppresses import _run_call
+
+    db, _persisted, _spoken, _passed = _run_call("Hindi", (STOP_THESE_PHONE_CALLS[1],), tmp_path, monkeypatch)
+    [request] = opt_out_requests(db)
+    assert request["quote"] == STOP_THESE_PHONE_CALLS[1]

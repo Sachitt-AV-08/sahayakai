@@ -163,7 +163,7 @@ _HI_STOP_VERB = r"(?:करो|कीजिए|कीजिये|करें|�
 # "बंद करो ये कॉल", "ये कॉल्स बंद करो": stop THESE calls. Not "फ़ोन बंद करो"
 # or "बंद करो ये फ़ोन" (hang up): कॉल after the verb, or plural with "these".
 _HI_STOP_THESE_CALLS = (
-    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*(?:कॉल|काल)(?:्स|ें|े)?"  # not "बंद करो ये फ़ोन" (hang up)
+    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*(?:(?:फ़ोन|फोन)\s*)?(?:कॉल|काल)(?:्स|ें|े)?"  # not "बंद करो ये फ़ोन" (hang up)
     rf"|(?:ये|यह|इन|ऐसे)\s*{_HI_CALL}(?:्स|ें)\s*बंद\s*{_HI_STOP_VERB})"
 )
 _BN_CALL = r"(?:ফোন|কল)"
@@ -224,6 +224,8 @@ _STOP_PHRASES = _compile(
     r"\b(?:phone|fone|call)\s*karna\s*band\s*(?:karo|kijiye|kariye|kar do|kar dijiye)\b",
     # Hindi
     rf"{_HI_CALL}\s*{_HI_DONT}",
+    # "फ़ोन, दोबारा मत करना": the call word, then "don't (do it) again"
+    rf"{_HI_CALL}\s*(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|आगे\s*से)\s*{_HI_DONT}",
     rf"{_HI_CALL}\s*करना\s*बंद\s*(?:करो|कीजिए|करें|कर\s*दो|कर\s*दीजिए|करिए)",
     r"(?:स्टॉप|स्टाप)\s*(?:कॉलिंग|कालिंग)",
     rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
