@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeftRight } from "lucide-react";
@@ -13,8 +14,20 @@ import { CHOOSER_SEGMENT, PROVIDER_LABEL, switchProviderHref } from "@/lib/sampa
  * Header pill inside SamparkAI: which calling provider this session uses, and the way back to
  * the provider choice ("Switch"). Returns to the same page afterwards. The choice itself lives
  * on the server (httpOnly cookie); this only shows it.
+ *
+ * It reads the search params, and the frames render it outside every page's own Suspense
+ * boundary, so it carries its own: without it `next build` refuses to prerender any page with
+ * the frame (missing-suspense-with-csr-bailout, first hit on /sampark/choose-provider).
  */
 export function ProviderSwitchPill() {
+    return (
+        <Suspense fallback={null}>
+            <ProviderSwitchPillContent />
+        </Suspense>
+    );
+}
+
+function ProviderSwitchPillContent() {
     const { t } = useLanguage();
     const pathname = usePathname() ?? "";
     const search = useSearchParams()?.toString() ?? "";
