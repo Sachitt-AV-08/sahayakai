@@ -823,8 +823,10 @@ def is_no_more_calls_promise(text: object) -> bool:
 # ── Noticing it during the call ──────────────────────────────────────────────
 
 
-NOTICE = "notice"  # a stop: answer it now
+NOTICE = "notice"  # a stop: answer it now (this transcription is part of it)
 WAIT = "wait"      # a plain stop: hold it until the next transcription or a pause
+HOLD = "hold"      # nothing to judge (punctuation only) while a stop is held: keep it with the held words
+NOTICE_HELD = "notice_held"  # the held stop stands; this transcription came too late to be part of it
 PASS = "pass"      # ordinary speech (or a held plain stop turned out not to be one)
 
 # Speech-to-text splits an utterance wherever the parent pauses: a
@@ -849,6 +851,7 @@ class StopListener:
         self._previous_raw = ""
         self._previous_at: float | None = None
         self.pending: str | None = None
+        self._pending_at: float | None = None
         self.noticed = False
         self.quote: str | None = None
 
@@ -856,15 +859,29 @@ class StopListener:
         self.noticed, self.quote, self.pending = True, quote.strip(), None
         return NOTICE
 
+    def touch(self, now: float | None) -> None:
+        """The parent is audibly speaking while a stop is held: the join window runs from here."""
+        if self.pending is not None and now is not None:
+            self._pending_at = now
+
     def hear(self, text: object, now: float | None = None) -> str:
         raw = text.strip() if isinstance(text, str) else ""
-        if self.noticed or not normalize(raw):
+        if self.noticed:
             return PASS
+        if not normalize(raw):
+            # A punctuation-only final ("." or "।"): nothing to judge. While a
+            # stop is held it stays with the held words and changes nothing.
+            return HOLD if self.pending is not None else PASS
         recent = self._previous_raw and (now is None or self._previous_at is None
                                          or now - self._previous_at <= JOIN_SECONDS)
         previous = self._previous_raw if recent else ""
         self._previous_raw, self._previous_at = raw, now
         if self.pending is not None:
+            if now is not None and self._pending_at is not None and now - self._pending_at > JOIN_SECONDS:
+                # Too late to finish the held sentence: the held stop stands
+                # on its own, and this is ordinary speech after it.
+                self._notice(self.pending)
+                return NOTICE_HELD
             joined, self.pending = f"{self.pending} {raw}", None
             self._previous_raw = joined
             return self._notice(joined) if stop_kind(joined) else PASS
@@ -873,7 +890,7 @@ class StopListener:
         if kind == "strong":
             return self._notice(raw if stop_kind(raw) == "strong" else text_judged)
         if kind == "plain":
-            self.pending = text_judged
+            self.pending, self._pending_at = text_judged, now
             return WAIT
         return PASS
 

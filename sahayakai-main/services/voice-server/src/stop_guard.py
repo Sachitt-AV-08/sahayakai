@@ -32,7 +32,7 @@ from typing import Awaitable, Callable
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from src.opt_out import NOTICE, WAIT, StopListener, normalize
+from src.opt_out import HOLD, NOTICE, NOTICE_HELD, WAIT, StopListener, normalize
 
 # How long a plain stop waits, after the parent stops speaking, for the rest
 # of the sentence; plus the time a final transcription takes to arrive after
@@ -72,6 +72,13 @@ class StopRequestGuard(FrameProcessor):
     def waiting(self) -> bool:
         return self._listener.pending is not None
 
+    @staticmethod
+    def _now() -> float | None:
+        try:
+            return asyncio.get_running_loop().time()
+        except RuntimeError:
+            return None
+
     def _cancel_quiet(self) -> None:
         if self._quiet is not None and not self._quiet.done() and self._quiet is not asyncio.current_task():
             self._quiet.cancel()
@@ -89,7 +96,7 @@ class StopRequestGuard(FrameProcessor):
 
     def _held_text(self, extra: str = "") -> str:
         texts = [f.text or "" for f, _ in self._held] + ([extra] if extra else [])
-        return " ".join(t.strip() for t in texts if t and t.strip())
+        return " ".join(t.strip() for t in texts if normalize(t))  # punctuation-only finals are not words
 
     async def _fire(self, extra: str = "") -> None:
         utterance = self._held_text(extra)
@@ -127,6 +134,8 @@ class StopRequestGuard(FrameProcessor):
 
         if self._held and not self._listener.noticed:
             name = type(frame).__name__
+            if name in _STARTED_SPEAKING or name in _STOPPED_SPEAKING:
+                self._listener.touch(self._now())
             if name in _STARTED_SPEAKING:
                 self._cancel_quiet()  # they are still talking: wait for their words
             elif name in _STOPPED_SPEAKING:
@@ -138,11 +147,18 @@ class StopRequestGuard(FrameProcessor):
                 if normalize(text):
                     self.spoken_since_notice = True
             else:
-                try:
-                    now = asyncio.get_running_loop().time()
-                except RuntimeError:
-                    now = None
-                decision = self._listener.hear(text, now)
+                decision = self._listener.hear(text, self._now())
+                if decision == HOLD:
+                    # Nothing to judge: keep it with the held words; the
+                    # quiet and the cap run on unchanged.
+                    self._held.append((frame, direction))
+                    return
+                if decision == NOTICE_HELD:
+                    self._end_hold()
+                    await self._fire()
+                    self.spoken_since_notice = True
+                    await self.push_frame(frame, direction)
+                    return
                 if decision == NOTICE:
                     self._end_hold()
                     await self._fire(text)

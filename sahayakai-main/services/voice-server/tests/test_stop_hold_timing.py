@@ -36,8 +36,15 @@ class VADUserStoppedSpeakingFrame(Frame):
     pass
 
 
-def _timeline(steps, *, until: float):
-    """Feed (at_seconds, text-or-frame) to the real guard; return what happened, with times."""
+HANG_UP = "__hang_up__"
+
+
+def _timeline(steps, *, until: float, keep: dict | None = None):
+    """Feed (at_seconds, text-or-frame) to the real guard; return what happened, with times.
+
+    A step HANG_UP fires the transport's client-disconnected event (the real
+    end-of-call path). `keep` receives the run.
+    """
     records: list = []
     with stubbed_runtime():
         async def go():
@@ -62,9 +69,14 @@ def _timeline(steps, *, until: float):
             t0 = loop.time()
             for at, what in steps:
                 await asyncio.sleep(max(0.0, t0 + at - loop.time()))
+                if what == HANG_UP:
+                    await run.transport.handlers["on_client_disconnected"](run.transport, object())
+                    continue
                 frame = TranscriptionFrame(text=what) if isinstance(what, str) else what
                 await guard.process_frame(frame, FrameDirection.DOWNSTREAM)
             await asyncio.sleep(max(0.0, t0 + until - loop.time()))
+            if keep is not None:
+                keep["run"] = run
             return records, to_model, guard
 
         records, to_model, guard = asyncio.run(go())
@@ -101,3 +113,37 @@ def test_a_parent_who_keeps_talking_gets_a_decision_at_the_cap():
     [(at, text)] = to_model
     assert text == "Don't call me" and 4.9 <= at <= 5.4, f"released at {at:.2f} s, expected the 5 s cap"
     assert not guard.waiting
+
+
+
+# ── D2: a punctuation-only final during the hold ────────────────────────────
+# StopListener.hear returned PASS on a "." or "।" final without clearing the
+# held stop; the guard then released the held words, and a later
+# transcription joined the stale stop however late it came: "okay" 5 s later
+# fired a stop quoted "Don't call me okay" (S6), and a hang-up 4 s later
+# recorded the stop plus an empty user message (S6b).
+
+def test_s6_a_punctuation_final_does_not_break_the_hold():
+    keep: dict = {}
+    records, to_model, guard = _timeline([(0.0, "Don't call me"), (0.3, "."), (5.0, "okay")], until=5.3, keep=keep)
+    [(at, quote)] = records
+    assert quote == "Don't call me" and 1.7 <= at <= 2.2, (at, quote)
+    assert [t for _, t in to_model] == ["okay"], "the '.' is not words; 'okay' is speech after the notice"
+    users = [m["content"] for m in keep["run"].context.messages if m.get("role") == "user"]
+    assert users == ["Don't call me"]
+
+
+def test_s6b_a_punctuation_final_then_a_hang_up_records_once_with_no_empty_message():
+    keep: dict = {}
+    records, _to_model, _guard = _timeline([(0.0, "Don't call me"), (0.3, "।"), (4.0, HANG_UP)], until=4.3,
+                                           keep=keep)
+    assert [q for _, q in records] == ["Don't call me"]
+    users = [m["content"] for m in keep["run"].context.messages if m.get("role") == "user"]
+    assert users == ["Don't call me"] and "" not in users
+
+
+def test_a_transcription_long_after_the_last_sound_does_not_join_the_held_stop():
+    records, to_model, _guard = _timeline(
+        [(0.0, "Don't call me"), (0.3, VADUserStartedSpeakingFrame()), (3.2, "after nine")], until=3.5)
+    assert [q for _, q in records] == ["Don't call me"], "the held stop stands on its own"
+    assert [t for _, t in to_model] == ["after nine"]
