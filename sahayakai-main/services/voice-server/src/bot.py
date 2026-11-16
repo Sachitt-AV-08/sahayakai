@@ -346,6 +346,7 @@ async def create_bot(
         phase_instructor=phase_instructor,
         ai_reveal_pattern=plan.ai_reveal_pattern,
         ai_reveal_line=plan.ai_reveal_line,
+        closing_line=plan.goodbye,
     )
 
     # ── TTS: Sarvam Bulbul v3 (WebSocket streaming) ──
@@ -377,9 +378,11 @@ async def create_bot(
     # The parent's own words are checked before the model sees them. The first
     # possible stop of the call is recorded for the teacher at once (not at
     # hangup, so a dropped line cannot lose it), answered with the one fixed
-    # line in the call language, and the call moves to its closing phase:
-    # the model's next reply is a goodbye, or, if the parent says nothing,
-    # the call is closed. Nothing is blocked. See src/opt_out.py.
+    # line in the call language, and from then on the parent hears only fixed
+    # text: CallManager drops all model output and replaces the next model
+    # reply with the fixed goodbye, which ends the call; if the parent says
+    # nothing, the close timer says the goodbye and ends it. Nothing is
+    # blocked. See src/opt_out.py.
     opt_out: dict = {"heard": False, "source": None, "quote": None, "at": None, "write": None}
 
     async def _record_request(quote: str, source: str) -> bool:
@@ -407,6 +410,7 @@ async def create_bot(
         logger.info(f"Possible stop request (outreach {outreach_id}); recording it for the teacher and closing")
         opt_out["write"] = asyncio.ensure_future(_record_request(quote, LIVE))
         phase_instructor.skip_to_close()
+        call_manager.close_with_fixed_goodbye()
         await task.queue_frames([TTSSpeakFrame(text=plan.opt_out_noted)])
         asyncio.ensure_future(_close_if_silent())
 
@@ -416,9 +420,12 @@ async def create_bot(
         if callable(has_finished) and has_finished() is True:
             return
         if stop_guard is not None and stop_guard.spoken_since_notice:
-            return  # the model answers in the closing phase and CallManager ends the call
+            return  # the model answers; CallManager says the fixed goodbye and ends the call
+        if not call_manager.take_goodbye():
+            return  # CallManager already said it and is ending the call
         logger.info(f"Outreach {outreach_id}: no reply after the opt-out line; closing the call")
-        await task.queue_frames([EndFrame()])
+        context.add_message({"role": "assistant", "content": plan.goodbye})
+        await task.queue_frames([TTSSpeakFrame(text=plan.goodbye), EndFrame()])
         await _watch_ending("the close after the opt-out line")
 
     if on_opt_out_request is not None:

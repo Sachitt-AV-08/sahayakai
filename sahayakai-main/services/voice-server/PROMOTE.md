@@ -76,8 +76,9 @@ On that call, check:
 - [ ] "Don't call me now, I'm driving" does **not** end the call, and the
       outreach has no `optOutRequested`.
 - [ ] On a second test call: "please don't call me again" gets the fixed
-      "I will let the class teacher know" line and, if you then say nothing,
-      the leg hangs up within about 15 seconds. The outreach shows
+      "I will let the class teacher know" line. Whatever you say next, you
+      hear only the fixed goodbye ("Thank you for your time"), never a model
+      reply, and the leg hangs up; if you say nothing, within about 15 seconds. The outreach shows
       `optOutRequested` with your words and `source: live`, the summary's
       first action item quotes you, and **no** `call_suppressions` document
       was created.

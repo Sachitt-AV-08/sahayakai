@@ -475,7 +475,9 @@ def test_after_the_line_the_call_closes_if_the_parent_says_nothing(monkeypatch):
             return run
 
         run = asyncio.run(go())
-    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame", "EndFrame"]
+    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame", "TTSSpeakFrame", "EndFrame"]
+    lines = load_call_lines()["hi-IN"]
+    assert [f.text for f in run.task.queued[:2]] == [lines["opt_out_noted"], lines["goodbye"]]
     assert run.processor("PhaseInstructor").phase.value == "close"
 
 

@@ -21,6 +21,7 @@ from pipecat.frames.frames import (
     LLMTextFrame,
     LLMFullResponseStartFrame,
     LLMFullResponseEndFrame,
+    TTSSpeakFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -81,6 +82,7 @@ class CallManager(FrameProcessor):
         phase_instructor: "PhaseInstructor | None" = None,
         ai_reveal_pattern: "re.Pattern[str] | None" = None,
         ai_reveal_line: str | None = None,
+        closing_line: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -101,6 +103,34 @@ class CallManager(FrameProcessor):
         self._collecting = False
         self._sentence_complete = False  # True after first sentence end detected
         self._ai_reveal_detected = False  # True if LLM tries to reveal AI identity
+        # After a possible stop request (fixed_close), no model text reaches
+        # TTS for the rest of the call: the next model reply is replaced by
+        # this fixed goodbye and the call ends (rereview final #1).
+        self._closing_line = closing_line
+        self._fixed_close = False
+        self._replied_after_notice = False
+        self._goodbye_taken = False
+
+    def close_with_fixed_goodbye(self) -> None:
+        """From now on the parent hears no model output.
+
+        Every streamed LLMTextFrame is dropped. The first model reply that
+        STARTS after this call is replaced by the fixed goodbye, which ends
+        the call; a reply already under way is dropped silently.
+        """
+        self._fixed_close = True
+        self._replied_after_notice = False
+
+    def take_goodbye(self) -> bool:
+        """Claim the call's one fixed goodbye. True the first time only.
+
+        bot.py's close timer and this processor both may close a call after a
+        stop; whichever takes the goodbye first says it.
+        """
+        if self._goodbye_taken:
+            return False
+        self._goodbye_taken = True
+        return True
 
     @property
     def turn_number(self) -> int:
@@ -126,6 +156,28 @@ class CallManager(FrameProcessor):
                 await self._on_ending(why)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Ending watchdog could not start: {e}")
+
+    async def _fixed_close_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        """Model output after a possible stop: never spoken."""
+        if isinstance(frame, LLMTextFrame):
+            return  # dropped: the parent must hear only fixed text now
+        if isinstance(frame, LLMFullResponseStartFrame):
+            self._replied_after_notice = True
+            await self.push_frame(frame, direction)
+            return
+        # LLMFullResponseEndFrame
+        self._collecting = False
+        if not (self._replied_after_notice and self.take_goodbye()):
+            await self.push_frame(frame, direction)
+            return
+        self._turn_number += 1
+        goodbye = self._closing_line or ""
+        if goodbye:
+            await self.push_frame(TTSSpeakFrame(text=goodbye), direction)
+            self._context.add_message({"role": "assistant", "content": goodbye})
+        logger.info(f"Turn {self._turn_number}: model reply after a stop request replaced by the fixed goodbye")
+        await self.push_frame(frame, direction)
+        await self._end_call("the goodbye after the opt-out line")
 
     @property
     def transcript(self) -> list[dict]:
@@ -164,6 +216,10 @@ class CallManager(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+
+        if self._fixed_close and isinstance(frame, (LLMTextFrame, LLMFullResponseStartFrame, LLMFullResponseEndFrame)):
+            await self._fixed_close_frame(frame, direction)
+            return
 
         if isinstance(frame, LLMFullResponseStartFrame):
             self._collecting = True
@@ -235,7 +291,6 @@ class CallManager(FrameProcessor):
                         truncated = f"जी, मैं {teacher} बोल रहा हूँ। {student} के बारे में बात करते हैं।"
                     logger.warning(f"Turn {self._turn_number}: AI reveal blocked, replaced")
                     # Also need to push this replacement to TTS
-                    from pipecat.frames.frames import TTSSpeakFrame
                     await self.push_frame(TTSSpeakFrame(text=truncated), direction)
                     # No early return: a replaced reply is still a turn, and
                     # on the last turn the call must still end (review

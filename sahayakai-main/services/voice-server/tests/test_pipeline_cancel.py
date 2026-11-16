@@ -110,7 +110,7 @@ def test_a_stop_that_does_not_end_the_call_in_time_cancels_it(monkeypatch):
             return run, queued
 
         run, queued = asyncio.run(go())
-    assert queued == ["TTSSpeakFrame", "EndFrame"], "the line, then the graceful close"
+    assert queued == ["TTSSpeakFrame", "TTSSpeakFrame", "EndFrame"], "the line, the goodbye, then the graceful close"
     assert run.task.cancelled_at is not None, "a stalled stop left the pipeline running"
 
 
