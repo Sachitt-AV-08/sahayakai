@@ -121,6 +121,15 @@ class CallManager(FrameProcessor):
         self._fixed_close = True
         self._replied_after_notice = False
 
+    def _is_last_turn(self) -> bool:
+        """After this turn's bookkeeping, will CallManager end the call?"""
+        if self._turn_number >= self._max_turns:
+            return True
+        if self._phase_instructor is not None:
+            from src.conversation_state import ConversationPhase
+            return self._phase_instructor.phase == ConversationPhase.ENDED
+        return False
+
     def take_goodbye(self) -> bool:
         """Claim the call's one fixed goodbye. True the first time only.
 
@@ -283,7 +292,13 @@ class CallManager(FrameProcessor):
 
                 # Guard: If LLM reveals it's AI, replace with safe response
                 if self._ai_reveal_re.search(truncated):
-                    if self._ai_reveal_line:
+                    if self._is_last_turn() and self._closing_line:
+                        # The call ends after this turn: close it with the
+                        # fixed goodbye, not a question the parent cannot
+                        # answer (the request-to-talk line asks for a time;
+                        # final-0b #2).
+                        truncated = self._closing_line
+                    elif self._ai_reveal_line:
                         truncated = self._ai_reveal_line
                     else:
                         teacher = self._call_context.get("teacherName", "Teacher")

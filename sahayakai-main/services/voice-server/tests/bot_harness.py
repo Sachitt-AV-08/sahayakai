@@ -640,8 +640,13 @@ async def spoken_greeting(run: BotRun) -> str:
 
 
 async def phase_guidance(run: BotRun) -> dict[str, str]:
-    """Walk the PhaseInstructor through every phase and capture what it injects."""
+    """Walk the PhaseInstructor through every phase and capture what it injects.
+
+    Leaves the instructor where it found it, so a turn driven afterwards is
+    still a mid-call turn (on the last turn CallManager says the goodbye).
+    """
     instructor = run.processor("PhaseInstructor")
+    saved = (instructor._phase, instructor._turns_in_phase)
     captured: dict[str, str] = {}
     # opening lasts 1 turn, explore 2, advise 2, then close.
     for phase, advances_after in (("opening", 1), ("explore", 2), ("advise", 2), ("close", 0)):
@@ -652,6 +657,7 @@ async def phase_guidance(run: BotRun) -> dict[str, str]:
         captured[phase] = ctx.messages[0]["content"]
         for _ in range(advances_after):
             instructor.advance_phase()
+    instructor._phase, instructor._turns_in_phase = saved
     return captured
 
 

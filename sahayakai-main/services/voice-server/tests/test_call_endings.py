@@ -36,6 +36,7 @@ from bot_harness import (
     stubbed_runtime,
 )
 from main_ast import RECORD
+from src.call_policy import lang_code_for, load_call_lines
 
 OID = "OutreachFs0000000001"
 
@@ -186,6 +187,11 @@ def test_a_last_reply_the_reveal_guard_replaces_still_ends_the_call(ending, tmp_
         manager = run_from_recorder().processor("CallManager")
     replaced = [f for f, _ in manager.pushed if type(f).__name__ == "TTSSpeakFrame"]
     assert len(replaced) == 1, "the scenario really trips the guard, on the last reply only"
+    # final-0b #2: the last thing said is the fixed goodbye, never a question.
+    goodbye = load_call_lines()[lang_code_for(record["parentLanguage"])]["goodbye"]
+    assert replaced[0].text == goodbye and "?" not in replaced[0].text
+    order = [type(f).__name__ for f, _ in manager.pushed if type(f).__name__ in ("TTSSpeakFrame", "EndTaskFrame")]
+    assert order == ["TTSSpeakFrame", "EndTaskFrame"]
     assert runner.ended and not runner.timed_out, f"{ending}: the call was left up after its last turn"
     assert len(hangups) == 1
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
@@ -283,6 +289,50 @@ def test_an_ending_that_finishes_is_not_forced_down(monkeypatch):
 
         run = asyncio.run(go())
     assert run.task.cancelled_at is None
+
+
+def test_a_blocked_reply_mid_call_still_gets_the_usual_replacement():
+    """Only the LAST turn changes: mid-call the request-to-talk line is still the safe answer."""
+    with stubbed_runtime():
+        from bot_harness import FakeCallStore as Store, build_bot
+
+        async def go():
+            run = await build_bot({**RECORD, "id": OID, "parentLanguage": "English"}, call_store=Store())
+            await _model_turn(run, "I am an AI assistant.")
+            manager = run.processor("CallManager")
+            return [f.text for f, _ in manager.pushed if type(f).__name__ == "TTSSpeakFrame"]
+
+        spoken = asyncio.run(go())
+    assert spoken == [load_call_lines()["en-IN"]["request_to_talk"]]
+
+
+def test_a_stop_then_an_identity_question_never_ends_on_a_question(tmp_path, monkeypatch):
+    """The review's path: stop, "is this a robot?", a revealing goodbye. Fixed text only, ending on the goodbye."""
+    async def script():
+        run = run_from_recorder()
+        guard = run.processor("StopRequestGuard")
+        for text in ("Please stop calling me.", "Is this a robot?"):
+            await guard.process_frame(TranscriptionFrame(text=text), FrameDirection.DOWNSTREAM)
+        await _model_turn(run, "I am the class teacher's assistant, thank you, goodbye.")
+
+    db = FakeAsyncFirestore({("parent_outreach", OID): {**RECORD, "parentLanguage": "English"}})
+    with stubbed_runtime():
+        main = import_main(tmp_path, monkeypatch)
+        main.call_store = FakeCallStore()
+
+        async def fake_hangup(*args):
+            return None
+
+        main.hangup_vobiz_call = fake_hangup
+        ModelRunner.script = script
+        main.WorkerRunner = ModelRunner
+        try:
+            asyncio.run(asyncio.wait_for(run_vobiz_path(main, db, outreach_id=OID), 5))
+        finally:
+            ModelRunner.script = None
+        manager = run_from_recorder().processor("CallManager")
+    spoken = [f.text for f, _ in manager.pushed if type(f).__name__ == "TTSSpeakFrame"]
+    assert spoken == [load_call_lines()["en-IN"]["goodbye"]]
 
 
 def test_a_mid_pipeline_endframe_alone_would_not_end_the_task():
