@@ -344,6 +344,15 @@ function refuseBeforeDial(
     return null;
 }
 
+/** 409 for a repeated POST on an outreach record that has already been dialled. */
+function alreadyDialled(ctx: { userId: string; outreachId: string }): NextResponse {
+    logger.warn('Parent call refused: outreach already dialled', 'ATTENDANCE', { userId: ctx.userId, outreachId: ctx.outreachId });
+    return NextResponse.json(
+        { error: 'This call has already been placed. Start a new call to ring again.', code: 'ALREADY_DIALLED', retryable: false },
+        { status: 409 },
+    );
+}
+
 /** A refused call (to be released by POST) or the response of a call attempt. */
 type CallOutcome =
     | { refused: true; category: string; response: NextResponse }
@@ -369,19 +378,10 @@ async function placeOwnedCall(
     // One dial per outreach record, claimed atomically before ANY provider is
     // contacted: a repeated POST (double click, retry loop, script) must not ring
     // the same parent again. "Try again" in the UI creates a new record.
-    // NOT returned as a refusal: the first request owns this record and may be
-    // mid-call, so POST must not mark it failed (markNotDialled) here.
+    // NOT a refusal for POST to release: the first request owns this record and may be mid-call,
+    // so markNotDialled must not mark it failed (gate: attendance-call-refusals-gate.test.ts).
     const claim = await claimOutreachDial(db as unknown as CallStatusDb, ctx.outreachId);
-    if (!claim.ok) {
-        logger.warn('Parent call refused: outreach already dialled', 'ATTENDANCE', { userId: ctx.userId, outreachId: ctx.outreachId });
-        return {
-            refused: false,
-            response: NextResponse.json(
-                { error: 'This call has already been placed. Start a new call to ring again.', code: 'ALREADY_DIALLED', retryable: false },
-                { status: 409 },
-            ),
-        };
-    }
+    if (!claim.ok) return { refused: false, response: alreadyDialled(ctx) };
 
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone

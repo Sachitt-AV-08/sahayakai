@@ -43,6 +43,7 @@ export const CALL_REFUSAL_LABELS: Readonly<Record<string, string>> = {
     LANGUAGE_NOT_SUPPORTED:
         "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.",
     CALL_NOT_PLACED: 'We could not place the call just now. Please try again in a few minutes.',
+    ALREADY_DIALLED: 'This call has already been placed. Start a new call to ring again.',
     RECENT_OUTREACH_EXISTS: 'You contacted this parent a few minutes ago. Please wait a few minutes before trying again.',
 };
 
