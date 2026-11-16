@@ -53,13 +53,14 @@ let vobizConfigured = true;
 jest.mock('@/lib/vobiz/client', () => ({
     placeVobizCall: (...a: unknown[]) => placeVobizCall(...a),
     readVobizConfig: () => (vobizConfigured ? { authId: 'a', authToken: 't', fromNumber: '+911', baseUrl: 'https://x' } : null),
+    isDestinationAllowed: (phone: string) => jest.requireActual('@/lib/vobiz/client').isDestinationAllowed(phone),
 }));
 jest.mock('@/lib/db/adapter', () => ({ dbAdapter: { getUser: async () => ({ planType: 'pro', displayName: 'T' }) } }));
 jest.mock('@/lib/plan-utils', () => ({ hasAdvancedPlan: () => true }));
 
 const ENV_KEYS = [
     'VOICE_PROVIDER', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER',
-    'VOICE_EXOTEL_CALL_URL', 'VOBIZ_TEST_OVERRIDE_NUMBER', 'TWILIO_TEST_OVERRIDE_NUMBER',
+    'VOICE_EXOTEL_CALL_URL', 'VOBIZ_TEST_OVERRIDE_NUMBER', 'TWILIO_TEST_OVERRIDE_NUMBER', 'CALL_ALLOWED_DESTINATIONS',
 ];
 const PROVIDERS: Record<string, Record<string, string>> = {
     twilio: { VOICE_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_PHONE_NUMBER: '+1555' },
@@ -139,6 +140,7 @@ const REFUSALS: Refusal[] = [
     { name: 'outside calling hours (09:30 IST)', providers: ['twilio', 'vobiz', 'exotel'], arrange: () => { (global as any).__gateNow = ist(9, 30); }, status: 409, category: 'outside_calling_hours' },
     { name: 'parent opted out', providers: ['twilio', 'vobiz', 'exotel'], arrange: () => { store.call_suppressions = { [phoneSuppressionId(PHONE)]: { reason: 'opt_out' } }; }, status: 409, category: 'parent_opted_out' },
     { name: 'do-not-call lookup failed', providers: ['twilio', 'vobiz', 'exotel'], arrange: suppressionLookupFails, status: 503, category: 'suppression_check_failed' },
+    { name: 'destination not on the server allow-list', providers: ['twilio', 'vobiz', 'exotel'], arrange: () => { process.env.CALL_ALLOWED_DESTINATIONS = '+919800000999'; }, status: 403, category: 'destination_not_allowed' },
     { name: 'Twilio not configured', providers: ['twilio'], arrange: () => { delete process.env.TWILIO_AUTH_TOKEN; }, status: 503, category: 'provider_unconfigured' },
     { name: 'Vobiz not configured', providers: ['vobiz'], arrange: () => { vobizConfigured = false; }, status: 503, category: 'provider_unconfigured' },
     { name: 'Exotel not configured', providers: ['exotel'], arrange: () => { delete process.env.VOICE_EXOTEL_CALL_URL; }, status: 503, category: 'provider_unconfigured' },
@@ -217,7 +219,9 @@ describe('structural: no refusal after ownership can skip the release', () => {
     });
 
     it('placeOwnedCall hands back only a refuseBeforeDial refusal or a provider response', () => {
-        const allowed = /^return \{ refused: (true, \.\.\.refusal \}|false, response: await (forwardToExotel|forwardToVobiz|placeTwilioCall)\()/;
+        // alreadyDialled: a repeated POST on a record the first request already dialled. Not
+        // released on purpose: marking it failed would overwrite a call that may be in progress.
+        const allowed = /^return \{ refused: (true, \.\.\.refusal \}|false, response: (await (forwardToExotel|forwardToVobiz|placeTwilioCall)\(|alreadyDialled\(ctx\) \}))/;
         const returns = returnsIn(fnBody('placeOwnedCall'));
         expect(returns.length).toBeGreaterThanOrEqual(4);
         expect(returns.filter((r) => !allowed.test(r))).toEqual([]);

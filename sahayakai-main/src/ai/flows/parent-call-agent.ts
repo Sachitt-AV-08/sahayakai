@@ -95,6 +95,13 @@ const AgentReplyInputSchema = z.object({
     /** One-line summary of recent test scores the agent can quote if the
      *  parent asks "what were his marks?". Built from PerformanceContext. */
     performanceSummary: z.string().optional(),
+    /**
+     * True only where a complaint about the teacher really is routed to the
+     * teacher and the principal (the SamparkAI demo's principal monitor). Off,
+     * the agent promises only what every call delivers: the school sees the
+     * summary.
+     */
+    complaintRouting: z.boolean().optional(),
     /** A concern call: the request-to-talk system rules apply (src/lib/attendance/request-to-talk.ts). */
     requestToTalk: z.boolean().optional(),
 });
@@ -248,6 +255,8 @@ const CallSummaryOutputSchema = z.object({
     callQuality: z.enum(['productive', 'brief', 'difficult', 'unanswered']),
     followUpNeeded: z.boolean().describe('Whether teacher should follow up again'),
     followUpSuggestion: z.string().optional().describe('If followUpNeeded, what should the teacher do next'),
+    // Optional so summaries stored before this field existed still parse.
+    complaintAboutTeacher: z.string().nullable().optional().describe('What the parent said about the teacher or the school, stated fairly; null if nothing'),
 });
 
 export type CallSummaryInput = z.infer<typeof CallSummaryInputSchema>;
@@ -292,7 +301,8 @@ ${INJECTION_GUARD}
 6. guidanceGiven: What advice was shared during the call. Empty if none.
 7. parentSentiment: Best single word describing parent's overall emotional state.
 8. callQuality: "productive" if meaningful exchange, "brief" if parent didn't say much, "difficult" if parent was upset/uncooperative, "unanswered" if no real conversation happened.
-9. followUpNeeded + followUpSuggestion: Based on the conversation outcome.`,
+9. followUpNeeded + followUpSuggestion: Based on the conversation outcome.
+10. complaintAboutTeacher: If the parent complained about the teacher, their teaching or the school, restate the complaint fairly and specifically, in the parent's meaning, without judging whether it is true and without softening it. If the parent made no such complaint, leave it null (JSON null, never the word "null"). A complaint always means followUpNeeded is true.`,
 });
 
 export async function generateCallSummary(input: CallSummaryInput): Promise<CallSummaryOutput> {
@@ -328,5 +338,10 @@ export async function generateCallSummary(input: CallSummaryInput): Promise<Call
     if (!output) {
         throw new Error('parentCall.summary returned no output (safety block or empty completion)');
     }
-    return output;
+    // Models sometimes write the word "null" (or "none") instead of leaving the
+    // field empty; that must never become a complaint on record. Any real
+    // complaint means a follow-up.
+    const complaint = output.complaintAboutTeacher?.trim();
+    const complaintAboutTeacher = complaint && !/^(null|none|n\/?a|undefined|nil|-)\.?$/i.test(complaint) ? complaint : null;
+    return { ...output, complaintAboutTeacher, followUpNeeded: output.followUpNeeded || Boolean(complaintAboutTeacher) };
 }

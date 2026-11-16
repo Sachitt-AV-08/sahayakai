@@ -38,10 +38,12 @@ export const CALL_REFUSAL_LABELS: Readonly<Record<string, string>> = {
     STUDENT_NOT_FOUND: 'This student is no longer in this class.',
     NO_PARENT_PHONE:
         "This student has no valid parent phone number on record. Please add it to the student's details first.",
+    DESTINATION_NOT_ALLOWED: 'Calls to this number are not allowed on this server.',
     VOICE_NOT_CONFIGURED: 'Parent calling is not available right now. Please use the WhatsApp copy instead.',
     LANGUAGE_NOT_SUPPORTED:
         "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.",
     CALL_NOT_PLACED: 'We could not place the call just now. Please try again in a few minutes.',
+    ALREADY_DIALLED: 'This call has already been placed. Start a new call to ring again.',
     RECENT_OUTREACH_EXISTS: 'You contacted this parent a few minutes ago. Please wait a few minutes before trying again.',
 };
 

@@ -24,6 +24,7 @@ import path from 'path';
 
 import { checkCallingWindow } from '@/lib/calling-hours';
 import { ROUTINE_END_CEILING_HOUR, ROUTINE_START_FLOOR_HOUR } from '@/lib/sampark/policy/routine-hours';
+import { EMERGENCY_END_HOUR, EMERGENCY_START_HOUR } from '@/lib/sampark/policy/window';
 
 const SRC = path.resolve(__dirname, '../..');
 const rel = (abs: string) => path.relative(SRC, abs).split(path.sep).join('/');
@@ -53,12 +54,29 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const SOURCES = walk(SRC).map((abs) => ({ rel: rel(abs), code: stripComments(fs.readFileSync(abs, 'utf8')) }));
 
-/** Code that shows a module knows about calling hours: it enforces, reports or displays them. */
-const KNOWS_CALLING_HOURS =
-    /checkCallingWindow|CALLING_WINDOW_(START|END)_HOUR|ROUTINE_(START_FLOOR|END_CEILING)_HOUR|ROUTINE_(START|END)_HOUR_OPTIONS|OUTSIDE_CALLING_HOURS|calling[-_ ]?(hours|window)|quiet[-_ ]?hours/i;
+/**
+ * The code without its string literals. A module "knows" calling hours by what its code does
+ * (enforce, compute, report), not by a translated label such as "Outside the school's calling
+ * hours": a label carries no hour, so it cannot drift. Copy is checked separately, below.
+ */
+function codeOnly(src: string): string {
+    return src.replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, "''");
+}
 
+/**
+ * Code that shows a module knows about calling hours: it enforces, reports or displays them.
+ * Sampark's per-school `callingWindow` field (a school's own start and end hour) is not matched:
+ * the school API's schema and the dispatcher's clamp hold it inside this band, and
+ * src/__tests__/sampark/server/gate-routine-window-single-source.test.ts gates that.
+ */
+const KNOWS_CALLING_HOURS =
+    /checkCallingWindow|CALLING_WINDOW_(START|END)_HOUR|ROUTINE_(START_FLOOR|END_CEILING)_HOUR|ROUTINE_(START|END)_HOUR_OPTIONS|OUTSIDE_CALLING_HOURS|calling[-_ ](hours|window)|callingHours|quiet[-_ ]?hours/i;
+
+// Sampark's window module (lib/sampark/policy/window.ts) reads routine-hours itself and holds
+// only the emergency band, and its ordered gate (policy/gate.ts) applies that window; importing
+// either is reading the single source.
 const READS_SINGLE_SOURCE =
-    /from\s+['"](@\/lib\/calling-hours|@\/lib\/sampark\/policy\/routine-hours|(\.{1,2}\/)+(lib\/)?(calling-hours|(sampark\/policy\/)?routine-hours))['"]/;
+    /from\s+['"](@\/lib\/calling-hours|@\/lib\/sampark\/policy\/(routine-hours|window|gate)|(\.{1,2}\/)+(lib\/)?(calling-hours|(sampark\/policy\/)?(routine-hours|window|gate)))['"]/;
 
 /** The teacher's parent-call path: everything that can place, answer, report or show a parent call. */
 const CALL_PATH = [
@@ -98,7 +116,7 @@ describe('calling hours: one source (static)', () => {
 
     it('every module that knows calling hours reads them from calling-hours or routine-hours', () => {
         const offenders = SOURCES
-            .filter((s) => s.rel !== ROUTINE_HOURS_MODULE && KNOWS_CALLING_HOURS.test(s.code))
+            .filter((s) => s.rel !== ROUTINE_HOURS_MODULE && KNOWS_CALLING_HOURS.test(codeOnly(s.code)))
             .filter((s) => !READS_SINGLE_SOURCE.test(s.code))
             .map((s) => `${s.rel}: knows calling hours but imports neither calling-hours nor routine-hours`);
         expect(offenders).toEqual([]);
@@ -155,7 +173,10 @@ describe('calling hours: one source (behaviour and copy)', () => {
                 for (const text of [key, typeof value === 'string' ? value : '']) {
                     if (!/call|phone/i.test(key) || !CLOCK_TIME.test(text)) continue;
                     const hours = Array.from(text.matchAll(/\b(\d{1,2})(?=\s?(AM|PM|a\.m\.|p\.m\.)|:\d{2}\b)/gi), (m) => Number(m[1]));
-                    if (hours.some((h) => !allowed.has(h))) offenders.push(`${file}: "${key}"`);
+                    // Emergency closures (catalogue D4) keep their own band, 06:00 to 21:00, by the same
+                    // decision; only copy about an emergency or a closure may state it.
+                    const band = /emergenc|closure/i.test(key) ? new Set([...allowed, EMERGENCY_START_HOUR, EMERGENCY_END_HOUR, EMERGENCY_END_HOUR - 12]) : allowed;
+                    if (hours.some((h) => !band.has(h))) offenders.push(`${file}: "${key}"`);
                 }
             }
         }

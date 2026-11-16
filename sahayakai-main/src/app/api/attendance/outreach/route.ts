@@ -106,6 +106,14 @@ export async function POST(req: NextRequest) {
             if (suppressed) return suppressed;
         }
 
+        // A parent who told us on a call not to phone them again is not called
+        // again, however many new outreach docs the teacher creates. Refused
+        // here (before a doc exists) AND in /api/attendance/call.
+        if (data.deliveryMethod === 'twilio_call') {
+            const suppressed = await refuseIfParentOptedOut(db, parentPhone);
+            if (suppressed) return suppressed;
+        }
+
         // ── F9-003 fix: per-(teacher, student) dedup window ───────────────
         //
         // The window protects the PARENT from being called repeatedly. So a

@@ -530,6 +530,12 @@ const TEACHER_FACING: Record<string, string> = {
 const FACES_A_CALL_WITHOUT_OUTREACH_CONTENT: Record<string, string> = {
     'app/api/demo-call/twiml/route.ts': "public lead magnet: a fixed script to the visitor's own number, no outreach record",
     'app/api/attendance/transcript-sync/route.ts': 'receives transcripts from the voice pipeline and returns no speakable content',
+    // Sampark's Riya calls speak catalogue purposes and Riya variables, never a parent_outreach
+    // record; their own gate keeps concern calls to a request to talk
+    // (src/__tests__/sampark/conversation/gate-request-to-talk-never-states-the-concern.test.ts).
+    'app/api/webhooks/vobiz-riya/answer/route.ts': 'Sampark Riya over Vobiz: streams to the bridge with a signed Sampark ref, no outreach content',
+    'lib/sampark/voice/xml.ts': 'Sampark notice XML: plays rendered catalogue clips, no outreach content',
+    'server/sampark/vobiz-riya.ts': 'Sampark Riya over Vobiz: answer/stream for Sampark calls, no outreach content',
 };
 
 describe('structural: concern fields reach a parent only through parentCallContent (all of src/)', () => {

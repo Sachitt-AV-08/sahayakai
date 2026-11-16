@@ -5,9 +5,11 @@ import { isValidE164 } from '@/lib/twilio-validate';
 import { checkCallingWindow, outsideCallingHoursBody } from '@/lib/calling-hours';
 import { logger } from '@/lib/logger';
 import { classifyTwilioFailure, releasesDedupWindow } from '@/lib/twilio-errors';
+import { claimOutreachDial } from '@/lib/attendance/claim-dial';
 import { getEffectiveMode } from '@/lib/voice-pipeline/health';
 import { refuseIfParentOptedOut } from '@/lib/call-suppression';
-import { placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
+import { isDestinationAllowed, placeVobizCall, readVobizConfig } from '@/lib/vobiz/client';
+import { writeCallStatus, type CallStatusDb } from '@/lib/attendance/reconcile-call-status';
 import { warmTelephony } from '@/lib/vobiz/warm';
 import {
     VOBIZ_DOMAINS,
@@ -97,6 +99,15 @@ async function resolveOutreachTarget(
     const data = snap.data()!;
     if (data.teacherUid !== userId) {
         return { ok: false, owned: false, response: NextResponse.json({ error: 'Unauthorized', code: 'FORBIDDEN' }, { status: 403 }) };
+    }
+    // Already dialled: the record belongs to the first request, whose call may be
+    // ringing or in progress. Answer 409 BEFORE any other check, and as not-owned
+    // so POST writes nothing: a refusal here (calling window just closed, parent
+    // opted out, class or phone changed) would otherwise mark the live call
+    // failed, and the first final state wins (gate: attendance-call-single-dial).
+    // `callSid` covers records dialled before the claim existed.
+    if (data.dialClaimedAt || data.callSid) {
+        return { ok: false, owned: false, response: alreadyDialled({ userId, outreachId }) };
     }
 
     const classId = typeof data.classId === 'string' ? data.classId : '';
@@ -213,10 +224,8 @@ async function forwardToVobiz(
         // No call was placed, so the per-student dedup window is released for
         // the same reason the Twilio path releases it: the parent was never
         // disturbed, and holding the record "recent" only locks the teacher out.
-        await db.collection('parent_outreach').doc(outreachId).update({
-            callStatus: 'failed',
+        await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'failed', {
             callFailureCategory: result.failure.category,
-            updatedAt: new Date().toISOString(),
         }).catch((e: unknown) => {
             console.error('[attendance/call] could not mark outreach failed:', e);
         });
@@ -233,11 +242,9 @@ async function forwardToVobiz(
         );
     }
 
-    await db.collection('parent_outreach').doc(outreachId).update({
+    await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'initiated', {
         callSid: result.handle.requestUuid,
-        callStatus: 'initiated',
         deliveryMethod: 'vobiz_call',
-        updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({ callSid: result.handle.requestUuid });
@@ -249,10 +256,8 @@ async function forwardToVobiz(
  * dedup window (only an explicit 'failed' releases it). Never fatal.
  */
 async function markNotDialled(db: FirebaseFirestore.Firestore, outreachId: string, category: string): Promise<void> {
-    await db.collection('parent_outreach').doc(outreachId).update({
-        callStatus: 'failed',
+    await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'failed', {
         callFailureCategory: category,
-        updatedAt: new Date().toISOString(),
     }).catch((e: unknown) => {
         console.error('[attendance/call] could not mark outreach failed:', e);
     });
@@ -268,7 +273,7 @@ type Refusal = { category: string; response: NextResponse };
  */
 function refuseBeforeDial(
     suppressed: NextResponse | null,
-    ctx: { provider: string; parentLanguage: Language; userId: string; outreachId: string },
+    ctx: { provider: string; parentLanguage: Language; userId: string; outreachId: string; destination: string },
 ): Refusal | null {
     // Quiet hours. Enforced HERE, ahead of the provider switch, so it binds every
     // caller equally — the modal's Try again, a scheduled retry, a cron sweep, or
@@ -294,6 +299,20 @@ function refuseBeforeDial(
         return {
             category: suppressed.status === 409 ? 'parent_opted_out' : 'suppression_check_failed',
             response: suppressed,
+        };
+    }
+
+    // The server's destination allow-list (CALL_ALLOWED_DESTINATIONS, set on staging and test
+    // servers so they can never ring a real family). Checked for every provider, before any
+    // provider is contacted.
+    if (!isDestinationAllowed(ctx.destination)) {
+        console.error('[attendance/call] DESTINATION_NOT_ALLOWED — refused by CALL_ALLOWED_DESTINATIONS; nothing dialled.');
+        return {
+            category: 'destination_not_allowed',
+            response: NextResponse.json(
+                { error: 'This destination is not allowed on this server.', code: 'DESTINATION_NOT_ALLOWED', retryable: false },
+                { status: 403 },
+            ),
         };
     }
 
@@ -334,6 +353,15 @@ function refuseBeforeDial(
     return null;
 }
 
+/** 409 for a repeated POST on an outreach record that has already been dialled. */
+function alreadyDialled(ctx: { userId: string; outreachId: string }): NextResponse {
+    logger.warn('Parent call refused: outreach already dialled', 'ATTENDANCE', { userId: ctx.userId, outreachId: ctx.outreachId });
+    return NextResponse.json(
+        { error: 'This call has already been placed. Start a new call to ring again.', code: 'ALREADY_DIALLED', retryable: false },
+        { status: 409 },
+    );
+}
+
 /** A refused call (to be released by POST) or the response of a call attempt. */
 type CallOutcome =
     | { refused: true; category: string; response: NextResponse }
@@ -352,8 +380,17 @@ async function placeOwnedCall(
     ctx: { parentLanguage: Language; userId: string; outreachId: string },
 ): Promise<CallOutcome> {
     const provider = (process.env.VOICE_PROVIDER || 'twilio').toLowerCase();
-    const refusal = refuseBeforeDial(suppressed, { provider, ...ctx });
+    const override = provider === 'vobiz' ? process.env.VOBIZ_TEST_OVERRIDE_NUMBER : provider === 'twilio' ? process.env.TWILIO_TEST_OVERRIDE_NUMBER : undefined;
+    const refusal = refuseBeforeDial(suppressed, { provider, ...ctx, destination: override || target.parentPhone });
     if (refusal) return { refused: true, ...refusal };
+
+    // One dial per outreach record, claimed atomically before ANY provider is
+    // contacted: a repeated POST (double click, retry loop, script) must not ring
+    // the same parent again. "Try again" in the UI creates a new record.
+    // NOT a refusal for POST to release: the first request owns this record and may be mid-call,
+    // so markNotDialled must not mark it failed (gate: attendance-call-refusals-gate.test.ts).
+    const claim = await claimOutreachDial(db as unknown as CallStatusDb, ctx.outreachId);
+    if (!claim.ok) return { refused: false, response: alreadyDialled(ctx) };
 
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone
@@ -472,10 +509,8 @@ async function placeTwilioCall(
             // the record "recent" locks the teacher out for five minutes to
             // protect a parent who was never disturbed.
             if (releasesDedupWindow(failure)) {
-                await db.collection('parent_outreach').doc(outreachId).update({
-                    callStatus: 'failed',
+                await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'failed', {
                     callFailureCategory: failure.category,
-                    updatedAt: new Date().toISOString(),
                 }).catch((e: unknown) => {
                     // Never let bookkeeping mask the error the teacher needs.
                     console.error('[attendance/call] could not mark outreach failed:', e);
@@ -492,11 +527,9 @@ async function placeTwilioCall(
         const callSid: string = twilioData.sid;
 
         // Update outreach record with callSid
-        await db.collection('parent_outreach').doc(outreachId).update({
+        await writeCallStatus(db as unknown as CallStatusDb, outreachId, 'initiated', {
             callSid,
-            callStatus: 'initiated',
             deliveryMethod: 'twilio_call',
-            updatedAt: new Date().toISOString(),
         });
 
         return NextResponse.json({ callSid });
