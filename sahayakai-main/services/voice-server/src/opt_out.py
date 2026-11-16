@@ -277,7 +277,7 @@ _PLACE_PARTS = (
     r"\b(?:office|work|working|driving|meeting)\b",
     _word(r"ऑफिस|ऑफ़िस|दफ़्तर|दफ्तर|मीटिंग|ड्राइव|ड्राइविंग|काम\s*पर"),
     r"गाड़ी\s*चला",
-    _word(r"कामात|ऑफिसमध्ये"),
+    _word(r"ऑफिसमध्ये"),
     _word(r"অফিস|অফিসে|মিটিং|মিটিংয়ে"),
     r"গাড়ি\s*চালা",
     _word(r"ઓફિસ|ઓફિસમાં"),
@@ -288,6 +288,7 @@ _PLACE_PARTS = (
 _REASON_PARTS = (
     r"\bbusy\b",
     _word(r"बिज़ी|बिजी|व्यस्त"),
+    _word(r"कामात"),  # Marathi "busy (at work)": a reason, like व्यस्त
     _word(r"ব্যস্ত"),
     _word(r"વ્યસ્ત"),
     _word(r"ਬਿਜ਼ੀ|ਰੁੱਝਿਆ"),

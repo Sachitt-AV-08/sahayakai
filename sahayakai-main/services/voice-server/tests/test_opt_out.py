@@ -597,3 +597,20 @@ def test_through_the_handler_stop_these_phone_calls_is_recorded(tmp_path, monkey
     db, _persisted, _spoken, _passed = _run_call("Hindi", (STOP_THESE_PHONE_CALLS[1],), tmp_path, monkeypatch)
     [request] = opt_out_requests(db)
     assert request["quote"] == STOP_THESE_PHONE_CALLS[1]
+
+
+# ── Marathi "कामात" is "busy", a reason (review, lower priority) ────────────
+
+def test_kamat_is_busy_not_a_place():
+    assert is_stop_request("मला पुन्हा फोन करू नका, मी कामात असतो"), "a strong stop said with 'busy'"
+    assert not is_stop_request("फोन करू नका, मी कामात आहे"), "a plain 'don't call' with 'busy' is still not a stop"
+    assert not is_stop_request("आता फोन करू नका, मी कामात आहे"), "a time still vetoes"
+
+
+def test_through_the_handler_a_marathi_busy_stop_is_recorded(tmp_path, monkeypatch):
+    from test_opt_out_never_suppresses import _run_call
+
+    text = "मला पुन्हा फोन करू नका, मी कामात असतो"
+    db, _persisted, _spoken, _passed = _run_call("Marathi", (text,), tmp_path, monkeypatch)
+    [request] = opt_out_requests(db)
+    assert request["quote"] == text
