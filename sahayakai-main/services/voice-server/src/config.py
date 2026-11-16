@@ -19,6 +19,9 @@ class Config:
     request_signing_key: str
     vobiz_auth_id: str
     vobiz_auth_token: str
+    # Gemini endpoint (src/gemini_backend.py). Defaults keep the AI Studio key.
+    gemini_backend: str = "ai_studio"
+    vertex_location: str = "asia-south1"
 
 
 def load_config() -> Config:
@@ -44,4 +47,6 @@ def load_config() -> Config:
         request_signing_key=os.environ.get("SAHAYAKAI_REQUEST_SIGNING_KEY", ""),
         vobiz_auth_id=os.environ.get("VOBIZ_AUTH_ID", ""),
         vobiz_auth_token=os.environ.get("VOBIZ_AUTH_TOKEN", ""),
+        gemini_backend=os.environ.get("SAHAYAKAI_GEMINI_BACKEND", "ai_studio"),
+        vertex_location=os.environ.get("SAHAYAKAI_VERTEX_LOCATION", "asia-south1"),
     )

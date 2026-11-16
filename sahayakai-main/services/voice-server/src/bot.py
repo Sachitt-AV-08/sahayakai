@@ -52,6 +52,7 @@ from src.conversation_state import PhaseInstructor
 from src.stt_filter import STTConfidenceFilter
 from src.stop_guard import StopRequestGuard
 from src.opt_out import backstop_quote
+from src.gemini_backend import resolve_gemini_backend
 from src.persistence import sync_transcript
 from src.call_store import CallStore
 from src.call_analyzer import analyze_call
@@ -222,15 +223,29 @@ async def create_bot(
     greeting_text = plan.greeting
     system_instruction = plan.system_instruction
 
-    llm = GoogleLLMService(
-        api_key=config.google_api_key,
-        settings=GoogleLLMService.Settings(
-            model="gemini-2.0-flash",
-            temperature=0.2,  # Very low = focused, deterministic, stays in character
-            max_tokens=40,  # CallManager truncates to 1st sentence anyway
-            system_instruction=system_instruction,
-        ),
+    llm_settings = dict(
+        model="gemini-2.0-flash",
+        temperature=0.2,  # Very low = focused, deterministic, stays in character
+        max_tokens=40,  # CallManager truncates to 1st sentence anyway
+        system_instruction=system_instruction,
     )
+    gemini = resolve_gemini_backend(config)
+    if gemini.is_vertex:
+        # Vertex AI as the runtime service account (ADC), billed to the
+        # project; no API key. See src/gemini_backend.py.
+        from pipecat.services.google.vertex.llm import GoogleVertexLLMService
+
+        llm = GoogleVertexLLMService(
+            project_id=gemini.project,
+            location=gemini.location,
+            settings=GoogleVertexLLMService.Settings(**llm_settings),
+        )
+    else:
+        llm = GoogleLLMService(
+            api_key=config.google_api_key,
+            settings=GoogleLLMService.Settings(**llm_settings),
+        )
+    logger.info(f"Gemini backend: {gemini.describe()}")
 
     # ── LLM Context + Universal Aggregator ──
     # Universal LLMContext uses OpenAI-style dicts — GeminiLLMAdapter
@@ -412,6 +427,7 @@ async def create_bot(
             try:
                 insights = await analyze_call(
                     call_context, transcript, api_key=config.google_api_key,
+                    backend=gemini,
                 )
                 if insights and call_store:
                     call_store.save_insights(outreach_id, insights)

@@ -345,7 +345,7 @@ def test_the_post_call_backstop_writes_only_on_a_verbatim_quote(found, monkeypat
     with stubbed_runtime():
         from src import bot
 
-        async def fake_analysis(call_context, transcript, api_key=None):
+        async def fake_analysis(call_context, transcript, api_key=None, **kwargs):
             return {"optOut": {"requested": True, "quote": quote if found else "something never said"}}
 
         monkeypatch.setattr(bot, "analyze_call", fake_analysis)

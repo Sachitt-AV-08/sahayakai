@@ -19,6 +19,7 @@ PURE_MODULES = [
     "src.opt_out",
     "src.stream_tokens",
     "src.log_redaction",
+    "src.gemini_backend",
 ]
 
 _PROBE = r"""

@@ -77,10 +77,13 @@ async def analyze_call(
     call_context: dict,
     transcript: list[dict],
     api_key: str | None = None,
+    backend=None,
 ) -> dict | None:
     """Analyze a completed call transcript and return structured insights.
 
     Returns dict with keys matching call_insights + concerns + followUps.
+    `backend` is a gemini_backend.GeminiBackend; Vertex needs no API key.
+    Without one (or with the AI Studio backend) the key is used as before.
     """
     if not _HAS_GENAI:
         logger.warning("Skipping call analysis — google-genai not installed")
@@ -90,8 +93,9 @@ async def analyze_call(
         logger.debug("Skipping analysis — transcript too short")
         return None
 
+    use_vertex = backend is not None and getattr(backend, "is_vertex", False)
     key = api_key or os.environ.get("GOOGLE_GENAI_API_KEY", "")
-    if not key:
+    if not key and not use_vertex:
         logger.warning("Skipping call analysis — no API key")
         return None
 
@@ -113,7 +117,7 @@ async def analyze_call(
     )
 
     try:
-        client = genai.Client(api_key=key)
+        client = genai.Client(**backend.genai_client_kwargs()) if use_vertex else genai.Client(api_key=key)
         response = await client.aio.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,

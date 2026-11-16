@@ -38,6 +38,13 @@
 # SAHAYAKAI_REQUIRE_APP_CHECK, SAHAYAKAI_TELEPHONY_ONLY. Kept so the first
 # deploy from this file changes code only; drop them in a separate change.
 #
+# Gemini backend: this spec keeps the AI Studio key (GOOGLE_GENAI_API_KEY),
+# exactly as live. To move the conversation model and the post-call analysis
+# to Vertex AI as the runtime service account (it holds roles/aiplatform.user),
+# add SAHAYAKAI_GEMINI_BACKEND=vertex (and optionally SAHAYAKAI_VERTEX_LOCATION,
+# default asia-south1) to --set-env-vars in a deliberate change, deploy a
+# candidate and test-call it. See src/gemini_backend.py.
+#
 # No trigger runs this file. CLASS GATE: sahayakai-main/src/__tests__/scripts/
 # one-deploy-source-per-service.test.ts fails if a second deploy definition
 # targets sahayakai-telephony, or if any does without --no-traffic.

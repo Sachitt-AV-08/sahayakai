@@ -32,6 +32,7 @@ from src.vobiz import (
 )
 from src.stream_tokens import StreamUse
 from src.log_redaction import with_redaction
+from src.gemini_backend import resolve_gemini_backend
 
 # After the pipeline ends on its own (last turn, or a stop request) the final
 # sentence may still be playing from the carrier's buffer: the transport sends
@@ -278,7 +279,9 @@ async def _post_call_cleanup(outreach_id: str, call_context: dict, cfg):
             return  # Already analyzed
 
         logger.info(f"Running fallback post-call analysis for {outreach_id}")
-        insights = await analyze_call(call_context, transcript, api_key=cfg.google_api_key)
+        insights = await analyze_call(
+            call_context, transcript, api_key=cfg.google_api_key, backend=resolve_gemini_backend(cfg),
+        )
         if insights:
             call_store.save_insights(outreach_id, insights)
             parent_phone = call_context.get("parentPhone", "")
@@ -526,10 +529,16 @@ def main():
     """Entry point for the voice server."""
     logger.info(f"Starting voice server on {config.host}:{config.port}")
 
+    # A misconfigured Gemini backend must stop the server before it takes a
+    # call (the candidate revision then never passes its startup probe),
+    # not fall back to the AI Studio key at the first parent reply.
+    gemini = resolve_gemini_backend(config)
+    logger.info(f"Gemini backend: {gemini.describe()}")
+
     missing = []
     if not config.sarvam_api_key:
         missing.append("SARVAM_AI_API_KEY")
-    if not config.google_api_key:
+    if not config.google_api_key and not gemini.is_vertex:
         missing.append("GOOGLE_GENAI_API_KEY")
     if missing:
         logger.warning(f"Missing API keys: {', '.join(missing)}")

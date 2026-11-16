@@ -426,12 +426,17 @@ def _kwargs_of(qual: str) -> dict:
     return dict(calls[0][2])
 
 
-async def build_bot(call_context: dict, *, call_store=None, **extra) -> BotRun:
+async def build_bot(call_context: dict, *, call_store=None, config_overrides: dict | None = None, **extra) -> BotRun:
     """Run the real create_bot against the stand-ins (inside stubbed_runtime)."""
+    from dataclasses import replace
+
     from src import bot
 
+    config = make_config()
+    if config_overrides:
+        config = replace(config, **config_overrides)
     result = await bot.create_bot(
-        make_config(),
+        config,
         dict(call_context),
         object(),
         stream_sid="stream-test",
@@ -449,7 +454,11 @@ def run_from_recorder(task=None, finalize=None) -> BotRun:
         tasks = RECORDER.instances_of("PipelineTask")
         assert len(tasks) == 1, f"expected one PipelineTask, got {len(tasks)}"
         task = tasks[0]
-    llm = _kwargs_of("pipecat.services.google.llm.GoogleLLMService.Settings")
+    llm_calls = RECORDER.named("pipecat.services.google.llm.GoogleLLMService.Settings") + RECORDER.named(
+        "pipecat.services.google.vertex.llm.GoogleVertexLLMService.Settings"
+    )
+    assert len(llm_calls) == 1, f"expected one LLM settings object, got {len(llm_calls)}"
+    llm = dict(llm_calls[0][2])
     contexts = [i for i in RECORDER.instances if isinstance(i, LLMContext)]
     assert len(contexts) == 1
     transports = RECORDER.instances_of("FastAPIWebsocketTransport")
