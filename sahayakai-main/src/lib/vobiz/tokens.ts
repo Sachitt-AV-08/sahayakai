@@ -59,6 +59,19 @@ export type VobizDomain = (typeof VOBIZ_DOMAINS)[keyof typeof VOBIZ_DOMAINS];
 export const VOBIZ_TOKEN_TTL_SECONDS = 300;
 
 /**
+ * The media-stream token needs only the answer-to-connect gap.
+ *
+ * It is minted in the answer webhook, after the parent has already picked up,
+ * and Vobiz presents it seconds later when it opens the media socket. It rides
+ * in the stream URL (moving it out needs carrier support), so whoever sees that
+ * URL in a carrier log or a proxy can open a billable socket until it expires.
+ * Sixty seconds covers the connect with a wide margin and is a fifth of the
+ * default; a call already in progress is not affected, because the token is
+ * checked only when the socket opens.
+ */
+export const VOBIZ_STREAM_TTL_SECONDS = 60;
+
+/**
  * Status tokens need a MUCH longer life than the others.
  *
  * `hangup_url` fires when the call ENDS, not when it starts, so its token has to
