@@ -16,8 +16,11 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const SRC = path.resolve(__dirname, '..', '..');
-const ENTRIES = ['app/page.tsx', 'app/layout.tsx'].map((p) => path.join(SRC, p));
+const ENTRIES = ['app/page.tsx', 'app/layout.tsx', 'app/error.tsx', 'app/not-found.tsx'].filter((p) => existsSync(path.join(SRC, p))).map((p) => path.join(SRC, p));
 const CURRICULUM = path.join(SRC, 'data', 'ncert') + path.sep;
+
+/** A CommonJS require() is as static as an import for the bundler. */
+const REQUIRE = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 /** Value imports and re-exports, minus type-only ones. Dynamic import() is deliberately not matched. */
 const STATIC_IMPORT = /^\s*(?:import|export)\s+(?!type\b)(?:[^'"`;]*?\s+from\s+)?['"]([^'"]+)['"]/gm;
@@ -42,7 +45,7 @@ function reachable(entries: string[]): Map<string, string[]> {
         if (seen.has(file)) continue;
         seen.set(file, chain);
         const text = readFileSync(file, 'utf8');
-        for (const m of text.matchAll(STATIC_IMPORT)) {
+        for (const m of [...text.matchAll(STATIC_IMPORT), ...text.matchAll(REQUIRE)]) {
             const next = resolve(m[1], file);
             if (next && !seen.has(next)) queue.push([next, [...chain, path.relative(SRC, next)]]);
         }
@@ -63,6 +66,7 @@ describe('gate: the home page does not load the curriculum tables', () => {
         const text = "import type { A } from '@/data/ncert/index';\nconst m = () => import('@/data/ncert/index');\nexport type { B } from './x';";
         expect([...text.matchAll(STATIC_IMPORT)].map((m) => m[1])).toEqual([]);
         expect([...("import { a } from '@/x';\nexport { b } from './y';\nimport './z';").matchAll(STATIC_IMPORT)].map((m) => m[1])).toEqual(['@/x', './y', './z']);
+        expect([..."const n = require('@/data/ncert/index');".matchAll(REQUIRE)].map((m) => m[1])).toEqual(['@/data/ncert/index']);
     });
 
     it('no file reachable from the home page or the root layout is a curriculum table', () => {

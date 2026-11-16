@@ -120,7 +120,11 @@ export function useOnboardingProgress(): UseOnboardingProgressReturn {
                     setSuggestions(sug);
                     // Track shown chapter IDs for refresh
                     shownChapterIdsRef.current = sug.map(s => s.chapterId).filter(Boolean) as string[];
-                }).catch(() => { /* suggestions are optional; the home page works without them */ });
+                }).catch((err) => {
+                    // Suggestions are optional; the home page works without them. A failed chunk fetch
+                    // (flaky network before the service worker is installed) is logged, not hidden.
+                    console.warn('[onboarding] could not load suggestions', err);
+                });
             }
 
             setLoaded(true);
@@ -254,7 +258,9 @@ export function useOnboardingProgress(): UseOnboardingProgressReturn {
             shownChapterIdsRef.current = [...shownChapterIdsRef.current, ...newIds];
 
             setSuggestions(sug);
-        }).catch(() => { /* keep the current suggestions */ });
+        }).catch((err) => {
+            console.warn('[onboarding] could not refresh suggestions; keeping the current ones', err);
+        });
     }, []);
 
     // A3: Dismiss profile completion card with counter
