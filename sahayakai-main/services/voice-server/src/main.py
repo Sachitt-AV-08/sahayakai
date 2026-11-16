@@ -49,6 +49,10 @@ _HANGUP_GRACE_SECONDS = 2.0
 app = FastAPI(title="SahayakAI Voice Server", version="0.1.0")
 
 
+def _is_test_scenario(outreach_id: str) -> bool:
+    return outreach_id.startswith("__test__")
+
+
 def _opt_out_writer(authenticated_outreach_id: str):
     """What create_bot calls when this call's parent asks not to be called again.
 
@@ -205,9 +209,19 @@ async def handle_call(websocket: WebSocket):
 
         logger.info(f"Twilio stream: sid={stream_sid}, callSid={call_sid}, outreachId={outreach_id}")
 
+        # The built-in scenarios need no record and no credential, so on this
+        # unauthenticated route they would start a billed STT/LLM/TTS
+        # pipeline for anyone. Refused unless SAHAYAKAI_ALLOW_TEST_SCENARIOS
+        # is set (default off, never in production), before anything is built.
+        if _is_test_scenario(outreach_id) and not config.allow_test_scenarios:
+            logger.warning(f"Refused test scenario {outreach_id}: SAHAYAKAI_ALLOW_TEST_SCENARIOS is off")
+            await websocket.close(code=1008, reason="Test scenarios disabled")
+            return
+
         # Fetch call context from SahayakAI backend
-        # __test__ prefix → hardcoded context for live testing
-        if outreach_id.startswith("__test__"):
+        # __test__ prefix → hardcoded context for live testing (only reached
+        # when SAHAYAKAI_ALLOW_TEST_SCENARIOS is on; refused above otherwise)
+        if _is_test_scenario(outreach_id):
             call_context = _TEST_SCENARIOS.get(
                 outreach_id,
                 _TEST_SCENARIOS["__test__001"],  # default fallback
@@ -323,6 +337,10 @@ async def handle_vobiz_call(websocket: WebSocket):
         logger.error("Vobiz stream rejected — bad or expired token")
         await websocket.close(code=1008, reason="Unauthorized")
         return
+    if _is_test_scenario(outreach_id) and not config.allow_test_scenarios:
+        logger.warning(f"Refused test scenario {outreach_id}: SAHAYAKAI_ALLOW_TEST_SCENARIOS is off")
+        await websocket.close(code=1008, reason="Test scenarios disabled")
+        return
     # Single use. A genuine token stays valid until it expires, and the
     # stream URL that carries it is in Vobiz's answer XML and the request
     # log, so a replay would hear this call's greeting and write onto its
@@ -340,7 +358,7 @@ async def handle_vobiz_call(websocket: WebSocket):
 
     # Load context. __test__ ids use the built-in scenarios; real ids read the
     # outreach record straight from Firestore (no web internal key needed).
-    if outreach_id.startswith("__test__"):
+    if _is_test_scenario(outreach_id):
         call_context = _TEST_SCENARIOS.get(outreach_id, _TEST_SCENARIOS["__test__001"])
     else:
         call_context = await fetch_context_firestore(outreach_id, config.google_cloud_project)

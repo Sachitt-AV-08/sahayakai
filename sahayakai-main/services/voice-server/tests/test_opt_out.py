@@ -23,6 +23,7 @@ request that does not end up as that exact document". The gate:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import json
 import re
 import shutil
@@ -401,6 +402,7 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
         vobiz._db = lambda project: db
 
         async def go():
+            main.config = replace(main.config, allow_test_scenarios=True)
             await run_vobiz_path(main, db, outreach_id="__test__003")
             run = run_from_recorder()
             await _hear(run, "please stop calling")
