@@ -1685,5 +1685,17 @@
   "You choose the message once. SahayakAI makes every call, in each parent's own language, and tells you who picked up.": "ਤੁਸੀਂ ਸੁਨੇਹਾ ਇੱਕ ਵਾਰ ਚੁਣਦੇ ਹੋ। SahayakAI ਹਰ ਕਾਲ, ਹਰ ਮਾਪੇ ਦੀ ਆਪਣੀ ਭਾਸ਼ਾ ਵਿੱਚ ਕਰਦਾ ਹੈ, ਅਤੇ ਦੱਸਦਾ ਹੈ ਕਿ ਕਿਸ ਨੇ ਫ਼ੋਨ ਚੁੱਕਿਆ।",
   "Your browser does not support audio processing. Please try a different browser.": "ਤੁਹਾਡਾ ਬ੍ਰਾਊਜ਼ਰ ਆਡੀਓ ਪ੍ਰੋਸੈਸਿੰਗ ਦਾ ਸਮਰਥਨ ਨਹੀਂ ਕਰਦਾ। ਕਿਰਪਾ ਕਰਕੇ ਕੋਈ ਹੋਰ ਬ੍ਰਾਊਜ਼ਰ ਅਜ਼ਮਾਓ।",
   "Your name": "ਤੁਹਾਡਾ ਨਾਮ",
-  "e.g. Anita Sharma": "ਉਦਾ. ਅਨੀਤਾ ਸ਼ਰਮਾ"
+  "e.g. Anita Sharma": "ਉਦਾ. ਅਨੀਤਾ ਸ਼ਰਮਾ",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "ਮਾਪਿਆਂ ਨੂੰ ਕਾਲਾਂ ਸਿਰਫ਼ 10:00 ਤੋਂ 19:00 IST ਦੇ ਵਿਚਕਾਰ ਕੀਤੀਆਂ ਜਾਂਦੀਆਂ ਹਨ। ਕਿਰਪਾ ਕਰਕੇ ਕਾਲ ਦੇ ਸਮੇਂ ਦੌਰਾਨ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "ਇਸ ਮਾਪੇ ਨੇ ਦੁਬਾਰਾ ਕਾਲ ਨਾ ਕਰਨ ਲਈ ਕਿਹਾ ਹੈ, ਇਸ ਲਈ ਅਸੀਂ ਕਾਲ ਨਹੀਂ ਕੀਤੀ। ਕਿਰਪਾ ਕਰਕੇ ਉਨ੍ਹਾਂ ਨਾਲ ਕਿਸੇ ਹੋਰ ਤਰੀਕੇ ਨਾਲ ਸੰਪਰਕ ਕਰੋ, ਜਿਵੇਂ WhatsApp ਸੁਨੇਹਾ ਜਾਂ ਘਰ ਭੇਜਿਆ ਨੋਟ।",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "ਅਸੀਂ ਇਸ ਵੇਲੇ ਇਸ ਮਾਪੇ ਦੀਆਂ ਕਾਲ ਸੰਬੰਧੀ ਤਰਜੀਹਾਂ ਦੀ ਜਾਂਚ ਨਹੀਂ ਕਰ ਸਕੇ। ਕਿਰਪਾ ਕਰਕੇ ਇੱਕ ਮਿੰਟ ਬਾਅਦ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "ਇਸ ਆਊਟਰੀਚ 'ਤੇ ਮਾਪੇ ਦਾ ਫ਼ੋਨ ਨੰਬਰ ਹੁਣ ਵਿਦਿਆਰਥੀ ਦੇ ਰਿਕਾਰਡ ਨਾਲ ਮੇਲ ਨਹੀਂ ਖਾਂਦਾ। ਨਵੀਂ ਆਊਟਰੀਚ ਸ਼ੁਰੂ ਕਰੋ।",
+  "This outreach record could not be found. Please start a new outreach.": "ਇਹ ਆਊਟਰੀਚ ਰਿਕਾਰਡ ਨਹੀਂ ਮਿਲਿਆ। ਨਵੀਂ ਆਊਟਰੀਚ ਸ਼ੁਰੂ ਕਰੋ।",
+  "You can only contact parents of students in your own classes.": "ਤੁਸੀਂ ਸਿਰਫ਼ ਆਪਣੀਆਂ ਜਮਾਤਾਂ ਦੇ ਵਿਦਿਆਰਥੀਆਂ ਦੇ ਮਾਪਿਆਂ ਨਾਲ ਹੀ ਸੰਪਰਕ ਕਰ ਸਕਦੇ ਹੋ।",
+  "This student is no longer in this class.": "ਇਹ ਵਿਦਿਆਰਥੀ ਹੁਣ ਇਸ ਜਮਾਤ ਵਿੱਚ ਨਹੀਂ ਹੈ।",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "ਇਸ ਵਿਦਿਆਰਥੀ ਦੇ ਰਿਕਾਰਡ ਵਿੱਚ ਮਾਪਿਆਂ ਦਾ ਕੋਈ ਸਹੀ ਫ਼ੋਨ ਨੰਬਰ ਨਹੀਂ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਪਹਿਲਾਂ ਵਿਦਿਆਰਥੀ ਦੇ ਵੇਰਵਿਆਂ ਵਿੱਚ ਇਸਨੂੰ ਜੋੜੋ।",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "ਮਾਪਿਆਂ ਨੂੰ ਕਾਲ ਕਰਨ ਦੀ ਸਹੂਲਤ ਇਸ ਵੇਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਇਸਦੀ ਥਾਂ WhatsApp ਕਾਪੀ ਵਰਤੋ।",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "ਇਸ ਮਾਪੇ ਦੀ ਭਾਸ਼ਾ ਵਿੱਚ ਆਟੋਮੈਟਿਕ ਕਾਲਾਂ ਹਾਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹਨ। ਕਿਰਪਾ ਕਰਕੇ ਇਸਦੀ ਥਾਂ WhatsApp ਕਾਪੀ ਵਰਤੋ।",
+  "We could not place the call just now. Please try again in a few minutes.": "ਅਸੀਂ ਇਸ ਵੇਲੇ ਕਾਲ ਨਹੀਂ ਕਰ ਸਕੇ। ਕਿਰਪਾ ਕਰਕੇ ਕੁਝ ਮਿੰਟਾਂ ਬਾਅਦ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "ਤੁਸੀਂ ਕੁਝ ਮਿੰਟ ਪਹਿਲਾਂ ਇਸ ਮਾਪੇ ਨਾਲ ਸੰਪਰਕ ਕੀਤਾ ਸੀ। ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਕਿਰਪਾ ਕਰਕੇ ਕੁਝ ਮਿੰਟ ਰੁਕੋ।"
 }

@@ -1685,5 +1685,17 @@
   "You choose the message once. SahayakAI makes every call, in each parent's own language, and tells you who picked up.": "നിങ്ങൾ സന്ദേശം ഒരിക്കൽ തിരഞ്ഞെടുക്കുന്നു. SahayakAI ഓരോ കോളും, ഓരോ രക്ഷിതാവിന്റെയും സ്വന്തം ഭാഷയിൽ ചെയ്യുന്നു, ആരാണ് എടുത്തതെന്ന് നിങ്ങളോട് പറയുന്നു.",
   "Your browser does not support audio processing. Please try a different browser.": "നിങ്ങളുടെ ബ്രൗസർ ഓഡിയോ പ്രോസസ്സിംഗ് പിന്തുണയ്ക്കുന്നില്ല. മറ്റൊരു ബ്രൗസർ പരീക്ഷിക്കുക.",
   "Your name": "നിങ്ങളുടെ പേര്",
-  "e.g. Anita Sharma": "ഉദാ. അനിത ശർമ്മ"
+  "e.g. Anita Sharma": "ഉദാ. അനിത ശർമ്മ",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "രക്ഷിതാക്കൾക്കുള്ള കോളുകൾ 10:00 മുതൽ 19:00 IST വരെ മാത്രമേ ചെയ്യൂ. ദയവായി കോൾ സമയത്ത് വീണ്ടും ശ്രമിക്കുക.",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "ഈ രക്ഷിതാവ് ഇനി വിളിക്കരുതെന്ന് ആവശ്യപ്പെട്ടിട്ടുണ്ട്, അതിനാൽ ഞങ്ങൾ കോൾ ചെയ്തിട്ടില്ല. WhatsApp സന്ദേശമോ വീട്ടിലേക്ക് അയയ്ക്കുന്ന കുറിപ്പോ പോലുള്ള മറ്റൊരു മാർഗത്തിലൂടെ അവരെ ബന്ധപ്പെടുക.",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "ഈ രക്ഷിതാവിന്റെ കോൾ മുൻഗണനകൾ ഇപ്പോൾ പരിശോധിക്കാൻ കഴിഞ്ഞില്ല. ദയവായി ഒരു മിനിറ്റിന് ശേഷം വീണ്ടും ശ്രമിക്കുക.",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "ഈ ഔട്ട്റീച്ചിലെ രക്ഷിതാവിന്റെ ഫോൺ നമ്പർ ഇപ്പോൾ വിദ്യാർത്ഥിയുടെ രേഖയുമായി പൊരുത്തപ്പെടുന്നില്ല. പുതിയ ഔട്ട്റീച്ച് ആരംഭിക്കുക.",
+  "This outreach record could not be found. Please start a new outreach.": "ഈ ഔട്ട്റീച്ച് രേഖ കണ്ടെത്താനായില്ല. പുതിയ ഔട്ട്റീച്ച് ആരംഭിക്കുക.",
+  "You can only contact parents of students in your own classes.": "നിങ്ങളുടെ സ്വന്തം ക്ലാസുകളിലെ വിദ്യാർത്ഥികളുടെ രക്ഷിതാക്കളെ മാത്രമേ നിങ്ങൾക്ക് ബന്ധപ്പെടാനാകൂ.",
+  "This student is no longer in this class.": "ഈ വിദ്യാർത്ഥി ഇപ്പോൾ ഈ ക്ലാസിൽ ഇല്ല.",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "ഈ വിദ്യാർത്ഥിയുടെ രേഖയിൽ രക്ഷിതാവിന്റെ സാധുവായ ഫോൺ നമ്പർ ഇല്ല. ദയവായി ആദ്യം വിദ്യാർത്ഥിയുടെ വിവരങ്ങളിൽ അത് ചേർക്കുക.",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "രക്ഷിതാക്കളെ വിളിക്കാനുള്ള സൗകര്യം ഇപ്പോൾ ലഭ്യമല്ല. ദയവായി പകരം WhatsApp പകർപ്പ് ഉപയോഗിക്കുക.",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "ഈ രക്ഷിതാവിന്റെ ഭാഷയിൽ ഓട്ടോമാറ്റിക് കോളുകൾ ഇതുവരെ ലഭ്യമല്ല. ദയവായി പകരം WhatsApp പകർപ്പ് ഉപയോഗിക്കുക.",
+  "We could not place the call just now. Please try again in a few minutes.": "ഇപ്പോൾ കോൾ ചെയ്യാൻ കഴിഞ്ഞില്ല. ദയവായി കുറച്ച് മിനിറ്റുകൾക്ക് ശേഷം വീണ്ടും ശ്രമിക്കുക.",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "കുറച്ച് മിനിറ്റുകൾക്ക് മുമ്പ് നിങ്ങൾ ഈ രക്ഷിതാവിനെ ബന്ധപ്പെട്ടിരുന്നു. വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് ദയവായി കുറച്ച് മിനിറ്റ് കാത്തിരിക്കുക."
 }

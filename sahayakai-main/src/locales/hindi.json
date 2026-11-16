@@ -1711,5 +1711,17 @@
   "You choose the message once. SahayakAI makes every call, in each parent's own language, and tells you who picked up.": "आप संदेश एक बार चुनते हैं। SahayakAI हर कॉल, हर अभिभावक की अपनी भाषा में करता है, और बताता है कि किसने फ़ोन उठाया।",
   "Your browser does not support audio processing. Please try a different browser.": "आपका ब्राउज़र ऑडियो प्रोसेसिंग का समर्थन नहीं करता। कृपया कोई दूसरा ब्राउज़र आज़माएँ।",
   "Your name": "आपका नाम",
-  "e.g. Anita Sharma": "उदा. अनीता शर्मा"
+  "e.g. Anita Sharma": "उदा. अनीता शर्मा",
+  "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "अभिभावकों को कॉल केवल 10:00 से 19:00 IST के बीच की जाती हैं। कृपया कॉल के समय में दोबारा कोशिश करें।",
+  "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "इस अभिभावक ने दोबारा कॉल न करने के लिए कहा है, इसलिए हमने कॉल नहीं किया। कृपया उनसे किसी और तरीके से संपर्क करें, जैसे WhatsApp संदेश या घर भेजा गया नोट।",
+  "We could not check this parent's call preferences just now. Please try again in a minute.": "हम अभी इस अभिभावक की कॉल संबंधी पसंद की जाँच नहीं कर सके। कृपया एक मिनट बाद फिर से कोशिश करें।",
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "इस आउटरीच पर दर्ज अभिभावक का फ़ोन नंबर अब छात्र के रिकॉर्ड से मेल नहीं खाता। कृपया नई आउटरीच शुरू करें।",
+  "This outreach record could not be found. Please start a new outreach.": "यह आउटरीच रिकॉर्ड नहीं मिला। कृपया नई आउटरीच शुरू करें।",
+  "You can only contact parents of students in your own classes.": "आप केवल अपनी कक्षाओं के छात्रों के अभिभावकों से संपर्क कर सकते हैं।",
+  "This student is no longer in this class.": "यह छात्र अब इस कक्षा में नहीं है।",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "इस छात्र के रिकॉर्ड में अभिभावक का कोई मान्य फ़ोन नंबर नहीं है। कृपया पहले छात्र के विवरण में इसे जोड़ें।",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "अभिभावकों को कॉल करने की सुविधा अभी उपलब्ध नहीं है। कृपया इसके बजाय WhatsApp कॉपी का उपयोग करें।",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "इस अभिभावक की भाषा में स्वचालित कॉल अभी उपलब्ध नहीं हैं। कृपया इसके बजाय WhatsApp कॉपी का उपयोग करें।",
+  "We could not place the call just now. Please try again in a few minutes.": "हम अभी कॉल नहीं कर सके। कृपया कुछ मिनट बाद फिर से कोशिश करें।",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "आपने कुछ मिनट पहले इस अभिभावक से संपर्क किया था। कृपया दोबारा कोशिश करने से पहले कुछ मिनट रुकें।"
 }
