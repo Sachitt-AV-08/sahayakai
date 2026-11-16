@@ -84,7 +84,7 @@ class CallManager(FrameProcessor):
         ai_reveal_pattern: "re.Pattern[str] | None" = None,
         ai_reveal_line: str | None = None,
         closing_line: str | None = None,
-        on_promise: "Callable[[str], Awaitable[str | None]] | None" = None,
+        future_calls_line: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -110,10 +110,12 @@ class CallManager(FrameProcessor):
         # this fixed goodbye and the call ends (rereview final #1).
         self._closing_line = closing_line
         # Every reply is screened before it is spoken: its first sentence is
-        # held until complete, and a "we won't call you again" promise is
-        # dropped and handled as a stop request (`on_promise(parent_words)`
-        # records it and returns the opt-out line to say, or None).
-        self._on_promise = on_promise
+        # held until complete, and a sentence saying whether the school will
+        # or will not call again is dropped and replaced by this fixed line.
+        # The turn and the call go on as usual: nothing on the model's side
+        # ever records an opt-out or ends the call (that is the parent's
+        # words only: StopRequestGuard and the post-call analysis).
+        self._future_calls_line = future_calls_line
         self._held = ""
         self._promise_detected = False
         self._fixed_close = False
@@ -176,45 +178,26 @@ class CallManager(FrameProcessor):
                 logger.warning(f"Ending watchdog could not start: {e}")
 
     async def _release_held(self, direction: FrameDirection) -> None:
-        """Speak the held first sentence, unless it promises no more calls."""
+        """Speak the held first sentence; a sentence about future calls is replaced."""
         text, self._held = self._held, ""
         if is_no_more_calls_promise(text):
             self._promise_detected = True
-            logger.warning(f"Turn {self._turn_number + 1}: model reply promised no more calls; dropped before speech")
+            logger.warning(f"Turn {self._turn_number + 1}: model sentence about future calls replaced")
+            if self._future_calls_line:
+                await self.push_frame(TTSSpeakFrame(text=self._future_calls_line), direction)
             return
         clean = _SANITIZE_RE.sub('', text).replace('\n', ' ')
         if clean.strip():
             await self.push_frame(LLMTextFrame(text=clean), direction)
 
-    def _last_parent_words(self) -> str:
-        for turn in reversed(self.transcript):
-            if turn["role"] == "parent":
-                return turn["text"]
-        return ""
+    async def _close_if_last(self, direction: FrameDirection) -> None:
+        """After a replaced sentence on the call's last turn, say the goodbye too.
 
-    async def _handle_promise(self, frame: Frame, direction: FrameDirection) -> None:
-        """The model promised no more calls: never say it; treat it as the parent's stop.
-
-        With a recorder (`on_promise`), the parent's last words are recorded
-        for the teacher and the opt-out line is said; then the fixed goodbye,
-        and the call ends. From here on no model text is spoken.
+        The future-calls line is not a goodbye; the call must not end on it.
         """
-        self._turn_number += 1
-        self._fixed_close = True
-        noted = None
-        if self._on_promise is not None:
-            try:
-                noted = await self._on_promise(self._last_parent_words())
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Handling a promised stop failed: {type(e).__name__}")
-        lines = [noted] if noted else []
-        if self._closing_line and self.take_goodbye():
-            lines.append(self._closing_line)
-        for line in lines:
-            await self.push_frame(TTSSpeakFrame(text=line), direction)
-            self._context.add_message({"role": "assistant", "content": line})
-        await self.push_frame(frame, direction)
-        await self._end_call("the close after a reply the engine would not say")
+        if self._is_last_turn() and self._closing_line and self.take_goodbye():
+            await self.push_frame(TTSSpeakFrame(text=self._closing_line), direction)
+            self._context.add_message({"role": "assistant", "content": self._closing_line})
 
     async def _fixed_close_frame(self, frame: Frame, direction: FrameDirection) -> None:
         """Model output after a possible stop: never spoken."""
@@ -329,13 +312,6 @@ class CallManager(FrameProcessor):
             # A reply with no sentence end is screened and spoken now.
             if self._held and not self._ai_reveal_detected:
                 await self._release_held(direction)
-            # A promise wins over the identity guard ("we will never call you
-            # aGAIn" trips both): it is the parent's stop that needs handling.
-            if self._ai_reveal_detected and is_no_more_calls_promise(_first_sentence(self._current_response)):
-                self._promise_detected = True
-            if self._promise_detected:
-                await self._handle_promise(frame, direction)
-                return
 
             self._turn_number += 1
 
@@ -344,13 +320,28 @@ class CallManager(FrameProcessor):
             if self._phase_instructor:
                 self._phase_instructor.advance_phase()
 
-            if self._current_response:
+            if self._promise_detected:
+                # Already replaced by the fixed line (spoken in _release_held);
+                # that line, not the model's sentence, is what was said.
+                self._context.add_message({"role": "assistant", "content": self._future_calls_line or ""})
+                await self._close_if_last(direction)
+            elif self._current_response:
                 # Truncate to first sentence only
                 truncated = _first_sentence(self._current_response)
                 truncated = _SANITIZE_RE.sub('', truncated).replace('\n', ' ').strip()
 
+                if self._ai_reveal_re.search(truncated) and is_no_more_calls_promise(truncated) \
+                        and self._future_calls_line:
+                    # Trips both guards ("we will never call you aGAIn"): the
+                    # future-calls line answers it.
+                    truncated = self._future_calls_line
+                    logger.warning(f"Turn {self._turn_number}: model sentence about future calls replaced")
+                    await self.push_frame(TTSSpeakFrame(text=truncated), direction)
+                    self._context.add_message({"role": "assistant", "content": truncated})
+                    await self._close_if_last(direction)
+                    truncated = None
                 # Guard: If LLM reveals it's AI, replace with safe response
-                if self._ai_reveal_re.search(truncated):
+                elif self._ai_reveal_re.search(truncated):
                     if self._is_last_turn() and self._closing_line:
                         # The call ends after this turn: close it with the
                         # fixed goodbye, not a question the parent cannot
@@ -374,9 +365,10 @@ class CallManager(FrameProcessor):
                     # Length only: what the model said is part of the conversation.
                     logger.info(f"Turn {self._turn_number}: reply of {len(truncated)} chars")
                 # Add the TRUNCATED (or replacement) response to LLM context
-                self._context.add_message(
-                    {"role": "assistant", "content": truncated}
-                )
+                if truncated is not None:
+                    self._context.add_message(
+                        {"role": "assistant", "content": truncated}
+                    )
 
             # Fire transcript sync (non-blocking)
             if self._on_turn_complete:

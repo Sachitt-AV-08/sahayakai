@@ -75,7 +75,7 @@ LANGUAGE_NAMES: dict[str, str] = {
     "pa-IN": "Punjabi",
 }
 
-LINE_KEYS = ("request_to_talk", "explain_in_person", "opt_out_noted", "goodbye")
+LINE_KEYS = ("request_to_talk", "explain_in_person", "opt_out_noted", "goodbye", "future_calls")
 CALL_LINES_PATH = Path(__file__).with_name("call_lines.json")
 
 # The only record fields a request-to-talk call may hand to the model.
@@ -121,6 +121,8 @@ class CallPlan:
     # The fixed last sentence when the engine closes the call itself (after a
     # possible stop, or instead of a blocked last reply). Promises nothing.
     goodbye: str
+    # Said in place of a model sentence about future calls; the call goes on.
+    future_calls: str
     uses_parent_history: bool
 
     @property
@@ -212,6 +214,7 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
             ai_reveal_pattern=AI_REVEAL_ORIGINAL,
             opt_out_noted=lines["opt_out_noted"],
             goodbye=lines["goodbye"],
+            future_calls=lines["future_calls"],
             uses_parent_history=True,
         )
 
@@ -239,5 +242,6 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
         ai_reveal_pattern=AI_REVEAL_WORD_BOUNDED,
         opt_out_noted=lines["opt_out_noted"],
         goodbye=lines["goodbye"],
+        future_calls=lines["future_calls"],
         uses_parent_history=False,
     )

@@ -404,9 +404,11 @@ _N = r"(?:\S+\s+){0,2}"  # up to two words between the call word and the negatio
 # First-person forms: the verb itself says "we / I will not call".
 _PROMISE_FIRST = _compile(
     # English: a we/I subject, or a you object
-    r"\b(?:we|i)(?:'ll|'d)?\s+(?:will not|won't|wont|shall not|would not|wouldn't|will never|never|not)\s+"
-    r"(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\b",
-    r"\b(?:we|i)(?:'ll| will| shall)?\s+stop\s+(?:calling|phoning|contacting)\b",
+    r"\b(?:we|i)(?:'ll|'d)?\s+(?:will not|won't|wont|shall not|would not|wouldn't|will never|never)\s+"
+    r"(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\b",  # not bare "not": "should I not call you at 9?"
+    r"\b(?:not|never)\s+(?:be\s+)?calling\s+you\s+(?:again|anymore|any more)\b",
+    r"\b(?:won't|wont|will not|never)\s+(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\s+(?:you\s+)?(?:again|anymore|any more)\b",
+    r"\b(?:will|'ll|shall)\s+stop\s+(?:calling(?:\s+you)?|phoning|contacting|the calls|these calls)\b",
     r"\b(?:won't|wont|will not|shall not|never)\s+(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\s+you\b",
     r"\byou\s+(?:will not|won't|wont|will never)\s+(?:be\s+(?:called|contacted|phoned)|get\s+(?:any\s+)?(?:more\s+)?calls)\b",
     r"\bno (?:more|further) (?:phone )?calls?\b",
@@ -479,8 +481,14 @@ _PROMISE_MARKER = _compile(
     _starts(r"ഇനിമുതൽ|ഇനി|വീണ്ടും"),
 )
 
-# Someone else ("we won't call your husband") is not the parent.
-_PROMISE_PARTY = _compile(*_PARTY_PARTS)
+# Someone else as the one called ("we won't call your husband") is not the
+# parent. In English only as the call's object: "we won't call you about him
+# again" is still a promise to the parent.
+_KIN_EN = r"(?:son|daughter|child|kid|husband|wife|father|mother|dad|mom|mum|brother|sister)"
+_PROMISE_PARTY = _compile(
+    rf"\b(?:call|phone|ring|contact)(?:ing)?\s+(?:him|her|them|(?:your|my|his|her|their)\s+{_KIN_EN})\b",
+    *_PARTY_PARTS[2:],
+)
 # A genuine reschedule is a time AND a "will call" ("we won't call now, the
 # teacher will call this evening", "अभी फ़ोन नहीं करेंगे, शाम को करेंगे").
 # A time word on its own ("आज के बाद", "from now on") excuses nothing.

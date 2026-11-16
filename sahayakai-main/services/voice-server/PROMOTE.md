@@ -54,8 +54,11 @@ for byte, and their prompt changes by one line
 - A possible stop request gets the same handling as on every call: it is
   recorded for the teacher, the fixed opt-out line and goodbye are said, and
   the model is not heard again on that call.
-- A model reply that would promise no more calls ("अब आपको फ़ोन नहीं
-  करेंगे") is never spoken; it is handled as a stop request.
+- A model sentence that would say whether the school will or will not call
+  again ("अब आपको फ़ोन नहीं करेंगे") is never spoken: the fixed line "The
+  class teacher will decide about future calls." (`future_calls`) is said
+  instead and the call goes on (on every call, not only positive_feedback).
+  Only the parent's own words record an opt-out.
 
 ## 2. Build the candidate
 

@@ -1,24 +1,29 @@
-"""CLASS GATE — no model reply promising "no more calls" is ever spoken, stop detected or not.
+"""CLASS GATE — a model sentence about future calls is never spoken, and never ends the call.
 
-Follow-up to final-0b #1: after a detected stop the model is silenced, but
-when the stop detector does NOT fire, the model's reply was spoken unchecked,
-and positive_feedback's prompt has no rule against promising. Phrasings the
-detector missed ("Stop calling me, I am busy", "मुझे ये कॉल्स नहीं चाहिए",
-"बंद करो ये कॉल") let "जी ठीक है, अब आपको फ़ोन नहीं करेंगे।" through, a
-promise the school may break.
+Follow-ups to final-0b #1: when the stop detector does NOT fire, the model's
+reply was spoken unchecked, and positive_feedback's prompt has no rule
+against promising, so "जी ठीक है, अब आपको फ़ोन नहीं करेंगे।" was said: a
+promise the school may break. The first fix ended the call on a match, which
+made every false match expensive (an ordinary call cut short, a bogus
+optOutRequested), and phrase tuning would not converge. Design since: a
+match REPLACES the sentence with a fixed line ("The class teacher will
+decide about future calls.") and the call goes on; only the PARENT's words
+(the stop detector, the post-call analysis) record an opt-out or close.
 
-The class is "a promise of no more calls reaching the parent". The gate:
-  * every reply is screened before speech: promise replies in all ten call
-    languages (each language's old acknowledgement among them), fed with no
-    stop detected, in both call modes, never reach TTS; the reply is handled
-    as a stop: optOutRequested is recorded with the parent's last words
-    (source live), the opt-out line and the fixed goodbye are said, the call
-    hangs up once and the summary leads with the note;
-  * on the unauthenticated route the promise is still never said (goodbye
-    only, nothing recorded);
-  * ordinary replies, rescheduling replies, replies about someone else and
-    the engine's own lines are not promises, and are spoken as before;
-  * the phrasings the detector missed are now detected.
+The class is "a sentence about future calls reaching the parent, or the
+model's side deciding about an opt-out". The gate:
+  * true promises in all ten call languages (each old acknowledgement among
+    them), fed with no stop detected, in both modes, never reach TTS: the
+    fixed line is said instead, the call goes on (no goodbye, no end), and
+    nothing is recorded;
+  * the review's limit acknowledgements ("we won't call you in the morning",
+    in five languages) get at most that line, and the call goes on;
+  * structurally, nothing on the model's side can record an opt-out: only
+    the parent-side functions in bot.py reach the recorder, and CallManager
+    takes no recorder;
+  * ordinary replies, genuine reschedules, replies about someone else and
+    the engine's own lines are not matches and are spoken as before; the
+    phrasings the detector missed are detected.
 """
 
 from __future__ import annotations
@@ -128,6 +133,7 @@ async def _model_reply(run, text):
 
 def _vobiz_call(language, mode, reply, tmp_path, monkeypatch, parent_says=None):
     parent_says = PARENT_SAYS if parent_says is None else parent_says
+    monkeypatch.setattr(ModelRunner, "max_wait", 0.05)  # the call rightly goes on; do not wait for it
     db = FakeAsyncFirestore({("parent_outreach", OID): {**RECORD, **MODES[mode], "parentLanguage": language}})
     hangups = []
     with stubbed_runtime():
@@ -159,24 +165,24 @@ def _vobiz_call(language, mode, reply, tmp_path, monkeypatch, parent_says=None):
     return runner, run, model_text, tts, hangups, db
 
 
-CASES = [(lang, mode, reply) for lang in ("English", "Hindi", "Bengali", "Tamil", "Malayalam", "Kannada")
-         for mode in sorted(MODES) for reply in PROMISES[lang][:2]]
+CASES = [(lang, mode, reply) for lang in sorted(PROMISES) for mode in sorted(MODES) for reply in PROMISES[lang][:2]]
+
+
+def _assert_replaced_and_going_on(language, reply, run, model_text, tts, db):
+    lines = load_call_lines()[LANGUAGE_CODES[language]]
+    assert model_text == "", "no model text reached TTS"
+    assert tts == [lines["future_calls"]], "the fixed line, and nothing else, is said in its place"
+    assert run.task.end_reason is None and not [
+        f for f, _ in run.processor("CallManager").pushed if type(f).__name__ == "EndTaskFrame"], "the call goes on"
+    assert opt_out_requests(db) == [], "the model's side never records an opt-out"
+    said = [m["content"] for m in run.context.messages if m.get("role") == "assistant"]
+    assert reply not in said and lines["future_calls"] in said
 
 
 @pytest.mark.parametrize("language,mode,reply", CASES, ids=lambda v: v if len(v) < 40 else v[:40])
-def test_a_promise_with_no_stop_detected_never_reaches_tts(language, mode, reply, tmp_path, monkeypatch):
-    runner, run, model_text, tts, hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
-    lines = load_call_lines()[LANGUAGE_CODES[language]]
-    assert model_text == "", "no model text reached TTS"
-    assert tts == [lines["opt_out_noted"], lines["goodbye"]]
-    assert runner.ended and not runner.timed_out and len(hangups) == 1
-    [request] = opt_out_requests(db)
-    assert request["quote"] == PARENT_SAYS and request["source"] == "live"
-    assert suppressions(db) == []
-    [result] = [w[3] for w in db.writes if w[0] == "set" and "callSummary" in w[3]]
-    assert result["callSummary"]["actionItemsForTeacher"][0].startswith("The parent said they would prefer not")
-    said = [t["text"] for t in result["transcript"]]
-    assert reply not in said and lines["goodbye"] in said
+def test_a_promise_is_replaced_and_the_call_goes_on(language, mode, reply, tmp_path, monkeypatch):
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
+    _assert_replaced_and_going_on(language, reply, run, model_text, tts, db)
 
 
 @pytest.mark.parametrize("mode", sorted(MODES))
@@ -185,6 +191,24 @@ def test_an_ordinary_reply_is_spoken_as_before(mode, tmp_path, monkeypatch):
     _runner, _run, model_text, tts, _hangups, db = _vobiz_call("English", mode, reply, tmp_path, monkeypatch)
     assert model_text == reply and tts == []
     assert opt_out_requests(db) == []
+
+
+def test_on_the_last_turn_the_line_is_followed_by_the_goodbye(tmp_path, monkeypatch):
+    """The future-calls line is not a goodbye: a call that ends on this turn still says goodbye."""
+    with stubbed_runtime():
+        from bot_harness import FakeCallStore as Store, build_bot
+
+        async def go():
+            run = await build_bot({**RECORD, "id": OID, "parentLanguage": "Hindi"}, call_store=Store())
+            run.processor("CallManager")._max_turns = 1
+            await _model_reply(run, PROMISES["Hindi"][0])
+            return run
+
+        run = asyncio.run(go())
+    lines = load_call_lines()["hi-IN"]
+    manager = run.processor("CallManager")
+    assert [f.text for f, _ in manager.pushed if isinstance(f, TTSSpeakFrame)] == [lines["future_calls"], lines["goodbye"]]
+    assert any(type(f).__name__ == "EndTaskFrame" for f, _ in manager.pushed)
 
 
 def test_on_the_unauthenticated_route_the_promise_is_still_never_said(tmp_path, monkeypatch):
@@ -204,8 +228,102 @@ def test_on_the_unauthenticated_route_the_promise_is_still_never_said(tmp_path, 
             ScriptedRunner.script = None
         manager = run_from_recorder().processor("CallManager")
     assert not [f for f, _ in manager.pushed if isinstance(f, LLMTextFrame)]
-    assert [f.text for f, _ in manager.pushed if isinstance(f, TTSSpeakFrame)] == [load_call_lines()["hi-IN"]["goodbye"]]
-    assert any(type(f).__name__ == "EndTaskFrame" for f, _ in manager.pushed)
+    assert [f.text for f, _ in manager.pushed if isinstance(f, TTSSpeakFrame)] == [load_call_lines()["hi-IN"]["future_calls"]]
+
+
+# ── the review's limit acknowledgements: at most the line, never an ending ──
+
+LIMIT_ACKS = [
+    ("English", "Please don't call in the morning", "Of course, we won't call you in the morning."),
+    ("English", "Don't call me at the office again.", "Okay, we won't call you at the office again."),
+    ("Hindi", "मुझे सुबह फ़ोन मत करना", "जी ठीक है, हम आपको सुबह फ़ोन नहीं करेंगे।"),
+    ("Bengali", "রাতে ফোন করবেন না", "ঠিক আছে, রাতে আপনাকে ফোন করব না।"),
+    ("Marathi", "आता फोन करू नका", "ठीक आहे, आम्ही तुम्हाला आता फोन करणार नाही."),
+    ("Tamil", "இப்போ போன் பண்ணாதீங்க", "சரி, நாங்கள் இப்போது உங்களை அழைக்க மாட்டோம்."),
+]
+
+
+@pytest.mark.parametrize("mode", sorted(MODES))
+@pytest.mark.parametrize("language,parent,reply", LIMIT_ACKS, ids=lambda v: v if len(v) < 30 else v[:30])
+def test_a_limit_acknowledgement_costs_at_most_one_sentence(language, parent, reply, mode, tmp_path, monkeypatch):
+    assert not is_stop_request(parent), "the parent's limit is not a stop"
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch,
+                                                              parent_says=parent)
+    lines = load_call_lines()[LANGUAGE_CODES[language]]
+    assert (model_text, tts) in [(reply, []), ("", [lines["future_calls"]])], (model_text, tts)
+    assert run.task.end_reason is None and opt_out_requests(db) == []
+    assert lines["opt_out_noted"] not in tts and lines["goodbye"] not in tts
+
+
+# ── the model's side never records an opt-out ───────────────────────────────
+
+PARENT_SIDE = {"_on_stop_heard", "_finalize_once", "_record_request"}
+
+
+def _functions_reaching(source, name):
+    import ast
+
+    tree = ast.parse(source)
+    out = set()
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inner = {id(n) for sub in ast.walk(fn) if sub is not fn and isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef))
+                     for n in ast.walk(sub)}
+            if any(isinstance(n, ast.Name) and n.id == name and id(n) not in inner for n in ast.walk(fn)):
+                out.add(fn.name)
+    return out
+
+
+def _source(name):
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parents[1] / "src" / name).read_text(encoding="utf-8")
+
+
+def test_only_the_parent_side_reaches_the_opt_out_recorder():
+    reaching = _functions_reaching(_source("bot.py"), "_record_request") - {"create_bot"}
+    assert reaching and reaching <= PARENT_SIDE, reaching
+    assert _functions_reaching(_source("bot.py"), "on_opt_out_request") - {"create_bot"} <= PARENT_SIDE
+
+
+def test_callmanager_takes_no_recorder():
+    import ast
+
+    tree = ast.parse(_source("call_manager.py"))
+    init = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "__init__")
+    params = {a.arg for a in init.args.args + init.args.kwonlyargs}
+    assert params <= {"self", "context", "call_context", "max_turns", "on_turn_complete", "on_ending",
+                      "phase_instructor", "ai_reveal_pattern", "ai_reveal_line", "closing_line",
+                      "future_calls_line"}, params
+    assert "opt_out_request" not in _source("call_manager.py")
+
+
+def test_the_checker_sees_a_model_side_recorder():
+    bad = _source("bot.py").replace(
+        "    # ── Call Manager: turn counting, transcript, call lifecycle ──",
+        "    async def _on_promise(words):\n        return await _record_request(words, LIVE)\n\n"
+        "    # ── Call Manager: turn counting, transcript, call lifecycle ──", 1)
+    assert "_on_promise" in _functions_reaching(bad, "_record_request")
+
+
+# ── recall: the review's #6 English forms, and no bare "not" ────────────────
+
+MORE_PROMISES = ["We're not calling you again.", "We are not calling you anymore.", "I am not calling you again.",
+                 "Okay, we will stop these calls.", "Of course, we'll stop the calls.",
+                 "The school will stop calling you.", "Okay, won't call again.",
+                 "Okay, we won't call you about him again.", "Okay, we won't call you about her attendance again."]
+QUESTIONS = ["Should I not call you in the morning?", "Would you prefer I not call you at work?",
+             "Shall I not call you on weekends?"]
+
+
+@pytest.mark.parametrize("text", MORE_PROMISES)
+def test_the_restored_english_forms_are_matched(text):
+    assert is_no_more_calls_promise(text), text
+
+
+@pytest.mark.parametrize("text", QUESTIONS)
+def test_a_question_with_not_is_not_a_match(text):
+    assert not is_no_more_calls_promise(text), text
 
 
 # ── politeness is not a promise ──────────────────────────────────────────────
@@ -239,7 +357,6 @@ POLITE_CALLS = [("Hindi", POLITE[2]), ("English", POLITE[0]), ("English", POLITE
 @pytest.mark.parametrize("language,reply", POLITE_CALLS, ids=lambda v: v if len(v) < 30 else v[:30])
 def test_a_polite_reply_to_a_busy_parent_is_spoken_and_records_nothing(language, reply, mode, tmp_path, monkeypatch):
     # The reviewer's probe: the parent says they are a bit busy; the model is polite.
-    monkeypatch.setattr(ModelRunner, "max_wait", 0.05)  # the call rightly goes on; do not wait for it
     runner, run, model_text, tts, hangups, db = _vobiz_call(
         language, mode, reply, tmp_path, monkeypatch, parent_says="मैं थोड़ा बिज़ी हूँ")
     first = reply.split("।")[0].split(". ")[0]
@@ -293,10 +410,5 @@ TIMED_CALLS = [("Hindi", TIMED_PROMISES[-1]), ("Hindi", TIMED_PROMISES[2]), ("En
 @pytest.mark.parametrize("mode", sorted(MODES))
 @pytest.mark.parametrize("language,reply", TIMED_CALLS, ids=lambda v: v if len(v) < 30 else v[:30])
 def test_a_promise_with_a_time_word_never_reaches_tts(language, reply, mode, tmp_path, monkeypatch):
-    runner, run, model_text, tts, hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
-    lines = load_call_lines()[LANGUAGE_CODES[language]]
-    assert model_text == "", "no model text reached TTS"
-    assert tts == [lines["opt_out_noted"], lines["goodbye"]]
-    assert runner.ended and len(hangups) == 1
-    [request] = opt_out_requests(db)
-    assert request["source"] == "live"
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
+    _assert_replaced_and_going_on(language, reply, run, model_text, tts, db)

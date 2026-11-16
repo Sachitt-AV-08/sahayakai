@@ -340,21 +340,6 @@ async def create_bot(
     # ── Phase Instructor: injects turn-specific instructions before LLM ──
     phase_instructor = PhaseInstructor(guidance=plan.phase_guidance)
 
-    async def _on_promise_in_reply(parent_words: str) -> str | None:
-        """The model promised the parent no more calls (CallManager dropped it).
-
-        The parent must have asked, in words the phrase check missed: handle
-        it as their stop request. Returns the opt-out line to say, or None if
-        a stop was already handled.
-        """
-        if opt_out["heard"]:
-            return None
-        opt_out.update(heard=True, source=LIVE, quote=parent_words, at=utc_now_iso())
-        opt_out["turn_at_notice"] = call_manager.turn_number
-        logger.info(f"Model reply promised no more calls (outreach {outreach_id}); handling it as a stop request")
-        opt_out["write"] = asyncio.ensure_future(_record_request(parent_words, LIVE))
-        return plan.opt_out_noted
-
     # ── Call Manager: turn counting, transcript, call lifecycle ──
     call_manager = CallManager(
         context=context,
@@ -366,9 +351,9 @@ async def create_bot(
         ai_reveal_pattern=plan.ai_reveal_pattern,
         ai_reveal_line=plan.ai_reveal_line,
         closing_line=plan.goodbye,
-        # Without an authenticated recorder the promise is still never said:
-        # CallManager closes with the goodbye alone.
-        on_promise=_on_promise_in_reply if on_opt_out_request is not None else None,
+        # A model sentence about future calls is replaced by this line and the
+        # call goes on. The model side never records an opt-out.
+        future_calls_line=plan.future_calls,
     )
 
     # ── TTS: Sarvam Bulbul v3 (WebSocket streaming) ──
