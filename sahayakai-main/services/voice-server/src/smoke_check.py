@@ -7,11 +7,16 @@ removed `loop` kwarg, the WorkerRunner move). This runs INSIDE the built image
 (cloudbuild.yaml step `smoke-real-pipecat`), against the exact packages the
 image will deploy with, and fails the build if:
   * any module the engine imports, or any pipecat name it relies on, is gone;
-  * create_bot cannot build a full pipeline with either Gemini backend.
+  * create_bot cannot build a full pipeline with either Gemini backend;
+  * main.run_pipeline (the WorkerRunner construction with handle_sigint and
+    loop, add_workers and run, exactly as every call runs it) cannot run a
+    pipeline that ends at once to its end within RUN_BOUND_SECONDS. That is
+    the API that broke revision 00036 (rereview-0b #11).
 
-It builds and discards the pipelines; it never starts one, opens no socket,
-places no call and calls no API (dummy keys). The Vertex backend resolves
-Application Default Credentials, which Cloud Build's metadata server provides.
+The call pipelines are built and discarded, never started. The one pipeline it
+runs holds a single pass-through processor: no transport, no socket, no call,
+no API (dummy keys). The Vertex backend resolves Application Default
+Credentials, which Cloud Build's metadata server provides.
 
     python -m src.smoke_check
 """
@@ -35,6 +40,8 @@ REQUIRED_PIPECAT = {
     "pipecat.processors.frame_processor": ("FrameProcessor", "FrameDirection"),
 }
 REQUIRED_TASK_API = ("cancel", "queue_frames", "has_finished", "pipeline")
+# How long the pipeline that ends at once may take to run to its end.
+RUN_BOUND_SECONDS = 30.0
 
 SMOKE_CONTEXT = {
     "id": "SmokeOutreach0000001",
@@ -88,6 +95,32 @@ async def _build(backend: str) -> None:
         raise TypeError(f"create_bot({backend}) returned {type(task).__name__}, {type(finalize).__name__}")
 
 
+async def _run_one_that_ends_at_once() -> None:
+    """main.run_pipeline, exactly as a call runs it, on a pipeline that ends at once.
+
+    The EndFrame is queued once the run has started, the way the engine
+    queues its own frames during a call.
+    """
+    from pipecat.frames.frames import EndFrame
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.task import PipelineTask
+    from pipecat.processors.frame_processor import FrameProcessor
+
+    from src.main import run_pipeline
+
+    class _PassThrough(FrameProcessor):
+        async def process_frame(self, frame, direction):
+            await super().process_frame(frame, direction)
+            await self.push_frame(frame, direction)
+
+    task = PipelineTask(Pipeline([_PassThrough()]))
+    running = asyncio.ensure_future(run_pipeline(task))
+    await asyncio.sleep(0.2)
+    if not running.done():
+        await task.queue_frames([EndFrame()])
+    await asyncio.wait_for(running, RUN_BOUND_SECONDS)
+
+
 def main() -> int:
     _dummy_env()
     import importlib
@@ -106,6 +139,7 @@ def main() -> int:
         raise AttributeError(f"PipelineTask no longer provides {missing}")
     for backend in ("ai_studio", "vertex"):
         asyncio.run(_build(backend))
+    asyncio.run(_run_one_that_ends_at_once())
     print("voice-server smoke check: ok")
     return 0
 

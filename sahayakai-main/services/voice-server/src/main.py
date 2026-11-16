@@ -76,6 +76,23 @@ def _opt_out_request_writer(authenticated_outreach_id: str):
     return _record
 
 
+async def run_pipeline(task) -> None:
+    """Run one call's pipeline to its end. Every handler runs its call through this.
+
+    Pipecat 1.12 moved the event loop onto the runner and dropped the `loop`
+    kwarg from the task params (PipelineTaskParams is now a bare alias of
+    WorkerParams). A WorkerRunner owns the loop and runs the pipeline to its
+    EndFrame; handle_sigint is off because this runs on a uvicorn worker loop,
+    not the main thread, where signal handlers fail.
+
+    src/smoke_check.py runs this exact function against the real pipecat in
+    the built image, so a runner API change fails the build, not a call.
+    """
+    runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
+    await runner.add_workers(task)
+    await runner.run()
+
+
 async def _finish(finalize) -> None:
     """Run create_bot's end-of-call bookkeeping on every way out of a handler.
 
@@ -265,14 +282,7 @@ async def handle_call(websocket: WebSocket):
         )
 
         logger.info(f"Bot pipeline started for outreach {outreach_id}")
-        # Pipecat 1.12 moved the event loop onto the runner and dropped the
-        # `loop` kwarg from the task params (PipelineTaskParams is now a bare
-        # alias of WorkerParams). A WorkerRunner owns the loop and runs the
-        # pipeline to its EndFrame; handle_sigint is off because this runs on a
-        # uvicorn worker loop, not the main thread, where signal handlers fail.
-        runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
-        await runner.add_workers(task)
-        await runner.run()
+        await run_pipeline(task)
         await _finish(finalize)
 
     except WebSocketDisconnect:
@@ -446,14 +456,7 @@ async def handle_vobiz_call(websocket: WebSocket):
             on_opt_out_request=_opt_out_request_writer(outreach_id),
         )
         logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
-        # Pipecat 1.12 moved the event loop onto the runner and dropped the
-        # `loop` kwarg from the task params (PipelineTaskParams is now a bare
-        # alias of WorkerParams). A WorkerRunner owns the loop and runs the
-        # pipeline to its EndFrame; handle_sigint is off because this runs on a
-        # uvicorn worker loop, not the main thread, where signal handlers fail.
-        runner = WorkerRunner(handle_sigint=False, loop=asyncio.get_running_loop())
-        await runner.add_workers(task)
-        await runner.run()
+        await run_pipeline(task)
         # The pipeline has ended: the last turn, a stop request, or the parent
         # hanging up. When the bot ends the call itself, on_client_disconnected
         # may never fire (in the pipecat source we could read, 0.0.108, it only

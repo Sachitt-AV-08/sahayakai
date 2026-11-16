@@ -32,6 +32,11 @@ from bot_harness import (
 from main_ast import RECORD, SOURCE, call_name, handlers, opt_out_requests, say, suppressions
 
 
+def _runs(node: ast.AST) -> bool:
+    """The call that runs the pipeline: run_pipeline(task), or a runner's .run()."""
+    return isinstance(node, ast.Call) and call_name(node) in {"run_pipeline", "run"}
+
+
 def unfinished_exits(source: str) -> list[str]:
     """Handler exits after create_bot that skip the end-of-call bookkeeping."""
     tree = ast.parse(source)
@@ -44,17 +49,14 @@ def unfinished_exits(source: str) -> list[str]:
         if not any(call_name(n) == "create_bot" for n in ast.walk(fn)):
             continue
         tries = [t for t in ast.walk(fn) if isinstance(t, ast.Try)
-                 and any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                         and n.func.attr == "run" for s in t.body for n in ast.walk(s))]
+                 and any(_runs(n) for s in t.body for n in ast.walk(s))]
         if not tries:
-            problems.append(f"{fn.name}: no try around runner.run()")
+            problems.append(f"{fn.name}: no try around run_pipeline()")
             continue
         for t in tries:
-            run_at = next(i for i, s in enumerate(t.body) if any(
-                isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "run"
-                for n in ast.walk(s)))
+            run_at = next(i for i, s in enumerate(t.body) if any(_runs(n) for n in ast.walk(s)))
             if not finishes(t.body[run_at + 1:]):
-                problems.append(f"{fn.name}: normal end after runner.run() does not call _finish")
+                problems.append(f"{fn.name}: normal end after run_pipeline() does not call _finish")
             for h in t.handlers:
                 label = ast.unparse(h.type) if h.type is not None else "bare except"
                 if not finishes(h.body):
