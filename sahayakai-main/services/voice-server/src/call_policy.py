@@ -82,12 +82,13 @@ CALL_LINES_PATH = Path(__file__).with_name("call_lines.json")
 MODEL_IDENTITY_FIELDS = ("studentName", "teacherName", "schoolName")
 
 # AI-identity guard used by CallManager. The original pattern has no word
-# boundaries, so "ai" inside "explain", "again" or "available" (and "bot" inside
-# "both") trips it and an ordinary English sentence is thrown away. The
-# positive_feedback path keeps the original exactly; request-to-talk calls,
-# whose English "explain in person" line contains "explain", use word
-# boundaries for the Latin words. Indic words cannot use \b (combining marks
-# break it), so they stay substring matches as before.
+# boundaries, so "ai" inside "explain", "again", "said" or "available" (and
+# "bot" inside "both") trips it and an ordinary English sentence is thrown
+# away. Every call now uses word boundaries for the Latin words (positive
+# feedback did not until the final review's #8: "He said he wants to do it
+# again" was a silent turn). Indic words cannot use \b (combining marks break
+# it), so they stay substring matches as before. AI_REVEAL_ORIGINAL is kept
+# only to document the old false hits.
 AI_REVEAL_ORIGINAL = re.compile(
     r'(AI|bot|assistant|model|कृत्रिम|एआई|बॉट|सहायक|भाषा मॉडल|language model|'
     r'स्वचालित|automated|artificial|machine|गूगल|Google|OpenAI|trained)',
@@ -211,7 +212,7 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
             ),
             manager_context=dict(call_context),
             ai_reveal_line=None,
-            ai_reveal_pattern=AI_REVEAL_ORIGINAL,
+            ai_reveal_pattern=AI_REVEAL_WORD_BOUNDED,
             opt_out_noted=lines["opt_out_noted"],
             goodbye=lines["goodbye"],
             future_calls=lines["future_calls"],

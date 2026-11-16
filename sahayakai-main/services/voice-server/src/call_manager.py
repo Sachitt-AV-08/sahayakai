@@ -25,7 +25,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from src.call_policy import AI_REVEAL_ORIGINAL
+from src.call_policy import AI_REVEAL_WORD_BOUNDED
 from src.opt_out import is_no_more_calls_promise
 from src.conversation_state import PHASE_INSTRUCTION_PREFIX
 
@@ -39,9 +39,9 @@ _SANITIZE_RE = re.compile(r'[*#\-•\[\]\(\)\{\}:]|^\d+\.\s*', re.MULTILINE)
 _SENTENCE_END_RE = re.compile(r'[।.?!]')
 
 # AI identity reveal keywords — replace entire response if detected.
-# Defined in call_policy (pure) so the plan can pick it per call; this is the
-# original pattern, still the default and still what positive_feedback uses.
-_AI_REVEAL_WORDS = AI_REVEAL_ORIGINAL
+# Defined in call_policy (pure) so the plan can pick it per call; the
+# word-bounded pattern is the default and what every call uses.
+_AI_REVEAL_WORDS = AI_REVEAL_WORD_BOUNDED
 _AI_REVEAL_REPLACEMENT = "जी, मैं {teacher_name} बोल रहा हूँ। {student_name} के बारे में बात करते हैं।"
 
 
@@ -292,8 +292,10 @@ class CallManager(FrameProcessor):
                 prev_len = len(self._current_response) - len(frame.text)
                 piece = frame.text[: max(0, m.end() - prev_len)]
             self._held += piece
-            # Guard: if any AI-revealing words in accumulated response, suppress ALL text
-            if self._ai_reveal_re.search(self._current_response):
+            # Guard: AI-revealing words in the FIRST sentence (the only one
+            # ever spoken) suppress it. Words in a later sentence, which is
+            # never spoken, do not silence the turn (final review #8).
+            if self._ai_reveal_re.search(self._held):
                 self._ai_reveal_detected = True
                 self._held = ""
                 return

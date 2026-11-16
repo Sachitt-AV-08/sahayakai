@@ -46,6 +46,10 @@ for byte, and their prompt changes by one line
 - The prompt gains one rule: never say whether the school will or will not
   call again; if the parent asks, say the class teacher will decide. (The
   request-to-talk prompt gains the same rule.)
+- The AI-word filter is word-bounded, as on every call, and checks only the
+  first sentence (the only one ever spoken). The old filter matched "ai"
+  inside "said", "again" or "Vaibhav" and any AI word in an unspoken later
+  sentence, which silenced the whole turn: a live bug, fixed on purpose.
 - When the AI-reveal guard blocks the call's **last** reply, the parent now
   hears the fixed goodbye in the call's language (`goodbye` in
   `src/call_lines.json`) instead of the old Hindi line

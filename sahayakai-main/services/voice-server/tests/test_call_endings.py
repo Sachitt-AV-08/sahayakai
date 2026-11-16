@@ -120,9 +120,10 @@ def test_every_ending_hangs_up_exactly_once_and_writes_the_record(ending, tmp_pa
 # ── a last reply the AI-reveal guard replaces ────────────────────────────────
 # Re-review rereview-0b #7: CallManager's reveal branch pushed the
 # replacement and returned before the max-turns and CLOSE checks, so a
-# goodbye that tripped the guard ("we will talk aGAIn", "VAIbhav") never ended
-# the call. The original pattern matches "ai" anywhere, so on a
-# positive_feedback call this is an ordinary goodbye.
+# goodbye that tripped the guard never ended the call. (Then the original
+# pattern matched "ai" anywhere, "aGAIn", "VAIbhav"; since the final review's
+# #8 every call uses the word-bounded pattern, so these goodbyes say a real
+# AI word.)
 
 POSITIVE = dict(RECORD, reason="positive_feedback", parentLanguage="English", studentName="Vaibhav",
                 generatedMessage="Hello, this is Ms. Sharma. Vaibhav did very well this week.")
@@ -156,9 +157,9 @@ def _max_turns_with(last):
 
 
 REVEALING_ENDINGS = {
-    "positive, six turns, 'Vaibhav' goodbye": (POSITIVE, _six_turns("Thank you, Vaibhav is doing wonderfully, goodbye.")),
-    "positive, close phase, 'again' goodbye": (POSITIVE, _close_with("Thank you, we will talk again soon.")),
-    "positive, max turns, 'wait' reply": (POSITIVE, _max_turns_with("I will wait for your visit.")),
+    "positive, six turns, 'AI' goodbye": (POSITIVE, _six_turns("Thank you, as an AI I think Vaibhav is wonderful, goodbye.")),
+    "positive, close phase, 'bot' goodbye": (POSITIVE, _close_with("Thank you from the school bot, goodbye.")),
+    "positive, max turns, 'assistant' reply": (POSITIVE, _max_turns_with("I am the teacher's assistant, see you.")),
     "request to talk, close phase": (RECORD, _close_with("I am an AI assistant, goodbye.")),
     "request to talk, max turns": (RECORD, _max_turns_with("As an automated assistant, goodbye.")),
 }
@@ -355,3 +356,46 @@ def test_a_mid_pipeline_endframe_alone_would_not_end_the_task():
 
         runner = asyncio.run(go())
     assert runner.timed_out
+
+
+# ── a silent turn (final review #8) ─────────────────────────────────────────
+# The AI-word check ran on the whole streamed text, not the first sentence
+# (the only one ever spoken): an AI word in an unspoken second sentence
+# silenced the turn, and positive_feedback's unbounded pattern found "ai" in
+# "said" and "again". Then the unspoken first sentence still went into the
+# transcript, even a promise the screen would have replaced.
+
+def _turn_in_one_chunk(record, text):
+    with stubbed_runtime():
+        from bot_harness import FakeCallStore as Store, build_bot
+
+        async def go():
+            run = await build_bot({**record, "id": OID}, call_store=Store())
+            await _model_turn(run, text)
+            return run
+
+        run = asyncio.run(go())
+    manager = run.processor("CallManager")
+    model = "".join(f.text for f, _ in manager.pushed if type(f).__name__ == "LLMTextFrame")
+    tts = [f.text for f, _ in manager.pushed if type(f).__name__ == "TTSSpeakFrame"]
+    said = [m["content"] for m in run.context.messages if m.get("role") == "assistant"]
+    return model, tts, said
+
+
+def test_an_ai_word_in_the_unspoken_sentence_does_not_silence_a_promise_check():
+    record = {**RECORD, "parentLanguage": "English"}
+    model, tts, said = _turn_in_one_chunk(record, "We won't call you again. I am an automated assistant.")
+    line = load_call_lines()["en-IN"]["future_calls"]
+    assert model == "" and tts == [line], "the future-calls line is said, not silence"
+    assert "We won't call you again." not in said and line in said, "the unheard promise is not in the transcript"
+
+
+def test_said_and_again_do_not_silence_a_positive_feedback_turn():
+    model, tts, said = _turn_in_one_chunk(POSITIVE, "That is lovely to hear. He said he wants to do it again.")
+    assert model == "That is lovely to hear." and tts == []
+    assert "That is lovely to hear." in said
+
+
+def test_a_real_ai_word_in_the_first_sentence_is_still_replaced():
+    model, tts, _said = _turn_in_one_chunk(POSITIVE, "I am an AI assistant. Aarav is doing well.")
+    assert model == "" and len(tts) == 1
