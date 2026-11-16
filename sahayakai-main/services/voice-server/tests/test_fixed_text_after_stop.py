@@ -170,3 +170,103 @@ def test_before_a_stop_the_model_is_heard_as_usual(tmp_path, monkeypatch):
     _queued, pushed = _spoken(run, manager)
     assert "".join(t for kind, t in pushed if kind == "model") == "Is there a good time this week?"
     assert runner.ended
+
+
+# ── the close after the line does not depend on speech the model never gets ──
+# Final review final-0b #3: any sound after the line set spoken_since_notice,
+# and the close timer then stood down for good, trusting the model to answer.
+# But the STT filter drops "okay", "thanks", "हां", and the turn aggregator
+# drops a short backchannel said while the bot speaks, so the model never
+# answered, nothing said the goodbye, and the line stayed open until the
+# parent hung up or pipecat's idle timeout (about 5 minutes).
+
+async def _say_through_guard_and_filter(run, text):
+    """The parent speaks; returns what reached past the STT filter (towards the model)."""
+    guard, stt_filter = run.processor("StopRequestGuard"), run.processor("STTConfidenceFilter")
+    before = len(guard.pushed)
+    await guard.process_frame(TranscriptionFrame(text=text), FrameDirection.DOWNSTREAM)
+    reached = []
+    for frame, direction in guard.pushed[before:]:
+        mark = len(stt_filter.pushed)
+        await stt_filter.process_frame(frame, direction)
+        reached += [f.text for f, _ in stt_filter.pushed[mark:] if isinstance(f, TranscriptionFrame)]
+    await asyncio.sleep(0)
+    return reached
+
+
+BACKCHANNELS = {
+    "okay (STT filter drops it)": ("okay", True),
+    "thanks (STT filter drops it)": ("thanks", True),
+    "हां (STT filter drops it)": ("हां", True),
+    "हाँ जी while the bot speaks (aggregator drops it)": ("हाँ जी", False),
+}
+
+
+@pytest.mark.parametrize("stall", [False, True], ids=["ends", "end stalls"])
+@pytest.mark.parametrize("case", sorted(BACKCHANNELS))
+def test_a_backchannel_after_the_line_cannot_keep_the_call_open(case, stall, tmp_path, monkeypatch):
+    text, filtered = BACKCHANNELS[case]
+    seen = {}
+
+    async def script(run):
+        if stall:
+            run.task.stall_end = True  # the graceful close then needs the watchdog
+        await _hear(run, TRUE_STOPS["Hindi"])
+        seen["reached"] = await _say_through_guard_and_filter(run, text)
+        # No model reply follows: the filter or the aggregator threw it away.
+        await asyncio.sleep(0.2)
+
+    runner, run, manager, hangups, _db = _call_bounded(script, tmp_path, monkeypatch)
+    lines = load_call_lines()["hi-IN"]
+    assert (seen["reached"] == []) is filtered, "the scenario really drops (or passes) the backchannel"
+    queued, pushed = _spoken(run, manager)
+    assert queued == [("tts", lines["opt_out_noted"]), ("tts", lines["goodbye"])], "the timer still closes"
+    assert [type(f).__name__ for f in run.task.queued][-1] == "EndFrame"
+    assert pushed == []
+    assert runner.ended and not runner.timed_out and len(hangups) == 1
+    if stall:
+        assert run.task.end_in_flight and run.task.end_reason == "CancelFrame injected into the pipeline", \
+            "the ending watchdog was armed"
+
+
+def test_when_the_model_does_reply_the_timer_stands_down(tmp_path, monkeypatch):
+    async def script(run):
+        await _hear(run, TRUE_STOPS["Hindi"])
+        await _say_through_guard_and_filter(run, "ठीक है, पर क्यों?")
+        await _model_reply(run, "जी, धन्यवाद।")
+        await asyncio.sleep(0.2)  # several close-timer windows pass
+
+    runner, run, manager, hangups, _db = _call_bounded(script, tmp_path, monkeypatch)
+    lines = load_call_lines()["hi-IN"]
+    queued, pushed = _spoken(run, manager)
+    assert queued == [("tts", lines["opt_out_noted"])], "no second goodbye or EndFrame from the timer"
+    assert pushed == [("tts", lines["goodbye"]), ("end", "")]
+    assert runner.ended and len(hangups) == 1
+
+
+def _call_bounded(script, tmp_path, monkeypatch):
+    """_call with the close timer and the ending bound shortened, in the same runtime."""
+    db = FakeAsyncFirestore({("parent_outreach", OID): {**RECORD, "parentLanguage": "Hindi"}})
+    hangups = []
+    with stubbed_runtime():
+        main = import_main(tmp_path, monkeypatch)
+        main.call_store = FakeCallStore()
+        from src import bot
+
+        monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.02)
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", 0.05)
+
+        async def fake_hangup(call_uuid, auth_id, auth_token):
+            hangups.append(call_uuid)
+
+        main.hangup_vobiz_call = fake_hangup
+        ModelRunner.script = lambda: script(run_from_recorder())
+        main.WorkerRunner = ModelRunner
+        try:
+            asyncio.run(asyncio.wait_for(run_vobiz_path(main, db, outreach_id=OID), 5))
+        finally:
+            ModelRunner.script = None
+        runner = ModelRunner.last
+        run = run_from_recorder()
+        manager = run.processor("CallManager")
+    return runner, run, manager, hangups, db

@@ -66,6 +66,10 @@ TWILIO_LANG_MAP = LANGUAGE_CODES
 # After a stop request the engine says its one line and moves to the closing
 # phase. If the parent then says nothing for this long, the call is closed.
 NOTED_CLOSE_AFTER_SILENCE_SECONDS = 10.0
+# If the parent made a sound but the model never answered (a backchannel the
+# STT filter or the turn aggregator threw away), wait at most this many
+# windows in all before the timer closes the call itself.
+NOTED_CLOSE_MAX_WINDOWS = 3
 # Every graceful ending (the last turn, the CLOSE goodbye, the close after the
 # opt-out line) is bounded: if the task has not finished this long after the
 # ending began, the call is finished and the pipeline forced down. pipecat
@@ -402,6 +406,8 @@ async def create_bot(
         if opt_out["heard"]:
             return
         opt_out.update(heard=True, source=LIVE, quote=quote, at=utc_now_iso())
+        # CallManager owns the ending only if the model replies after this.
+        opt_out["turn_at_notice"] = call_manager.turn_number
         # The parent's words and the line go into the conversation: the
         # transcript the teacher reads shows both, and the model's closing
         # reply knows what was said.
@@ -415,12 +421,22 @@ async def create_bot(
         asyncio.ensure_future(_close_if_silent())
 
     async def _close_if_silent():
-        await asyncio.sleep(NOTED_CLOSE_AFTER_SILENCE_SECONDS)
-        has_finished = getattr(task, "has_finished", None)
-        if callable(has_finished) and has_finished() is True:
-            return
-        if stop_guard is not None and stop_guard.spoken_since_notice:
-            return  # the model answers; CallManager says the fixed goodbye and ends the call
+        # The model "actually replied" only when CallManager counted a turn
+        # after the notice (it then said the goodbye and ended the call).
+        # Speech alone proves nothing: the STT filter and the turn aggregator
+        # drop backchannels before the model sees them (final-0b #3). So a
+        # sound only buys another window, and the timer always closes in the
+        # end.
+        for window in range(1, NOTED_CLOSE_MAX_WINDOWS + 1):
+            await asyncio.sleep(NOTED_CLOSE_AFTER_SILENCE_SECONDS)
+            has_finished = getattr(task, "has_finished", None)
+            if callable(has_finished) and has_finished() is True:
+                return
+            if call_manager.turn_number > opt_out["turn_at_notice"]:
+                return  # the model replied: CallManager said the goodbye and owns the ending
+            if stop_guard is None or not stop_guard.spoken_since_notice or window == NOTED_CLOSE_MAX_WINDOWS:
+                break
+            stop_guard.spoken_since_notice = False  # the parent spoke: give the model one more window
         if not call_manager.take_goodbye():
             return  # CallManager already said it and is ending the call
         logger.info(f"Outreach {outreach_id}: no reply after the opt-out line; closing the call")

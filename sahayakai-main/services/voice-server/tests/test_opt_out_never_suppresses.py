@@ -503,4 +503,8 @@ def test_after_the_line_a_reply_goes_to_the_model_and_nothing_is_said_twice(monk
         run, passed = asyncio.run(go())
     assert calls == [("please don't call me again", "live")]
     assert passed == ["no no, I meant call me in the evening", "don't call me"]
-    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame"], "the closing phase ends it, not a timer"
+    # No model reply was driven here, so the close timer (not the parent's
+    # speech) ends the call, with the line and the goodbye each said once.
+    lines = load_call_lines()["hi-IN"]
+    assert [(type(f).__name__, getattr(f, "text", None)) for f in run.task.queued] == [
+        ("TTSSpeakFrame", lines["opt_out_noted"]), ("TTSSpeakFrame", lines["goodbye"]), ("EndFrame", None)]
