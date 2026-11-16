@@ -191,6 +191,100 @@ def test_a_last_reply_the_reveal_guard_replaces_still_ends_the_call(ending, tmp_
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
 
 
+# ── a graceful ending that never finishes ────────────────────────────────────
+# Re-review rereview-0b #8: CallManager's endings send EndTaskFrame, the task
+# queues an EndFrame and waits for it with no timeout. One processor stuck on
+# it (a Gemini stream that never completes) and runner.run() never returns:
+# no hang-up, no record, a slot held until Cloud Run's request timeout. Only the
+# stop path had a watchdog. ModelRunner with PipelineTask.stall_end models
+# exactly that: the graceful end never completes, task.cancel() queues behind
+# it, and only a CancelFrame injected into the pipeline ends the task.
+
+STALLING_ENDINGS = {
+    "close phase": _close_phase,
+    "max turns": _max_turns,
+    "stop request, then silence": _stop_request,
+}
+
+
+def _run_stalled(script, tmp_path, monkeypatch, *, bound: float):
+    db = FakeAsyncFirestore({("parent_outreach", OID): RECORD})
+    hangups = []
+    with stubbed_runtime():
+        main = import_main(tmp_path, monkeypatch)
+        main.call_store = FakeCallStore()
+        from src import bot
+
+        monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.01)
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", bound)
+
+        async def fake_hangup(call_uuid, auth_id, auth_token):
+            hangups.append(call_uuid)
+
+        async def stalled():
+            run_from_recorder().task.stall_end = True  # a processor hangs on the EndFrame
+            await script()
+
+        main.hangup_vobiz_call = fake_hangup
+        ModelRunner.script = stalled
+        main.WorkerRunner = ModelRunner
+        try:
+            asyncio.run(asyncio.wait_for(run_vobiz_path(main, db, outreach_id=OID), 5))
+        finally:
+            ModelRunner.script = None
+        runner = ModelRunner.last
+        task = run_from_recorder().task
+    return runner, task, hangups, db
+
+
+@pytest.mark.parametrize("ending", sorted(STALLING_ENDINGS))
+def test_every_graceful_ending_is_bounded_even_when_it_stalls(ending, tmp_path, monkeypatch):
+    runner, task, hangups, db = _run_stalled(STALLING_ENDINGS[ending], tmp_path, monkeypatch, bound=0.05)
+    assert task.end_in_flight, f"{ending}: the scenario really stalled the graceful end"
+    assert runner.ended and not runner.timed_out, f"{ending}: a stalled ending held the call"
+    assert task.end_reason == "CancelFrame injected into the pipeline"
+    assert len(hangups) == 1
+    assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
+
+
+def test_the_parent_hanging_up_rescues_a_stalled_ending_at_once(tmp_path, monkeypatch):
+    """A disconnect seen during a stalled ending ends the call without waiting for the bound."""
+    async def close_then_hang_up():
+        await _close_phase()
+        # The task takes the EndTaskFrame at once (ModelRunner would only see
+        # it after this script), and the end then sticks.
+        run_from_recorder().task.request_end("EndTaskFrame reached the task")
+        await _parent_hangs_up()
+
+    runner, task, hangups, db = _run_stalled(close_then_hang_up, tmp_path, monkeypatch, bound=60.0)
+    assert task.end_in_flight
+    assert runner.ended and not runner.timed_out, "the hang-up waited behind the stuck EndFrame"
+    assert task.end_reason == "CancelFrame injected into the pipeline"
+    assert len(hangups) == 1
+    assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
+
+
+def test_an_ending_that_finishes_is_not_forced_down(monkeypatch):
+    with stubbed_runtime():
+        from src import bot
+
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", 0.02)
+
+        async def go():
+            from bot_harness import FakeCallStore as Store, build_bot
+
+            run = await build_bot({"id": OID, "reason": "consecutive_absences", "parentLanguage": "Hindi"},
+                                  call_store=Store())
+            run.processor("PhaseInstructor").skip_to_close()
+            await _model_turn(run, "ji, dhanyavaad, namaste.")
+            run.task.finished = True
+            await asyncio.sleep(0.1)
+            return run
+
+        run = asyncio.run(go())
+    assert run.task.cancelled_at is None
+
+
 def test_a_mid_pipeline_endframe_alone_would_not_end_the_task():
     """The model is faithful: the old downstream EndFrame really leaves the task running."""
     with stubbed_runtime():

@@ -98,7 +98,7 @@ def test_a_stop_that_does_not_end_the_call_in_time_cancels_it(monkeypatch):
     with stubbed_runtime():
         from src import bot
 
-        monkeypatch.setattr(bot, "STOP_CANCEL_AFTER_SECONDS", 0.05)
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", 0.05)
         monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.0)  # the parent says nothing
 
         async def go():
@@ -118,7 +118,7 @@ def test_a_stop_that_ended_the_call_is_not_cancelled_again(monkeypatch):
     with stubbed_runtime():
         from src import bot
 
-        monkeypatch.setattr(bot, "STOP_CANCEL_AFTER_SECONDS", 0.05)
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", 0.05)
         monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.0)  # the parent says nothing
 
         async def go():
@@ -162,7 +162,8 @@ def test_a_vobiz_disconnect_mid_call_cancels_hangs_up_once_and_records_the_stop(
 
 
 # ── a graceful end that never finishes ───────────────────────────────────────
-# Independent review #7: after a stop the task is blocked on its EndFrame; task.cancel() only queues a CancelFrame BEHIND it, so the old
+# Independent review #7: after a stop the task is blocked on its EndFrame;
+# task.cancel() only queues a CancelFrame BEHIND it, so the old
 # watchdog did nothing, runner.run() never returned and the record was never
 # written. ModelRunner models exactly that (PipelineTask.stall_end).
 
@@ -177,7 +178,7 @@ def test_the_watchdog_ends_a_stalled_graceful_end_and_still_finishes_the_call(tm
         main.call_store = FakeCallStore()
         from src import bot
 
-        monkeypatch.setattr(bot, "STOP_CANCEL_AFTER_SECONDS", 0.05)
+        monkeypatch.setattr(bot, "ENDING_BOUND_SECONDS", 0.05)
         monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.0)  # the parent says nothing
 
         async def fake_hangup(call_uuid, auth_id, auth_token):

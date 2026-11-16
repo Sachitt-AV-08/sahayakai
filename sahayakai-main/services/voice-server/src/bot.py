@@ -66,8 +66,13 @@ TWILIO_LANG_MAP = LANGUAGE_CODES
 # After a stop request the engine says its one line and moves to the closing
 # phase. If the parent then says nothing for this long, the call is closed.
 NOTED_CLOSE_AFTER_SILENCE_SECONDS = 10.0
-# A graceful close (EndFrame) that has not finished by then is cancelled.
-STOP_CANCEL_AFTER_SECONDS = 20.0
+# Every graceful ending (the last turn, the CLOSE goodbye, the close after the
+# opt-out line) is bounded: if the task has not finished this long after the
+# ending began, the call is finished and the pipeline forced down. pipecat
+# waits for an EndFrame with no timeout, so one stuck processor (a Gemini
+# stream that never completes) would otherwise hold the call until Cloud
+# Run's request timeout.
+ENDING_BOUND_SECONDS = 20.0
 
 SARVAM_VOICE_FEMALE = "priya"   # Female voice — for female teacher names
 SARVAM_VOICE_MALE = "rahul"     # Male voice — for male teacher names
@@ -289,6 +294,45 @@ async def create_bot(
             turn_count=turn_number,
         )
 
+    # ── Ending: every graceful end is bounded ──
+    ending = {"watching": False}
+
+    async def _watch_ending(why: str):
+        """Called as a graceful ending starts; bounds it by ENDING_BOUND_SECONDS."""
+        if ending["watching"]:
+            return
+        ending["watching"] = True
+        asyncio.ensure_future(_force_end_if_still_running(why))
+
+    async def _force_end_if_still_running(why: str):
+        await asyncio.sleep(ENDING_BOUND_SECONDS)
+        has_finished = getattr(task, "has_finished", None)
+        if callable(has_finished) and has_finished() is True:
+            return
+        logger.warning(f"Outreach {outreach_id}: {why} did not end the call in time; finishing it and forcing the pipeline down")
+        await _force_down(f"{why} did not end the call in time")
+
+    async def _force_down(why: str):
+        # The record, the summary and the hang-up must not wait on a stuck
+        # pipeline: start the bookkeeping now (it is shared and idempotent).
+        _start_finalize()
+        await _cancel_pipeline(why)
+        # task.cancel() only queues a CancelFrame on the task's push queue,
+        # BEHIND an EndFrame that is stuck, so on its own it never runs. A
+        # CancelFrame is a system frame: put straight into the pipeline it
+        # skips the queues, reaches the sink and lets runner.run() return.
+        try:
+            await task.pipeline.queue_frame(CancelFrame())
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Could not inject a CancelFrame for outreach {outreach_id}: {e}")
+
+    async def _cancel_pipeline(why: str):
+        try:
+            await task.cancel()
+            logger.info(f"Pipeline cancelled for outreach {outreach_id}: {why}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Pipeline cancel failed for outreach {outreach_id}: {e}")
+
     # ── Phase Instructor: injects turn-specific instructions before LLM ──
     phase_instructor = PhaseInstructor(guidance=plan.phase_guidance)
 
@@ -298,6 +342,7 @@ async def create_bot(
         call_context=plan.manager_context,
         max_turns=6,
         on_turn_complete=_sync_turn,
+        on_ending=_watch_ending,
         phase_instructor=phase_instructor,
         ai_reveal_pattern=plan.ai_reveal_pattern,
         ai_reveal_line=plan.ai_reveal_line,
@@ -374,34 +419,7 @@ async def create_bot(
             return  # the model answers in the closing phase and CallManager ends the call
         logger.info(f"Outreach {outreach_id}: no reply after the opt-out line; closing the call")
         await task.queue_frames([EndFrame()])
-        asyncio.ensure_future(_cancel_if_still_running())
-
-    async def _cancel_if_still_running():
-        await asyncio.sleep(STOP_CANCEL_AFTER_SECONDS)
-        has_finished = getattr(task, "has_finished", None)
-        if callable(has_finished) and has_finished() is True:
-            return
-        why = "the graceful close did not end the call in time"
-        logger.warning(f"Outreach {outreach_id}: {why}; finishing the call and forcing the pipeline down")
-        # The record, the summary and the hang-up must not wait on a stuck
-        # pipeline: start the bookkeeping now (it is shared and idempotent).
-        _start_finalize()
-        await _cancel_pipeline(why)
-        # task.cancel() only queues a CancelFrame on the task's push queue,
-        # BEHIND the EndFrame that is stuck, so on its own it never runs. A
-        # CancelFrame is a system frame: put straight into the pipeline it
-        # skips the queues, reaches the sink and lets runner.run() return.
-        try:
-            await task.pipeline.queue_frame(CancelFrame())
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Could not inject a CancelFrame for outreach {outreach_id}: {e}")
-
-    async def _cancel_pipeline(why: str):
-        try:
-            await task.cancel()
-            logger.info(f"Pipeline cancelled for outreach {outreach_id}: {why}")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Pipeline cancel failed for outreach {outreach_id}: {e}")
+        await _watch_ending("the close after the opt-out line")
 
     if on_opt_out_request is not None:
         # A possible "don't call me again" is answered by the engine, not the model.
@@ -567,9 +585,11 @@ async def create_bot(
         # runs as its own shielded task, so cancelling the pipeline cannot cut
         # it short), then stop the pipeline at once. Left alone it idles until
         # pipecat's idle timeout, about 5 minutes, holding an instance slot
-        # with CPU always allocated (seen live on 2026-11-16).
+        # with CPU always allocated (seen live on 2026-11-16). Forced down,
+        # not just cancelled: a graceful ending already stuck on its EndFrame
+        # would hold task.cancel() behind it.
         pending = _start_finalize()
-        await _cancel_pipeline("far end disconnected")
+        await _force_down("far end disconnected")
         await asyncio.shield(pending)
 
     return task, finalize

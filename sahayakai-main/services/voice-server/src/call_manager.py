@@ -77,6 +77,7 @@ class CallManager(FrameProcessor):
         call_context: dict,
         max_turns: int = 6,
         on_turn_complete: "CallManager.OnTurnComplete | None" = None,
+        on_ending: "Callable[[str], Awaitable[None]] | None" = None,
         phase_instructor: "PhaseInstructor | None" = None,
         ai_reveal_pattern: "re.Pattern[str] | None" = None,
         ai_reveal_line: str | None = None,
@@ -91,6 +92,9 @@ class CallManager(FrameProcessor):
         self._ai_reveal_line = ai_reveal_line
         self._max_turns = max_turns
         self._on_turn_complete = on_turn_complete
+        # Told when this processor starts a graceful ending, so the ending can
+        # be bounded (bot.py: ENDING_BOUND_SECONDS).
+        self._on_ending = on_ending
         self._phase_instructor = phase_instructor
         self._turn_number = 0
         self._current_response = ""
@@ -102,7 +106,7 @@ class CallManager(FrameProcessor):
     def turn_number(self) -> int:
         return self._turn_number
 
-    async def _end_call(self) -> None:
+    async def _end_call(self, why: str) -> None:
         """Ask the pipeline TASK to end, from its source.
 
         An EndFrame pushed downstream from here (the old way) only reached TTS
@@ -112,8 +116,16 @@ class CallManager(FrameProcessor):
         UPSTREAM to the task, which queues an EndFrame at the source; it
         travels behind the goodbye already on its way to TTS, so the goodbye
         is still spoken first.
+
+        pipecat waits for that EndFrame with no timeout, so the ending is also
+        reported to `on_ending`, which bounds it (rereview-0b #8).
         """
         await self.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
+        if self._on_ending is not None:
+            try:
+                await self._on_ending(why)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Ending watchdog could not start: {e}")
 
     @property
     def transcript(self) -> list[dict]:
@@ -250,7 +262,7 @@ class CallManager(FrameProcessor):
             if self._turn_number >= self._max_turns:
                 logger.info(f"Max turns ({self._max_turns}) reached — ending call")
                 await self.push_frame(frame, direction)
-                await self._end_call()
+                await self._end_call("the last turn")
                 return
 
             # End call after CLOSE phase goodbye is spoken
@@ -260,7 +272,7 @@ class CallManager(FrameProcessor):
                 if self._phase_instructor.phase == ConversationPhase.ENDED:
                     logger.info(f"CLOSE phase complete — ending call after turn {self._turn_number}")
                     await self.push_frame(frame, direction)
-                    await self._end_call()
+                    await self._end_call("the CLOSE goodbye")
                     return
 
         # Pass ALL frames through — CallManager is transparent
