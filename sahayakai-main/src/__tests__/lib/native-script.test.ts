@@ -52,3 +52,36 @@ describe('community persona message: native script', () => {
         await expect(generateCommunityPersonaMessage(persona, [], 'fresh')).rejects.toThrow(/not in Tamil script/);
     });
 });
+
+/**
+ * Class gate: a one-word reply is asked again once, like a wrong-script reply.
+ *
+ * The live evals caught a Bengali persona reply of just "ঠিকই" ("right"): native script, so it
+ * passed the script check, and the flow then threw "too short" without asking again, so nothing
+ * was posted. Any answer the flow would refuse is now retried once, saying what was wrong.
+ */
+describe('community persona message: too short', () => {
+    beforeEach(() => generate.mockReset());
+
+    const ONE_WORD = 'ঠিকই';
+    const BENGALI = 'মাধ্যমিকের আগে পুরনো প্রশ্নপত্র সময় ধরে লিখলে ভয়টা অনেক কমে যায়।';
+    const bengaliPersona = { ...persona, preferredLanguage: 'Bengali' } as typeof persona;
+
+    it('asks once more when the reply is one word, and posts the full one', async () => {
+        generate.mockResolvedValueOnce({ text: ONE_WORD }).mockResolvedValueOnce({ text: BENGALI });
+        await expect(generateCommunityPersonaMessage(bengaliPersona, [], 'fresh')).resolves.toEqual({ message: BENGALI });
+        expect(generate).toHaveBeenCalledTimes(2);
+        expect(String(generate.mock.calls[1][0].prompt)).toMatch(/was too short/);
+    });
+
+    it('posts nothing when the second reply is still one word', async () => {
+        generate.mockResolvedValue({ text: ONE_WORD });
+        await expect(generateCommunityPersonaMessage(bengaliPersona, [], 'fresh')).rejects.toThrow(/too short/);
+        expect(generate).toHaveBeenCalledTimes(2);
+    });
+
+    it('a second reply in the wrong script is still refused', async () => {
+        generate.mockResolvedValueOnce({ text: ONE_WORD }).mockResolvedValueOnce({ text: ENGLISH });
+        await expect(generateCommunityPersonaMessage(bengaliPersona, [], 'fresh')).rejects.toThrow(/not in Bengali script/);
+    });
+});
