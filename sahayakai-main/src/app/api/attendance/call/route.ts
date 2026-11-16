@@ -334,53 +334,26 @@ function refuseBeforeDial(
     return null;
 }
 
-export async function POST(req: NextRequest) {
-    const userId = req.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+/** A refused call (to be released by POST) or the response of a call attempt. */
+type CallOutcome =
+    | { refused: true; category: string; response: NextResponse }
+    | { refused: false; response: NextResponse };
 
-    // Parse the body once up front — both the Exotel and Twilio providers need it,
-    // and req.json() can only be consumed a single time.
-    const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-    const { outreachId, parentLanguage } = body as {
-        outreachId: string;
-        parentLanguage: Language;
-    };
-    if (!outreachId || !parentLanguage) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    // Ownership and the server-stored destination first: until the record is
-    // known to be this teacher's, a refusal must not touch it.
-    //
-    // A Firestore error here must still answer in JSON. Uncaught, Next.js sends
-    // an empty 500 the modal cannot parse, and the teacher sees a JSON parse
-    // error instead of a message (gate: attendance-call-json-errors-gate).
-    let db: FirebaseFirestore.Firestore;
-    let target: TargetResolution;
-    try {
-        db = await getDb();
-        target = await resolveOutreachTarget(db, outreachId, userId);
-    } catch (error) {
-        console.error('[attendance/call] target resolution failed:', error);
-        return NextResponse.json({ error: 'Internal error', code: 'INTERNAL', retryable: true }, { status: 500 });
-    }
-    if (!target.ok) {
-        if (target.owned) await markNotDialled(db, outreachId, target.category);
-        return target.response;
-    }
-
-    // Every refusal from here on goes through ONE place, refuseBeforeDial, and
-    // releases the record: the modal created it as 'initiated' before calling
-    // this route, and a record left 'initiated' reads as a call in progress and
-    // holds the per-student dedup window although nobody was dialled.
+/**
+ * Everything after ownership is confirmed: the refusals, then the provider.
+ * Returns ONLY a refusal from refuseBeforeDial or a provider's own response,
+ * so POST can release every refusal in one place (and has a single return).
+ */
+async function placeOwnedCall(
+    req: NextRequest,
+    db: FirebaseFirestore.Firestore,
+    target: ResolvedTarget,
+    suppressed: NextResponse | null,
+    ctx: { parentLanguage: Language; userId: string; outreachId: string },
+): Promise<CallOutcome> {
     const provider = (process.env.VOICE_PROVIDER || 'twilio').toLowerCase();
-    const suppressed = await refuseIfParentOptedOut(db, target.parentPhone);
-    const refusal = refuseBeforeDial(suppressed, { provider, parentLanguage, userId, outreachId });
-    if (refusal) {
-        await markNotDialled(db, outreachId, refusal.category);
-        return refusal.response;
-    }
+    const refusal = refuseBeforeDial(suppressed, { provider, ...ctx });
+    if (refusal) return { refused: true, ...refusal };
 
     // Provider switch. Default 'twilio' preserves the existing batch TwiML path.
     // Set VOICE_PROVIDER=exotel to route attendance calls through the standalone
@@ -391,15 +364,25 @@ export async function POST(req: NextRequest) {
     if (provider === 'exotel') {
         // The voicebot dials the number on the outreach doc itself; ownership, the
         // destination and the opt-out were all checked above, before this switch.
-        return forwardToExotel(userId, outreachId, process.env.VOICE_EXOTEL_CALL_URL!);
+        return { refused: false, response: await forwardToExotel(ctx.userId, ctx.outreachId, process.env.VOICE_EXOTEL_CALL_URL!) };
     }
     // Vobiz owns a real Indian origination number, so unlike the Twilio TRIAL
     // account it can actually reach a parent. It streams the leg into a live
     // conversation with VIDYA rather than reading a fixed script.
     if (provider === 'vobiz') {
-        return forwardToVobiz(req, db, outreachId, target, readVobizConfig()!);
+        return { refused: false, response: await forwardToVobiz(req, db, ctx.outreachId, target, readVobizConfig()!) };
     }
 
+    return { refused: false, response: await placeTwilioCall(req, db, ctx.outreachId, target) };
+}
+
+/** The Twilio batch TwiML path. Configuration and language were verified by refuseBeforeDial. */
+async function placeTwilioCall(
+    req: NextRequest,
+    db: FirebaseFirestore.Firestore,
+    outreachId: string,
+    target: ResolvedTarget,
+): Promise<NextResponse> {
     // All three were verified by refuseBeforeDial.
     const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = process.env as Record<string, string>;
 
@@ -522,4 +505,52 @@ export async function POST(req: NextRequest) {
         // Don't leak internal error messages (may contain stack, secrets, service paths)
         return NextResponse.json({ error: 'Internal error' }, { status: 500 });
     }
+}
+
+export async function POST(req: NextRequest) {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Parse the body once up front — both the Exotel and Twilio providers need it,
+    // and req.json() can only be consumed a single time.
+    const body = await req.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const { outreachId, parentLanguage } = body as {
+        outreachId: string;
+        parentLanguage: Language;
+    };
+    if (!outreachId || !parentLanguage) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Ownership and the server-stored destination first: until the record is
+    // known to be this teacher's, a refusal must not touch it.
+    //
+    // A Firestore error here must still answer in JSON. Uncaught, Next.js sends
+    // an empty 500 the modal cannot parse, and the teacher sees a JSON parse
+    // error instead of a message (gate: attendance-call-json-errors-gate).
+    let db: FirebaseFirestore.Firestore;
+    let target: TargetResolution;
+    try {
+        db = await getDb();
+        target = await resolveOutreachTarget(db, outreachId, userId);
+    } catch (error) {
+        console.error('[attendance/call] target resolution failed:', error);
+        return NextResponse.json({ error: 'Internal error', code: 'INTERNAL', retryable: true }, { status: 500 });
+    }
+    if (!target.ok) {
+        if (target.owned) await markNotDialled(db, outreachId, target.category);
+        return target.response;
+    }
+
+    // REFUSAL-GATE: ownership confirmed. From here POST has exactly ONE return.
+    // Every refusal comes back from placeOwnedCall as { refused: true } and is
+    // released here: the modal created the record 'initiated' before calling
+    // this route, and a record left 'initiated' reads as a call in progress and
+    // holds the per-student dedup window although nobody was dialled
+    // (gate: attendance-call-refusals-gate.test.ts).
+    const suppressed = await refuseIfParentOptedOut(db, target.parentPhone);
+    const outcome = await placeOwnedCall(req, db, target, suppressed, { parentLanguage, userId, outreachId });
+    if (outcome.refused) await markNotDialled(db, outreachId, outcome.category);
+    return outcome.response;
 }

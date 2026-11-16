@@ -13,9 +13,11 @@
  *  1. BEHAVIOURAL — every refusal the route can make on a record the teacher owns, for each
  *     provider where it applies, leaves the record 'failed' with a callFailureCategory and
  *     contacts no provider. Records the teacher does NOT own are never written.
- *  2. STRUCTURAL — no provider path can return before it contacts the provider: every refusal
- *     must go through refuseBeforeDial (or resolveOutreachTarget), whose single caller in POST
- *     releases the record. A new early return in a provider path fails here.
+ *  2. STRUCTURAL — once ownership is confirmed POST has exactly ONE return, after releasing any
+ *     refusal; placeOwnedCall can hand back only a refuseBeforeDial refusal or a provider's own
+ *     response; and no provider path can return before it contacts the provider. So a refusal
+ *     added anywhere after ownership (in POST, in placeOwnedCall or in a provider path) cannot
+ *     skip the release: it fails here even though the behavioural list does not know it.
  *  3. OUTREACH — /api/attendance/outreach creates no call record outside 10:00-19:00 IST, so
  *     there is nothing to strand in the first place.
  */
@@ -190,32 +192,46 @@ describe.each(Object.keys(PROVIDERS))('records the teacher does not own are neve
 
 // ── 2. Structural ───────────────────────────────────────────────────────────
 
-describe('structural: provider paths cannot refuse on their own', () => {
-    const SRC = fs.readFileSync(path.resolve(__dirname, '../../app/api/attendance/call/route.ts'), 'utf8');
-    const between = (from: RegExp, to: RegExp) => {
-        const start = SRC.search(from);
-        const rest = SRC.slice(start);
-        const end = rest.search(to);
+describe('structural: no refusal after ownership can skip the release', () => {
+    // Comments removed, so prose like "one return" is not read as code.
+    const SRC = fs
+        .readFileSync(path.resolve(__dirname, '../../app/api/attendance/call/route.ts'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+    const returnsIn = (code: string) => Array.from(code.matchAll(/\breturn\b[^;]*/g), (m) => m[0].replace(/\s+/g, ' ').trim());
+    const fnBody = (name: string) => {
+        const start = SRC.search(new RegExp(`(async )?function ${name}\\b`));
         expect(start).toBeGreaterThanOrEqual(0);
-        expect(end).toBeGreaterThan(0);
-        return rest.slice(0, end);
+        const rest = SRC.slice(start);
+        const next = rest.slice(1).search(/\n(export )?(async )?function |\ntype |\ninterface /);
+        return next < 0 ? rest : rest.slice(0, next + 1);
     };
 
-    it.each([
-        ['forwardToExotel', /async function forwardToExotel\b/, /await fetch\(/],
-        ['forwardToVobiz', /async function forwardToVobiz\b/, /placeVobizCall\(/],
-        ['the Twilio path in POST', /const refusal = refuseBeforeDial\(/, /Calls\.json/],
-    ])('%s has no return before it contacts the provider (other than handing the refusal back)', (_name, from, to) => {
-        const body = between(from, to);
-        const returns = Array.from(body.matchAll(/\breturn\b[^;]*/g), (m) => m[0]);
-        const allowed = /^return (refusal\.response|forwardTo(Exotel|Vobiz)\()/;
+    it('POST has exactly one return once ownership is confirmed, and it follows the release', () => {
+        const post = fnBody('POST');
+        const owned = post.search(/if \(target\.owned\) await markNotDialled\(db, outreachId, target\.category\);\s*return target\.response;\s*\}/);
+        expect(owned).toBeGreaterThan(0);
+        const afterOwnership = post.slice(owned).replace(/^[\s\S]*?return target\.response;\s*\}/, '');
+        expect(returnsIn(afterOwnership)).toEqual(['return outcome.response']);
+        expect(afterOwnership).toMatch(/if \(outcome\.refused\) await markNotDialled\(db, outreachId, outcome\.category\);\s*return outcome\.response;/);
+    });
+
+    it('placeOwnedCall hands back only a refuseBeforeDial refusal or a provider response', () => {
+        const allowed = /^return \{ refused: (true, \.\.\.refusal \}|false, response: await (forwardToExotel|forwardToVobiz|placeTwilioCall)\()/;
+        const returns = returnsIn(fnBody('placeOwnedCall'));
+        expect(returns.length).toBeGreaterThanOrEqual(4);
         expect(returns.filter((r) => !allowed.test(r))).toEqual([]);
     });
 
-    it('POST releases every refusal it receives', () => {
-        const post = SRC.slice(SRC.search(/export async function POST\b/));
-        expect(post).toMatch(/if \(target\.owned\) await markNotDialled\(db, outreachId, target\.category\);\s*return target\.response;/);
-        expect(post).toMatch(/if \(refusal\) \{\s*await markNotDialled\(db, outreachId, refusal\.category\);\s*return refusal\.response;/);
+    it.each([
+        ['forwardToExotel', /await fetch\(/],
+        ['forwardToVobiz', /placeVobizCall\(/],
+        ['placeTwilioCall', /Calls\.json/],
+    ])('%s has no return before it contacts the provider', (name, providerCall) => {
+        const body = fnBody(name);
+        const at = body.search(providerCall);
+        expect(at).toBeGreaterThan(0);
+        expect(returnsIn(body.slice(0, at))).toEqual([]);
     });
 });
 
