@@ -537,3 +537,38 @@ def test_through_the_handler_the_split_stop_is_recorded(parts, tmp_path, monkeyp
     db, _persisted, spoken, _passed = _run_call(language, parts, tmp_path, monkeypatch)
     [request] = opt_out_requests(db)
     assert request["quote"] == " ".join(parts) and request["source"] == "live"
+
+
+
+# ── "never again" forms are strong, bare "ever / कभी" is not (review #4) ────
+
+EVER_AGAIN_STOPS = [
+    "मुझे फिर कभी फ़ोन मत करना, मैं बहुत व्यस्त रहता हूँ",
+    "phir kabhi phone mat karna, main busy rehta hoon",
+    "Don't ever call me, I'm busy",
+    "Do not ever phone me, I am busy",
+]
+BARE_EVER_NOT_STOPS = [
+    "मीटिंग में कभी फ़ोन मत करना।",
+    "मुझे कभी फ़ोन मत करना, मैं व्यस्त हूँ",
+    "Don't ever call me while I'm driving.",
+    "आप मुझे कभी भी फ़ोन कर लीजिए, बस बिज़ी हूँ तो फ़ोन मत करना",
+]
+
+
+@pytest.mark.parametrize("text", EVER_AGAIN_STOPS)
+def test_a_never_again_stop_said_with_busy_is_still_a_stop(text):
+    assert is_stop_request(text), text
+
+
+@pytest.mark.parametrize("text", BARE_EVER_NOT_STOPS)
+def test_bare_ever_or_kabhi_does_not_make_busy_a_stop(text):
+    assert not is_stop_request(text), text
+
+
+def test_through_the_handler_a_never_again_stop_is_recorded(tmp_path, monkeypatch):
+    from test_opt_out_never_suppresses import _run_call
+
+    db, _persisted, _spoken, _passed = _run_call("Hindi", (EVER_AGAIN_STOPS[0],), tmp_path, monkeypatch)
+    [request] = opt_out_requests(db)
+    assert request["quote"] == EVER_AGAIN_STOPS[0]

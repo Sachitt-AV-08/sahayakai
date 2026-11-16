@@ -320,9 +320,10 @@ _NOT_A_STOP = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_REASON_PARTS, *_PARTY_PART
 _LIMITS = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
 
 # A strong stop: "stop calling", "no more calls", "I don't want these calls",
-# or any "don't call" said with "again"/"anymore" in the call language (not
-# "ever" / "कभी": "don't ever call me while I'm driving" is a limit). Only a
-# limit (time, place, someone else, redirection) vetoes it, not "busy".
+# or any "don't call" said with "again"/"anymore" in the call language, or
+# "don't ever call" / "फिर कभी" / "phir kabhi". Bare "ever" / "कभी" is not
+# strong ("मीटिंग में कभी फ़ोन मत करना"). Only a limit (time, place, someone
+# else, redirection) vetoes a strong stop, not "busy".
 _STRONG_STOP = _compile(
     r"\bstop (?:calling|phoning|ringing|these calls|the calls|your calls)\b",
     r"\bno more (?:phone )?calls\b",
@@ -331,8 +332,9 @@ _STRONG_STOP = _compile(
     _HI_STOP_THESE_CALLS,
     rf"{_HI_CALL}\s*करना\s*बंद",
     r"\b(?:again|anymore|any more)\b",
-    r"\b(?:dobara|dubara|phir se|aage se|ab se)\b",
-    r"(?:दोबारा|दुबारा|फिर\s*से|आगे\s*से|अब\s*से)",
+    r"\b(?:don't|dont|do not|never)\s+ever\s+(?:call|phone|ring)\b",
+    r"\b(?:dobara|dubara|phir se|phir kabhi|aage se|ab se)\b",
+    r"(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|आगे\s*से|अब\s*से)",
     _word(r"আর|আবার"),
     _word(r"पुन्हा|परत"),
     _word(r"ફરીથી|ફરી"),
