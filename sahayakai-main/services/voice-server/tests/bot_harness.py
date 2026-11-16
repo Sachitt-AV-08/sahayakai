@@ -27,6 +27,21 @@ from importlib.machinery import ModuleSpec
 from typing import Any, Iterator
 
 
+def monorepo_root():
+    """The repository root when this service sits in its usual place in the monorepo.
+
+    None when the service directory was copied out on its own (Cloud Build
+    uploads only services/voice-server), so cross-repo checks can skip.
+    """
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent  # .../sahayakai-main/services/voice-server/tests
+    for candidate in here.parents:
+        if (candidate / "sahayakai-main" / "services" / "voice-server").is_dir():
+            return candidate
+    return None
+
+
 STUBBED_ROOTS = ("pipecat", "loguru", "httpx", "fastapi", "uvicorn")
 # Not installed in CI, so they must not be importable locally either.
 BLOCKED_ROOTS = ("google", "dotenv", "numpy")

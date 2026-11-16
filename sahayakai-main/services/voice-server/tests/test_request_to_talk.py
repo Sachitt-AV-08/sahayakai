@@ -340,13 +340,16 @@ def test_bounded_identity_guard():
 # The web app keeps its own copy of the request line for the paths it speaks
 # itself (src/locales/call-scripts/request-to-talk.json); this service cannot
 # read it at runtime because its Docker build context is this directory only.
-WEB_LINES = Path(__file__).resolve().parents[3] / "src" / "locales" / "call-scripts" / "request-to-talk.json"
-
-
 def test_request_line_matches_the_web_apps_copy():
-    if not WEB_LINES.exists():
-        pytest.skip(f"{WEB_LINES.name} is not on this branch yet; the check runs once it is")
-    web = json.loads(WEB_LINES.read_text(encoding="utf-8"))["lines"]
+    from bot_harness import monorepo_root
+
+    root = monorepo_root()
+    if root is None:
+        pytest.skip("this service was copied out of the monorepo (e.g. the Cloud Build upload)")
+    web_lines = root / "sahayakai-main" / "src" / "locales" / "call-scripts" / "request-to-talk.json"
+    if not web_lines.exists():
+        pytest.skip(f"{web_lines.name} is not on this branch yet; the check runs once it is")
+    web = json.loads(web_lines.read_text(encoding="utf-8"))["lines"]
     ours = load_call_lines()
     for language, code in LANGUAGE_CODES.items():
         if language == "Odia":

@@ -38,6 +38,7 @@ from bot_harness import (
     TranscriptionFrame,
     build_bot,
     import_main,
+    monorepo_root,
     run_from_recorder,
     run_vobiz_path,
     stubbed_runtime,
@@ -55,7 +56,7 @@ from src.opt_out import (
 )
 
 TESTS = Path(__file__).resolve().parent
-REPO = TESTS.parents[3]  # monorepo root
+REPO = monorepo_root()  # None when the service is built on its own
 FIXTURE = json.loads((TESTS / "fixtures" / "suppression_digest.json").read_text(encoding="utf-8"))
 PHONE = FIXTURE["cases"][0]["phone"]
 DIGEST = FIXTURE["cases"][0]["digest"]
@@ -116,6 +117,8 @@ def _pinned(path: Path) -> tuple[str, str] | None:
     "sahayakai-agents/tests/unit/test_telephony_opt_out_persistence.py",
 ])
 def test_the_web_and_agents_tests_pin_the_same_pair(relative):
+    if REPO is None:
+        pytest.skip("this service was copied out of the monorepo (e.g. the Cloud Build upload)")
     pinned = _pinned(REPO / relative)
     if pinned is None:
         pytest.skip(f"{relative} is not on this branch yet; the check runs once it is")

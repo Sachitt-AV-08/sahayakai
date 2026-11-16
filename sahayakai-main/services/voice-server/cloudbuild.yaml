@@ -1,0 +1,112 @@
+# Cloud Build: the ONE deploy definition for the live parent-call engine,
+# Cloud Run service `sahayakai-telephony` (project sahayakai-b4248,
+# asia-southeast1). Until this file it was deployed by hand with
+# `gcloud run deploy --source`, so nothing in the repo said what production was.
+#
+# A deploy NEVER takes traffic by itself: the new revision is created with
+# --no-traffic and tagged `candidate`. Promotion is a separate, manual step
+# after a test call reaches the candidate.
+#
+# Build and deploy a candidate (the build context is this directory only):
+#   gcloud builds submit sahayakai-main/services/voice-server \
+#     --config=sahayakai-main/services/voice-server/cloudbuild.yaml \
+#     --project=sahayakai-b4248
+#
+# Candidate URL (reaches the new revision only):
+#   https://candidate---sahayakai-telephony-zwydpvyuca-as.a.run.app
+#
+# Promote, after a test call through the candidate:
+#   gcloud run services update-traffic sahayakai-telephony \
+#     --to-tags=candidate=100 --region=asia-southeast1 --project=sahayakai-b4248
+#
+# Roll back to a named revision:
+#   gcloud run services update-traffic sahayakai-telephony \
+#     --to-revisions=<previous-revision>=100 --region=asia-southeast1 --project=sahayakai-b4248
+#
+# The spec below is the live service as of revision sahayakai-telephony-00037
+# (2026-11-15, read with `gcloud run services describe`). Flags set every
+# field explicitly so a deploy reproduces it instead of inheriting drift:
+# --set-env-vars / --set-secrets REPLACE the whole env, they do not merge.
+#
+# Not changed by a deploy, on purpose (service-level, not part of a revision):
+#   - IAM: allUsers holds roles/run.invoker so the carrier can open the media
+#     socket; the signed single-use stream token is the gate.
+#   - The service-level instance cap (run.googleapis.com/maxScale: 10).
+#
+# Leftovers from the never-deployed sahayakai-agents engine that this Pipecat
+# app does not read: SAHAYAKAI_AGENTS_ENV, SAHAYAKAI_PROMPTS_DIR,
+# SAHAYAKAI_REQUIRE_APP_CHECK, SAHAYAKAI_TELEPHONY_ONLY. Kept so the first
+# deploy from this file changes code only; drop them in a separate change.
+#
+# No trigger runs this file. CLASS GATE: sahayakai-main/src/__tests__/scripts/
+# one-deploy-source-per-service.test.ts fails if a second deploy definition
+# targets sahayakai-telephony, or if any does without --no-traffic.
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s
+
+steps:
+  # The engine's unit gates (request-to-talk, do-not-call). They need pytest
+  # only, so a red gate stops the deploy before anything is built.
+  - id: test
+    name: python:3.12-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install --quiet --no-cache-dir pytest==8.4.2
+        python -m pytest tests -q -p no:cacheprovider
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
+      - .
+    waitFor: [test]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
+    waitFor: [build]
+
+  - id: deploy-candidate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - sahayakai-telephony
+      - --image=asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
+      - --project=sahayakai-b4248
+      - --region=asia-southeast1
+      # Never takes traffic; promotion is manual (see the header).
+      - --no-traffic
+      - --tag=candidate
+      - --service-account=sahayakai-agents-runtime@sahayakai-b4248.iam.gserviceaccount.com
+      - --execution-environment=gen2
+      - --cpu=2
+      - --memory=1Gi
+      # The audio relay runs continuously for the whole call; a throttled CPU
+      # between requests stutters the stream.
+      - --no-cpu-throttling
+      - --cpu-boost
+      - --concurrency=8
+      # A media socket stays open for the length of the call.
+      - --timeout=900
+      - --max-instances=4
+      # No warm instance: an idle tagged revision with min-instances bills
+      # around the clock.
+      - --min-instances=default
+      - --port=8080
+      - --ingress=all
+      - --startup-probe=httpGet.path=/readyz,httpGet.port=8080,periodSeconds=2,timeoutSeconds=1,failureThreshold=30
+      - --liveness-probe=httpGet.path=/healthz,httpGet.port=8080,periodSeconds=10,timeoutSeconds=2,failureThreshold=3
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=sahayakai-b4248,GOOGLE_CLOUD_REGION=asia-southeast1,SAHAYAKAI_AGENTS_ENV=production,SAHAYAKAI_PROMPTS_DIR=/srv/prompts,SAHAYAKAI_REQUIRE_APP_CHECK=false,SAHAYAKAI_TELEPHONY_ONLY=1
+      - --set-secrets=GOOGLE_GENAI_API_KEY=GOOGLE_GENAI_API_KEY:latest,SAHAYAKAI_REQUEST_SIGNING_KEY=SAHAYAKAI_REQUEST_SIGNING_KEY:latest,SARVAM_AI_API_KEY=SARVAM_AI_API_KEY:latest,VOBIZ_AUTH_ID=VOBIZ_AUTH_ID:latest,VOBIZ_AUTH_TOKEN=VOBIZ_AUTH_TOKEN:latest
+      - --quiet
+    waitFor: [push]
