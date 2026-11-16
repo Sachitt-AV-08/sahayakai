@@ -113,6 +113,10 @@ async def create_bot(
     `on_opt_out` writes the do-not-call record for this call's parent and
     returns True when it was saved. It runs the moment the parent asks not to
     be called again, and is retried once at the end of the call if it failed.
+    The caller passes it ONLY when it has authenticated the outreach id (a
+    forged id would otherwise silence calls to someone else's parent). With
+    no writer the stop check is left out entirely: the engine must not tell a
+    parent "we will not call you again" when nothing will remember it.
 
     Architecture:
       transport.input()
@@ -330,13 +334,17 @@ async def create_bot(
         opt_out["write"] = asyncio.ensure_future(_write_opt_out())
         await task.queue_frames([TTSSpeakFrame(text=plan.stop_acknowledgement), EndFrame()])
 
-    stop_guard = StopRequestGuard(on_stop=_on_stop_request)
+    if on_opt_out is not None:
+        stop_stages = [StopRequestGuard(on_stop=_on_stop_request)]  # "Don't call me again" never reaches the model
+    else:
+        stop_stages = []
+        logger.warning(f"Outreach {outreach_id}: no authenticated opt-out writer — do-not-call handling is off for this call")
 
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
-            stop_guard,                # "Don't call me again" never reaches the model
+            *stop_stages,
             stt_filter,               # Filter noise/gibberish before aggregator
             context_aggregator.user(),
             phase_instructor,          # Inject phase-specific instructions before LLM
@@ -430,7 +438,9 @@ async def create_bot(
         # Do-not-call: make sure a spoken stop was saved (one retry), and let
         # the post-call analysis catch a stop the phrase check missed — but
         # only on the parent's own quoted words.
-        if opt_out["requested"]:
+        if on_opt_out is None:
+            pass  # unauthenticated route: nothing may be written for this id
+        elif opt_out["requested"]:
             saved = await opt_out["write"] if opt_out["write"] is not None else False
             if not saved:
                 logger.warning(f"Retrying opt-out write for {outreach_id}")

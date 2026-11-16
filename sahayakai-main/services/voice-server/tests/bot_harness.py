@@ -26,6 +26,7 @@ from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
 from typing import Any, Iterator
 
+
 STUBBED_ROOTS = ("pipecat", "loguru", "httpx", "fastapi", "uvicorn")
 # Not installed in CI, so they must not be importable locally either.
 BLOCKED_ROOTS = ("google", "dotenv", "numpy")
@@ -318,6 +319,7 @@ class FakeCallStore:
         self.history = history
         self.history_requests: list[str] = []
         self.created: list[tuple[str, dict]] = []
+        self.completed: list[str] = []
 
     def create_call(self, outreach_id, call_context):
         self.created.append((outreach_id, dict(call_context)))
@@ -329,8 +331,8 @@ class FakeCallStore:
     def update_transcript(self, *args, **kwargs):
         return None
 
-    def complete_call(self, *args, **kwargs):
-        return None
+    def complete_call(self, outreach_id, *args, **kwargs):
+        self.completed.append(outreach_id)
 
     def save_insights(self, *args, **kwargs):
         return None
@@ -554,6 +556,9 @@ class _AsyncDoc:
         return _Snapshot(self._db.docs.get(self._key))
 
     async def set(self, data, merge=False):
+        if self._key[0] == "call_suppressions" and self._db.fail_suppression_sets > 0:
+            self._db.fail_suppression_sets -= 1
+            raise RuntimeError("simulated Firestore outage")
         self._db.writes.append(("set", *self._key, dict(data), merge))
         base = dict(self._db.docs.get(self._key) or {}) if merge else {}
         self._db.docs[self._key] = {**base, **data}
@@ -576,8 +581,14 @@ class _AsyncCollection:
 class FakeAsyncFirestore:
     """The slice of google.cloud.firestore.AsyncClient the engine uses."""
 
-    def __init__(self, docs: dict[tuple[str, str], dict] | None = None, fail: Exception | None = None) -> None:
+    def __init__(
+        self,
+        docs: dict[tuple[str, str], dict] | None = None,
+        fail: Exception | None = None,
+        fail_suppression_sets: int = 0,
+    ) -> None:
         self.docs = {k: dict(v) for k, v in (docs or {}).items()}
+        self.fail_suppression_sets = fail_suppression_sets
         self.reads: list[tuple[str, str]] = []
         self.writes: list[tuple] = []
         self._fail = fail
@@ -637,14 +648,39 @@ async def run_twilio_path(main, call_context: dict, outreach_id: str = "out-ctx-
     return ws
 
 
-async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "out-fs-1"):
+async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "out-fs-1", token: str | None = None):
     """/telephony/vobiz/stream: the context is read straight from parent_outreach in Firestore."""
     from src import vobiz
 
     vobiz._db = lambda project: db
     ws = FakeWebSocket(
         [{"event": "start", "start": {"streamId": "stream-test"}}],
-        query_params={"t": mint_stream_token(outreach_id), "cuid": "call-uuid-test", "lang": "Hindi"},
+        query_params={
+            "t": mint_stream_token(outreach_id) if token is None else token,
+            "cuid": "call-uuid-test",
+            "lang": "Hindi",
+        },
     )
     await main.handle_vobiz_call(ws)
     return ws
+
+
+class ScriptedRunner:
+    """Stands in for pipecat's WorkerRunner: `run()` plays a script mid-call.
+
+    The script is an async callable run while the "call" is live; whatever it
+    raises (WebSocketDisconnect, RuntimeError…) escapes run() the way a real
+    pipeline failure would.
+    """
+
+    script = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.tasks: list = []
+
+    async def add_workers(self, task) -> None:
+        self.tasks.append(task)
+
+    async def run(self) -> None:
+        if ScriptedRunner.script is not None:
+            await ScriptedRunner.script()

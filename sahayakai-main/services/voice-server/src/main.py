@@ -38,15 +38,23 @@ _HANGUP_GRACE_SECONDS = 2.0
 app = FastAPI(title="SahayakAI Voice Server", version="0.1.0")
 
 
-def _opt_out_writer(outreach_id: str):
-    """What create_bot calls when this call's parent asks not to be called again."""
+def _opt_out_writer(authenticated_outreach_id: str):
+    """What create_bot calls when this call's parent asks not to be called again.
+
+    A do-not-call record silently stops every future call to a parent, so it
+    may only ever be written for an outreach id the handler has AUTHENTICATED
+    (today: the signed stream token on the Vobiz route). Never pass an id read
+    from an unauthenticated handshake. tests/test_opt_out_auth.py enforces
+    this over every handler in this file.
+    """
     async def _write() -> bool:
-        if outreach_id.startswith("__test__"):
-            logger.info(f"Test call {outreach_id}: opt-out heard, nothing persisted")
+        if authenticated_outreach_id.startswith("__test__"):
+            logger.info(f"Test call {authenticated_outreach_id}: opt-out heard, nothing persisted")
             return True
-        return await persist_opt_out_firestore(outreach_id, config.google_cloud_project)
+        return await persist_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project)
 
     return _write
+
 
 config = load_config()
 call_store = CallStore()  # SQLite — initialized once, shared across calls
@@ -192,11 +200,21 @@ async def handle_call(websocket: WebSocket):
 
         call_context["id"] = outreach_id
 
-        # Create and run the Pipecat pipeline
-        task, _finalize = await create_bot(
+        # Create and run the Pipecat pipeline.
+        #
+        # on_opt_out=None ON PURPOSE. This route is unauthenticated: the
+        # outreachId comes from the stream's own `start` event, so anyone who
+        # can open the socket can name any outreach. Writing a do-not-call
+        # record from it would let them silence calls to someone else's
+        # parent. Without a writer create_bot leaves the stop check out
+        # rather than promise "we will not call you again". To enable it,
+        # authenticate the route first (a signed token from the web app's
+        # TwiML, verified like the Vobiz route, or Twilio's X-Twilio-Signature
+        # with TWILIO_AUTH_TOKEN), then pass _opt_out_writer(<that id>).
+        task, finalize = await create_bot(
             config, call_context, websocket, stream_sid,
             call_sid=call_sid, call_store=call_store,
-            on_opt_out=_opt_out_writer(outreach_id),
+            on_opt_out=None,
         )
 
         logger.info(f"Bot pipeline started for outreach {outreach_id}")
@@ -326,6 +344,8 @@ async def handle_vobiz_call(websocket: WebSocket):
         await _hangup_once()
 
     try:
+        # outreach_id here is the one verify_stream_token returned above:
+        # authenticated, so this route may record a parent's opt-out.
         task, finalize = await create_bot(
             config,
             call_context,

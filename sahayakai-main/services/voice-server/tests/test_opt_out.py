@@ -11,7 +11,8 @@ request that does not end up as that exact document". The gate:
     under the right id with the web app's document shape, speaks the fixed
     acknowledgement, ends the call and keeps the words from the model; any
     ordinary or rescheduling sentence writes nothing;
-  * both entry points (Vobiz and /ws/call) wire the writer to Firestore;
+  * the authenticated entry point (Vobiz) wires the writer to Firestore
+    (/ws/call deliberately does not; see test_opt_out_auth.py);
   * the post-call backstop counts only a verbatim parent quote;
   * digest parity: the shared fixture digest equals what Python computes,
     what Node computes with the web module's exact expression, and the
@@ -38,7 +39,6 @@ from bot_harness import (
     build_bot,
     import_main,
     run_from_recorder,
-    run_twilio_path,
     run_vobiz_path,
     stubbed_runtime,
 )
@@ -384,27 +384,8 @@ def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypat
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
 
 
-def test_call_context_path_writes_the_suppression_from_the_firestore_record(tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "out-ctx-1"): outreach()})
-    web_ctx = {"studentName": "Aarav", "reason": "", "requestToTalk": True, "parentLanguage": "Hindi",
-               "teacherName": "Ms. Sharma", "schoolName": "Demo Public School", "generatedMessage": "x"}
-    with stubbed_runtime():
-        main = import_main(tmp_path, monkeypatch)
-        main.call_store = FakeCallStore()
-        from src import vobiz
-
-        vobiz._db = lambda project: db
-
-        async def go():
-            await run_twilio_path(main, web_ctx, outreach_id="out-ctx-1")
-            run = run_from_recorder()
-            await _hear(run, "please stop calling")
-            for _ in range(5):
-                await asyncio.sleep(0)
-        asyncio.run(go())
-
-    writes = suppression_writes(db)
-    assert len(writes) == 1 and writes[0][2] == DIGEST and writes[0][3]["outreachId"] == "out-ctx-1"
+# /ws/call is unauthenticated, so it must NOT write: see
+# test_opt_out_auth.test_ws_call_cannot_write_a_suppression_for_a_named_outreach.
 
 
 def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
@@ -417,7 +398,7 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
         vobiz._db = lambda project: db
 
         async def go():
-            await run_twilio_path(main, {}, outreach_id="__test__003")
+            await run_vobiz_path(main, db, outreach_id="__test__003")
             run = run_from_recorder()
             await _hear(run, "please stop calling")
             for _ in range(5):
