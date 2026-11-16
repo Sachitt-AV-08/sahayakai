@@ -20,6 +20,9 @@ import pytest
 
 from sahayakai_agents.telephony.router import context_from_outreach
 
+# CI selects tests by marker (ci-agents.yml); a class gate without one never runs.
+pytestmark = pytest.mark.unit
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WRITERS = [
     REPO_ROOT / "sahayakai-main/src/app/api/attendance/outreach/route.ts",

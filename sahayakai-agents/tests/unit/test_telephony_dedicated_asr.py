@@ -7,6 +7,9 @@ import pytest
 from sahayakai_agents.telephony import dedicated_asr as D
 from sahayakai_agents.telephony import riya as R
 
+# CI selects tests by marker (ci-agents.yml); a class gate without one never runs.
+pytestmark = pytest.mark.unit
+
 
 def test_off_unless_explicitly_chirp_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOBIZ_RIYA_DEDICATED_ASR", raising=False)

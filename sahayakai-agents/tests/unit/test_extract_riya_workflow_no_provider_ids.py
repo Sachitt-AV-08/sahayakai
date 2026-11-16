@@ -18,6 +18,9 @@ from pathlib import Path
 
 import pytest
 
+# CI selects tests by marker (ci-agents.yml: -m "unit or integration or behavioral"); unmarked = never run.
+pytestmark = pytest.mark.unit
+
 AGENTS_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = AGENTS_ROOT / "src" / "sahayakai_agents" / "telephony" / "riya_workflow.json"
 REAL_BODY = "0601" + "m6hcabcdefghijklmnopqrstu"  # time-prefixed base 36, like a live id
