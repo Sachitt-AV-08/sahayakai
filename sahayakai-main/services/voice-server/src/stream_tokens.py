@@ -10,19 +10,42 @@ would hear the call's greeting and write a transcript and summary onto that
 parent's outreach record.
 
 So the first connection CONSUMES the token: an atomic `create()` of
-vobiz_stream_tokens/{sha256(token)}, which Firestore refuses if the document
-already exists. Every later connection with the same token is refused before
-any call context is loaded. The token itself is never stored, only its digest.
+vobiz_stream_tokens/{id}, which Firestore refuses if the document already
+exists. Every later connection with the same token is refused before any call
+context is loaded.
+
+The id is computed from the PARSED claims (outreach id and expiry), never from
+the raw string: if two spellings of one token both verified, keying on the
+string would let the second spelling through as a "new" token. On top of that,
+parse_stream_token accepts exactly one spelling: the one the web app mints
+(`${outreachId}.${exp}.${base64url(hmac)}` in src/lib/vobiz/tokens.ts). The
+signature is deterministic for a given (outreach id, expiry), so keying on
+those two loses nothing. The token itself is never stored.
 
 Pure on purpose (stdlib only; Firestore is passed in) so the tests can drive it.
 """
 
 from __future__ import annotations
 
+import base64
 import enum
 import hashlib
+import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+# Must match VOBIZ_DOMAINS.STREAM in the web app's src/lib/vobiz/tokens.ts.
+STREAM_DOMAIN = "vobiz-call"
+
+# Exactly what the web app mints, and nothing else:
+#   outreach id  a Firestore auto-id (20 ASCII letters/digits), or one of this
+#                engine's built-in test scenarios (__test__NNN);
+#   expiry       unix seconds, ASCII digits, no sign, no leading zero;
+#   signature    unpadded base64url of a 32-byte HMAC-SHA256 (43 chars).
+_OUTREACH_ID = re.compile(r"[A-Za-z0-9]{20}|__test__[0-9]{3}")
+_EXPIRY = re.compile(r"[1-9][0-9]{0,11}")
+_SIGNATURE = re.compile(r"[A-Za-z0-9_-]{43}")
 
 CONSUMED_COLLECTION = "vobiz_stream_tokens"
 
@@ -37,17 +60,45 @@ class StreamUse(enum.Enum):
     ERROR = "error"    # could not record the use; refuse (fail closed)
 
 
-def stream_token_id(token: str) -> str:
-    """Document id for a token: its sha256 hex, never the token itself."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+@dataclass(frozen=True)
+class StreamTokenParts:
+    outreach_id: str
+    exp: int
+    signature: str
+
+    def message(self) -> str:
+        """What the signature signs (vobizTokenMessage in the web app)."""
+        return f"{STREAM_DOMAIN}.{self.outreach_id}.{self.exp}"
 
 
-def _token_expiry(token: str) -> datetime | None:
-    parts = token.split(".")
-    try:
-        return datetime.fromtimestamp(int(parts[1]), tz=timezone.utc)
-    except (IndexError, ValueError, OverflowError, OSError):
+def parse_stream_token(token: object) -> StreamTokenParts | None:
+    """Split a stream token, accepting only its one canonical spelling.
+
+    Shape only: the signature is checked by vobiz.verify_stream_token.
+    """
+    if not isinstance(token, str) or not token.isascii():
         return None
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    outreach_id, exp_raw, signature = parts
+    if not (_OUTREACH_ID.fullmatch(outreach_id) and _EXPIRY.fullmatch(exp_raw) and _SIGNATURE.fullmatch(signature)):
+        return None
+    # 43 base64url characters carry 258 bits for 256; a last character with
+    # the two spare bits set decodes to the same bytes. Only the encoding that
+    # re-encodes to itself is accepted.
+    try:
+        raw = base64.urlsafe_b64decode(signature + "=")
+    except (ValueError, TypeError):
+        return None
+    if len(raw) != 32 or base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii") != signature:
+        return None
+    return StreamTokenParts(outreach_id, int(exp_raw), signature)
+
+
+def stream_token_id(parts: StreamTokenParts) -> str:
+    """Document id for a token: a digest of its claims, never the raw string."""
+    return hashlib.sha256(parts.message().encode("utf-8")).hexdigest()
 
 
 def _already_exists(exc: BaseException) -> bool:
@@ -59,9 +110,15 @@ def _already_exists(exc: BaseException) -> bool:
 async def consume_stream_token(db: Any, token: str, outreach_id: str, *, now: datetime | None = None) -> StreamUse:
     """Record the first use of a verified stream token. Never raises."""
     now = now or datetime.now(timezone.utc)
-    expiry = _token_expiry(token) or now
+    parts = parse_stream_token(token)
+    if parts is None or parts.outreach_id != outreach_id:
+        return StreamUse.ERROR  # only a token the verifier accepted may be consumed
     try:
-        await db.collection(CONSUMED_COLLECTION).document(stream_token_id(token)).create(
+        expiry = datetime.fromtimestamp(parts.exp, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return StreamUse.ERROR
+    try:
+        await db.collection(CONSUMED_COLLECTION).document(stream_token_id(parts)).create(
             {
                 "outreachId": outreach_id,
                 "consumedAt": now,

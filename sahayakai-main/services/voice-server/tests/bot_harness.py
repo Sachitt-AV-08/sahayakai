@@ -702,7 +702,7 @@ async def run_twilio_path(main, call_context: dict, outreach_id: str = "out-ctx-
     return ws
 
 
-async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "out-fs-1", token: str | None = None):
+async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "OutreachFs0000000001", token: str | None = None):
     """/telephony/vobiz/stream: the context is read straight from parent_outreach in Firestore."""
     from src import vobiz
 

@@ -24,7 +24,7 @@ import pytest
 from bot_harness import UVICORN_LOGGING_CONFIG, import_main, mint_stream_token, stubbed_runtime
 from src.log_redaction import FILTER_NAME, QuerySecretFilter, redact, with_redaction
 
-TOKEN = mint_stream_token("out-1")
+TOKEN = mint_stream_token("OutreachSt0000000001")
 PATH = f"/telephony/vobiz/stream?t={TOKEN}&cuid=call-uuid-test&lang=Kannada"
 
 

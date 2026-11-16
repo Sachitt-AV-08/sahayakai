@@ -143,7 +143,7 @@ def test_call_context_path_is_request_to_talk(shape, language, tmp_path, monkeyp
 @pytest.mark.parametrize("language", ["Hindi", "English", "Malayalam"])
 @pytest.mark.parametrize("reason", FIRESTORE_CONCERN_REASONS, ids=repr)
 def test_firestore_path_is_request_to_talk(reason, language, tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): firestore_record(reason, language)})
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): firestore_record(reason, language)})
     markers = (reason,) if isinstance(reason, str) and len(reason) > 3 else ()
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
@@ -157,7 +157,7 @@ def test_firestore_path_is_request_to_talk(reason, language, tmp_path, monkeypat
 
         run, greeting, guidance, replacement, added = asyncio.run(go())
         _assert_request_to_talk(run, store, greeting, guidance, replacement, added, language, markers)
-    assert ("parent_outreach", "out-fs-1") in db.reads
+    assert ("parent_outreach", "OutreachFs0000000001") in db.reads
 
 
 def test_both_paths_give_the_model_the_same_instructions(tmp_path, monkeypatch):
@@ -167,7 +167,7 @@ def test_both_paths_give_the_model_the_same_instructions(tmp_path, monkeypatch):
         main.call_store = FakeCallStore()
         asyncio.run(run_twilio_path(main, call_context_response("Hindi")))
         via_web = run_from_recorder()
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): firestore_record("poor_performance", "Hindi")})
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): firestore_record("poor_performance", "Hindi")})
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         main.call_store = FakeCallStore()
@@ -191,7 +191,7 @@ def test_positive_feedback_still_speaks_the_teacher_message_on_both_paths(path, 
                     subject="Mathematics"))
             else:
                 record = {**firestore_record("positive_feedback", "Hindi"), "generatedMessage": message}
-                await run_vobiz_path(main, FakeAsyncFirestore({("parent_outreach", "out-fs-1"): record}))
+                await run_vobiz_path(main, FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): record}))
             run = run_from_recorder()
             return run, await spoken_greeting(run)
 

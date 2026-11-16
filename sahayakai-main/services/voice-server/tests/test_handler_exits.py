@@ -96,7 +96,7 @@ def _ending(kind: str, main):
 @pytest.mark.parametrize("kind", ["normal", "disconnect", "error"])
 def test_vobiz_persists_an_opt_out_on_every_exit_even_after_a_failed_write(kind, tmp_path, monkeypatch):
     # The immediate write fails; only the end-of-call retry can save it.
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): RECORD}, fail_suppression_sets=1)
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD}, fail_suppression_sets=1)
     hangups = []
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)

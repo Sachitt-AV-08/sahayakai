@@ -137,7 +137,7 @@ def test_the_auth_checker_rejects_the_original_bug():
 
 def test_ws_call_cannot_write_a_suppression_for_a_named_outreach(tmp_path, monkeypatch):
     """Anyone can open /ws/call and claim an outreach id; saying "stop" must change nothing."""
-    db = FakeAsyncFirestore({("parent_outreach", "victim-outreach"): RECORD})
+    db = FakeAsyncFirestore({("parent_outreach", "VictimOutreach000001"): RECORD})
     web_ctx = {"studentName": "Aarav", "reason": "", "requestToTalk": True, "parentLanguage": "Hindi"}
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
@@ -148,7 +148,7 @@ def test_ws_call_cannot_write_a_suppression_for_a_named_outreach(tmp_path, monke
         ScriptedRunner.script = lambda: say("please don't call me again")
         main.WorkerRunner = ScriptedRunner
         try:
-            asyncio.run(run_twilio_path(main, web_ctx, outreach_id="victim-outreach"))
+            asyncio.run(run_twilio_path(main, web_ctx, outreach_id="VictimOutreach000001"))
             run = run_from_recorder()
         finally:
             ScriptedRunner.script = None
@@ -158,10 +158,10 @@ def test_ws_call_cannot_write_a_suppression_for_a_named_outreach(tmp_path, monke
 
 
 def test_vobiz_rejects_a_forged_token_before_reading_anything(tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "victim-outreach"): RECORD})
-    forged = mint_stream_token("victim-outreach", key="not-the-real-key")
+    db = FakeAsyncFirestore({("parent_outreach", "VictimOutreach000001"): RECORD})
+    forged = mint_stream_token("VictimOutreach000001", key="not-the-real-key")
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
-        ws = asyncio.run(run_vobiz_path(main, db, outreach_id="victim-outreach", token=forged))
+        ws = asyncio.run(run_vobiz_path(main, db, outreach_id="VictimOutreach000001", token=forged))
     assert ws.closed == (1008, "Unauthorized")
     assert db.reads == [] and db.writes == []

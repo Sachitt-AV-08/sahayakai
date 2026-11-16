@@ -31,8 +31,8 @@ from typing import Any
 
 from loguru import logger
 
-# Must match VOBIZ_DOMAINS.STREAM in src/lib/vobiz/tokens.ts.
-_STREAM_DOMAIN = "vobiz-call"
+# The stream domain tag ("vobiz-call", VOBIZ_DOMAINS.STREAM in the web app's
+# src/lib/vobiz/tokens.ts) lives with the token parser in src/stream_tokens.py.
 _VOBIZ_API_BASE = "https://api.vobiz.ai/api/v1"
 
 
@@ -43,31 +43,30 @@ def verify_stream_token(token: str | None, signing_key: str | None) -> str | Non
 
     Wire shape is `<outreachId>.<exp>.<sig>` where
     sig = base64url(HMAC_SHA256(key, "vobiz-call.<outreachId>.<exp>")) with no
-    padding (Node's `digest('base64url')`).
+    padding (Node's `digest('base64url')`). Only that exact spelling is
+    accepted (stream_tokens.parse_stream_token): no leading zeros or signs on
+    exp, no padding or alternate alphabet on sig, nothing around the token.
+    The single-use record is keyed on the parsed claims, so an equivalent
+    spelling could not slip past it even if one were accepted.
     """
+    from src.stream_tokens import parse_stream_token
+
     if not token or not signing_key:
         return None
-    parts = token.split(".")
-    if len(parts) != 3:
+    parts = parse_stream_token(token)
+    if parts is None:
+        logger.warning("Vobiz stream token malformed")
         return None
-    outreach_id, exp_raw, sig = parts
-    try:
-        exp = int(exp_raw)
-    except ValueError:
-        return None
-    if not outreach_id or not sig:
-        return None
-    if exp < int(time.time()):
+    if parts.exp < int(time.time()):
         logger.warning("Vobiz stream token expired")
         return None
 
-    message = f"{_STREAM_DOMAIN}.{outreach_id}.{exp}".encode("utf-8")
-    digest = hmac.new(signing_key.strip().encode("utf-8"), message, hashlib.sha256).digest()
+    digest = hmac.new(signing_key.strip().encode("utf-8"), parts.message().encode("utf-8"), hashlib.sha256).digest()
     expected = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    if not hmac.compare_digest(expected, sig):
+    if not hmac.compare_digest(expected, parts.signature):
         logger.warning("Vobiz stream token signature mismatch")
         return None
-    return outreach_id
+    return parts.outreach_id
 
 
 # ── Firestore context (self-contained; no web internal key needed) ──────────

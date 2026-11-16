@@ -362,7 +362,7 @@ def test_the_post_call_backstop_writes_only_on_a_verbatim_quote(found, monkeypat
 
 
 def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): outreach()})
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): outreach()})
     hangups = []
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
@@ -383,7 +383,7 @@ def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypat
 
     assert hangups == ["call-uuid-test"], "the leg is ended exactly once after the pipeline stops"
     writes = suppression_writes(db)
-    assert len(writes) == 1 and writes[0][2] == DIGEST and writes[0][3]["outreachId"] == "out-fs-1"
+    assert len(writes) == 1 and writes[0][2] == DIGEST and writes[0][3]["outreachId"] == "OutreachFs0000000001"
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
 
 

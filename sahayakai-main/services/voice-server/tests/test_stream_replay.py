@@ -31,7 +31,15 @@ from bot_harness import (
     stubbed_runtime,
 )
 from main_ast import RECORD, SOURCE, call_name, handlers
-from src.stream_tokens import CONSUMED_COLLECTION, StreamUse, consume_stream_token, stream_token_id
+from src.stream_tokens import (
+    CONSUMED_COLLECTION,
+    StreamUse,
+    consume_stream_token,
+    parse_stream_token,
+    stream_token_id,
+)
+
+OID = "OutreachSt0000000001"
 
 
 def _outreach_reads(db):
@@ -43,26 +51,28 @@ def _outreach_reads(db):
 
 def test_first_use_consumes_and_a_replay_is_refused():
     db = FakeAsyncFirestore()
-    token = mint_stream_token("out-1")
-    assert asyncio.run(consume_stream_token(db, token, "out-1")) is StreamUse.FIRST
-    assert asyncio.run(consume_stream_token(db, token, "out-1")) is StreamUse.REPLAY
-    assert asyncio.run(consume_stream_token(db, mint_stream_token("out-1", ttl=301), "out-1")) is StreamUse.FIRST
+    token = mint_stream_token("OutreachSt0000000001")
+    assert asyncio.run(consume_stream_token(db, token, "OutreachSt0000000001")) is StreamUse.FIRST
+    assert asyncio.run(consume_stream_token(db, token, "OutreachSt0000000001")) is StreamUse.REPLAY
+    assert asyncio.run(consume_stream_token(db, mint_stream_token("OutreachSt0000000001", ttl=301), "OutreachSt0000000001")) is StreamUse.FIRST
 
 
 def test_only_a_digest_of_the_token_is_stored():
     db = FakeAsyncFirestore()
-    token = mint_stream_token("out-1")
-    asyncio.run(consume_stream_token(db, token, "out-1"))
+    token = mint_stream_token("OutreachSt0000000001")
+    asyncio.run(consume_stream_token(db, token, "OutreachSt0000000001"))
     [(kind, coll, doc_id, data, _)] = db.writes
     assert (kind, coll) == ("create", CONSUMED_COLLECTION)
-    assert doc_id == stream_token_id(token) == hashlib.sha256(token.encode()).hexdigest()
+    assert doc_id == stream_token_id(parse_stream_token(token))
+    assert doc_id != hashlib.sha256(token.encode()).hexdigest(), "keyed on the claims, not the raw string"
     assert token not in repr(db.writes) and token.split(".")[2] not in repr(db.writes)
-    assert data["outreachId"] == "out-1" and data["expiresAt"] > data["consumedAt"]
+    assert data["outreachId"] == "OutreachSt0000000001" and data["expiresAt"] > data["consumedAt"]
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("firestore down"), PermissionError("denied")])
 def test_a_failure_to_record_the_use_fails_closed(failure):
-    assert asyncio.run(consume_stream_token(FakeAsyncFirestore(fail=failure), "a.1.b", "out-1")) is StreamUse.ERROR
+    token = mint_stream_token(OID)
+    assert asyncio.run(consume_stream_token(FakeAsyncFirestore(fail=failure), token, OID)) is StreamUse.ERROR
 
 
 def test_the_real_sdk_exception_shape_counts_as_a_replay():
@@ -80,15 +90,15 @@ def test_the_real_sdk_exception_shape_counts_as_a_replay():
         def collection(self, name):
             return type("C", (), {"document": lambda self, i: Doc()})()
 
-    assert asyncio.run(consume_stream_token(Db(), "a.1.b", "out-1")) is StreamUse.REPLAY
+    assert asyncio.run(consume_stream_token(Db(), mint_stream_token(OID), OID)) is StreamUse.REPLAY
 
 
 # ── the handler ──────────────────────────────────────────────────────────────
 
 
 def test_a_second_connection_with_the_same_token_is_refused_and_touches_nothing(tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): RECORD})
-    token = mint_stream_token("out-fs-1")
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD})
+    token = mint_stream_token("OutreachFs0000000001")
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         main.call_store = FakeCallStore()
@@ -110,7 +120,7 @@ def test_a_second_connection_with_the_same_token_is_refused_and_touches_nothing(
 
 
 def test_if_the_use_cannot_be_recorded_the_stream_is_refused(tmp_path, monkeypatch):
-    db = FakeAsyncFirestore({("parent_outreach", "out-fs-1"): RECORD})
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD})
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         from src.stream_tokens import StreamUse as Use  # the stubbed runtime's own copy
