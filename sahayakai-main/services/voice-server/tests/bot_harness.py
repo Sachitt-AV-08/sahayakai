@@ -786,6 +786,19 @@ def mint_stream_token(outreach_id: str, key: str = SIGNING_KEY, ttl: int = 300) 
     return f"{outreach_id}.{exp}.{sig}"
 
 
+def count_context_loads(main) -> list:
+    """Wrap main.fetch_context_firestore; returns the list each load appends to."""
+    loads: list = []
+    original = main.fetch_context_firestore
+
+    async def counting(outreach_id, project):
+        loads.append(outreach_id)
+        return await original(outreach_id, project)
+
+    main.fetch_context_firestore = counting
+    return loads
+
+
 def import_main(tmp_dir, monkeypatch):
     """Import src.main (inside stubbed_runtime) with its module-level state made safe."""
     from dataclasses import replace

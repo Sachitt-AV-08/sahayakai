@@ -34,6 +34,7 @@ from bot_harness import (
     SIGNING_KEY,
     FakeAsyncFirestore,
     FakeCallStore,
+    count_context_loads,
     import_main,
     run_vobiz_path,
     stubbed_runtime,
@@ -143,11 +144,12 @@ def test_no_variant_opens_a_second_stream_through_the_handler(tmp_path, monkeypa
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         main.call_store = FakeCallStore()
+        loads = count_context_loads(main)
 
         async def go():
             first = await run_vobiz_path(main, db, outreach_id=OUTREACH, token=GENUINE)
             assert first.closed is None
-            reads = len([r for r in db.reads if r[0] == "parent_outreach"])
+            reads = len(loads)
             bots = len(RECORDER.instances_of("PipelineTask"))
             opened = []
             for name, variant in VARIANTS.items():
@@ -159,7 +161,7 @@ def test_no_variant_opens_a_second_stream_through_the_handler(tmp_path, monkeypa
         reads, bots, opened = asyncio.run(go())
         bots_after = len(RECORDER.instances_of("PipelineTask"))
     assert opened == [], f"variants that opened a second stream: {opened}"
-    assert len([r for r in db.reads if r[0] == "parent_outreach"]) == reads == 1
+    assert len(loads) == reads == 1, "only the genuine stream loaded call context"
     assert bots_after == bots == 1
 
 

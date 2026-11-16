@@ -111,13 +111,33 @@ def stream_token_id(parts: StreamTokenParts) -> str:
     return hashlib.sha256(parts.message().encode("utf-8")).hexdigest()
 
 
+def stream_use_id(parts: StreamTokenParts, dial_attempt: str | None = None) -> str:
+    """What one stream is allowed per: the DIAL ATTEMPT when it is known.
+
+    The web app's answer webhook mints a fresh stream token on every request,
+    and its own answer token is reusable for minutes, so replaying the answer
+    URL yields new tokens with new expiries. Keyed on the token, each would be
+    a "first use". Keyed on (outreach, dial attempt), there is at most one
+    stream per dial however many tokens are minted. The dial attempt is the
+    `callSid` the web call route stamps from Vobiz's own response at dial
+    time (server-side, never from the answer request). Without one (a legacy
+    record, or a stream that raced the stamp), fall back to the token's claims.
+    """
+    if dial_attempt:
+        key = f"vobiz-stream.{parts.outreach_id}.{dial_attempt}"
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return stream_token_id(parts)
+
+
 def _already_exists(exc: BaseException) -> bool:
     """google.api_core.exceptions.AlreadyExists (a Conflict, HTTP 409), without importing it."""
     names = {cls.__name__ for cls in type(exc).__mro__}
     return "AlreadyExists" in names or "Conflict" in names or getattr(exc, "code", None) == 409
 
 
-async def consume_stream_token(db: Any, token: str, outreach_id: str, *, now: datetime | None = None) -> StreamUse:
+async def consume_stream_token(
+    db: Any, token: str, outreach_id: str, *, dial_attempt: str | None = None, now: datetime | None = None,
+) -> StreamUse:
     """Record the first use of a verified stream token. Never raises."""
     now = now or datetime.now(timezone.utc)
     parts = parse_stream_token(token)
@@ -128,9 +148,10 @@ async def consume_stream_token(db: Any, token: str, outreach_id: str, *, now: da
     except (OverflowError, OSError, ValueError):
         return StreamUse.ERROR
     try:
-        await db.collection(CONSUMED_COLLECTION).document(stream_token_id(parts)).create(
+        await db.collection(CONSUMED_COLLECTION).document(stream_use_id(parts, dial_attempt)).create(
             {
                 "outreachId": outreach_id,
+                "boundTo": "dial_attempt" if dial_attempt else "token",
                 "consumedAt": now,
                 "expiresAt": expiry + _KEEP_AFTER_EXPIRY,
             }

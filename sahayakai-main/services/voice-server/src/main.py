@@ -37,6 +37,7 @@ from src.vobiz import (
     persist_opt_out_firestore,
     flag_suspected_opt_out_firestore,
     consume_stream_token_firestore,
+    read_dial_attempt_firestore,
 )
 from src.stream_tokens import StreamUse, is_call_uuid
 from src.log_redaction import with_redaction
@@ -365,7 +366,17 @@ async def handle_vobiz_call(websocket: WebSocket):
     # log, so a replay would hear this call's greeting and write onto its
     # record. The first connection consumes the token; any later one is
     # refused here, before any call context is loaded.
-    use = await consume_stream_token_firestore(token, outreach_id, config.google_cloud_project)
+    # One stream per DIAL ATTEMPT, not per token: a replayed answer webhook
+    # mints new tokens, but the dial attempt (stamped by the web call route
+    # from Vobiz's response) stays the same. src/stream_tokens.stream_use_id.
+    dial_attempt = None
+    if not _is_test_scenario(outreach_id):
+        dial_attempt = await read_dial_attempt_firestore(outreach_id, config.google_cloud_project)
+        if dial_attempt is None:
+            logger.warning(f"Outreach {outreach_id} has no dial attempt stamped; single use falls back to the token")
+    use = await consume_stream_token_firestore(
+        token, outreach_id, config.google_cloud_project, dial_attempt=dial_attempt,
+    )
     if use is not StreamUse.FIRST:
         logger.error(f"Vobiz stream refused for outreach {outreach_id}: token {use.value}")
         await websocket.close(

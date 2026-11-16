@@ -169,15 +169,32 @@ async def flag_suspected_opt_out_firestore(outreach_id: str, project: str, quote
     return result.ok
 
 
-async def consume_stream_token_firestore(token: str, outreach_id: str, project: str):
-    """Mark a verified stream token as used; returns a StreamUse (see src/stream_tokens.py).
+async def read_dial_attempt_firestore(outreach_id: str, project: str) -> str | None:
+    """The dial attempt the web call route stamped on the outreach, or None.
+
+    `callSid` is Vobiz's request_uuid from the make-call response, written by
+    /api/attendance/call after the dial, server-side. Nothing on the answer
+    path writes it, so a replayed answer request cannot change it.
+    """
+    try:
+        snap = await _db(project).collection("parent_outreach").document(outreach_id).get()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Could not read the dial attempt for {outreach_id}: {e}")
+        return None
+    data = (snap.to_dict() if snap.exists else None) or {}
+    value = data.get("callSid")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+async def consume_stream_token_firestore(token: str, outreach_id: str, project: str, dial_attempt: str | None = None):
+    """Mark a verified stream as used; returns a StreamUse (see src/stream_tokens.py).
 
     Fails closed: if Firestore cannot record the use, the stream is refused.
     """
     from src.stream_tokens import StreamUse, consume_stream_token
 
     try:
-        return await consume_stream_token(_db(project), token, outreach_id)
+        return await consume_stream_token(_db(project), token, outreach_id, dial_attempt=dial_attempt)
     except Exception as e:  # noqa: BLE001 — e.g. the client itself could not be built
         logger.error(f"Could not record stream use for {outreach_id}: {e}")
         return StreamUse.ERROR

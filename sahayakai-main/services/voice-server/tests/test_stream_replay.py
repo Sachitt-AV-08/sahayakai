@@ -25,6 +25,7 @@ from bot_harness import (
     RECORDER,
     FakeAsyncFirestore,
     FakeCallStore,
+    count_context_loads,
     import_main,
     mint_stream_token,
     run_vobiz_path,
@@ -102,10 +103,11 @@ def test_a_second_connection_with_the_same_token_is_refused_and_touches_nothing(
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         main.call_store = FakeCallStore()
+        loads = count_context_loads(main)
 
         async def go():
             first = await run_vobiz_path(main, db, token=token)
-            reads, writes, bots = len(_outreach_reads(db)), list(db.writes), len(RECORDER.instances_of("PipelineTask"))
+            reads, writes, bots = len(loads), list(db.writes), len(RECORDER.instances_of("PipelineTask"))
             second = await run_vobiz_path(main, db, token=token)
             return first, second, reads, writes, bots
 
@@ -114,7 +116,7 @@ def test_a_second_connection_with_the_same_token_is_refused_and_touches_nothing(
 
     assert first.closed is None and reads == 1 and bots == 1
     assert second.closed == (1008, "Stream already used")
-    assert len(_outreach_reads(db)) == reads, "the replay loaded call context"
+    assert len(loads) == reads, "the replay loaded call context"
     assert db.writes == writes, "the replay wrote something"
     assert bots_after == bots, "the replay started a pipeline"
 
@@ -129,9 +131,10 @@ def test_if_the_use_cannot_be_recorded_the_stream_is_refused(tmp_path, monkeypat
             return Use.ERROR
 
         main.consume_stream_token_firestore = unrecordable
+        loads = count_context_loads(main)
         ws = asyncio.run(run_vobiz_path(main, db))
     assert ws.closed == (1011, "Could not verify stream")
-    assert _outreach_reads(db) == []
+    assert loads == [], "no call context is loaded for a stream whose use was not recorded"
 
 
 def test_the_handler_consumes_the_token_before_loading_any_context():
