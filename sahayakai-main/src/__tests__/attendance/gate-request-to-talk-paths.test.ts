@@ -25,12 +25,16 @@
  *     record without a subject) becomes a sidecar request that satisfies AgentReplyRequest as
  *     declared in sahayakai-agents (field lengths, bounds, required fields, no extra fields),
  *     read from the Python source so the two sides cannot drift unnoticed.
- *  3. STRUCTURAL — discovered, not listed:
- *     - a route that reads `spokenScript`, `generatedMessage` or `performanceContext` must be on
- *       the teacher-facing allow-list (its output never reaches a parent); parent-facing routes
- *       read them only through parentCallContent, which applies the rule;
- *     - a route that speaks on a call (`<Say>`) or serves the voice pipeline (`x-internal-key`)
- *       must be a known parent-facing route or carry a stated exemption.
+ *  3. STRUCTURAL — discovered over EVERY source file under src/, not only route files, so a
+ *     lib helper one module away from a route is in scope:
+ *     - a file that reads `spokenScript`, `generatedMessage` or `performanceContext` (or calls
+ *       resolveSpokenMessage) must be teacher-facing (its output never reaches a parent) or be
+ *       the request-to-talk module itself; resolveSpokenMessage is called only from there;
+ *     - a file that builds call XML (`<?xml`, `<Say>`, `<Speak>`, `<Stream>`, `<Play>`) or
+ *       serves the voice pipeline (`x-internal-key`) must be a known parent-facing file or carry
+ *       a stated exemption; parent-facing files read no concern field themselves;
+ *     - the production Vobiz answer route is checked behaviourally too: for every reason it
+ *       streams, and speaks nothing from the record.
  */
 
 import fs from 'fs';
@@ -96,6 +100,16 @@ jest.mock('@/lib/twilio-validate', () => ({
 jest.mock('@/ai/flows/parent-call-agent', () => ({ generateAgentReply: jest.fn() }));
 jest.mock('@/lib/voice-pipeline/config', () => ({ getVoicePipelineConfig: () => ({ orchestratorWsUrl: '' }) }));
 jest.mock('@/lib/logger', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
+// The Vobiz answer route checks calling hours; pin the clock inside the window.
+jest.mock('@/lib/calling-hours', () => {
+    const actual = jest.requireActual('@/lib/calling-hours');
+    return { ...actual, checkCallingWindow: () => actual.checkCallingWindow(new Date('2026-11-16T06:30:00.000Z')) };
+});
+jest.mock('@/lib/vobiz/tokens', () => ({
+    VOBIZ_DOMAINS: { ANSWER: 'vobiz-answer', STREAM: 'vobiz-call', STATUS: 'vobiz-status' },
+    verifyVobizToken: async () => 'o1',
+    mintVobizToken: async () => ({ token: 'stream-tok' }),
+}));
 // For the real dispatcher (layer 2b): every turn would go to the sidecar ('full') unless refused.
 jest.mock('@/lib/feature-flags', () => ({ decideParentCallDispatch: async () => ({ mode: 'full', reason: 'gate', bucket: 1 }) }));
 jest.mock('@/lib/sidecar/shadow-diff', () => ({ writeShadowDiff: async () => undefined }));
@@ -123,6 +137,7 @@ jest.mock('@/lib/sidecar/dispatch', () => ({
 // Imported after the mocks.
 import { GET as twimlGET, POST as twimlPOST } from '@/app/api/attendance/twiml/route';
 import { GET as callContextGET } from '@/app/api/attendance/call-context/route';
+import { GET as vobizAnswerGET } from '@/app/api/attendance/vobiz/answer/route';
 
 const OUTREACH = 'parent_outreach/o1';
 const MARKS = '13/97';
@@ -456,72 +471,124 @@ describe('sidecar contract: every agent input the TwiML route builds is a valid 
 function stripComments(src: string): string {
     return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 }
-function routes(dir = path.join(SRC, 'app/api'), out: string[] = []): string[] {
+function sources(dir = SRC, out: string[] = []): string[] {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
-        if (e.isDirectory()) routes(p, out);
-        else if (e.name === 'route.ts') out.push(p);
+        if (e.isDirectory()) {
+            if (e.name === '__tests__' || e.name === '__mocks__' || e.name === 'node_modules') continue;
+            sources(p, out);
+        } else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name)) {
+            out.push(p);
+        }
     }
     return out;
 }
-const ROUTES = routes().map((abs) => ({ rel: rel(abs), code: stripComments(fs.readFileSync(abs, 'utf8')) }));
+const SOURCES = sources().map((abs) => ({ rel: rel(abs), code: stripComments(fs.readFileSync(abs, 'utf8')) }));
+const source = (f: string) => SOURCES.find((s) => s.rel === f);
 
 /** Reads a concern field of an outreach record, directly or through the spoken-script helper. */
 const READS_CONCERN_FIELD =
     /\.(spokenScript|generatedMessage|performanceContext)\b|\[\s*['"](spokenScript|generatedMessage|performanceContext)['"]\s*\]|\bresolveSpokenMessage\s*\(/;
-/** Speaks on a call, or serves the voice pipeline. */
-const FACES_A_CALL = /<Say\b|<Speak\b|x-internal-key/;
+/** Builds call XML, or serves the voice pipeline. */
+const FACES_A_CALL = /<\?xml\b|<Say\b|<Speak\b|<Stream\b|<Play>|x-internal-key/;
+/** Reads the outreach's subject, reason or notes, other than from parentCallContent's result. */
+const READS_OUTREACH_TOPIC = /(?<!\bcontent)\.(subject|reason|teacherNote|reasonContext)\b/;
 
-/** Routes that speak to a parent or hand a voice pipeline what to speak. Covered by layer 1. */
-const PARENT_FACING = ['app/api/attendance/twiml/route.ts', 'app/api/attendance/call-context/route.ts'];
-
-/** Routes that may read concern fields because nothing they produce reaches a parent. */
-const TEACHER_FACING: Record<string, string> = {
-    'app/api/ai/parent-message/route.ts': 'drafts the message for the teacher to review in the Contact-Parent modal',
-    'app/api/attendance/outreach/route.ts': "stores the teacher's draft on the outreach record; returns only its id",
-    'app/api/attendance/transcript-sync/route.ts': "passes the message to the post-call summary written for the teacher",
-    'app/api/attendance/twiml-status/route.ts': "passes the message to the post-call summary written for the teacher",
+/** Files that speak to a parent or build what a parent call speaks or streams. */
+const PARENT_FACING: Record<string, 'speaks outreach content' | 'speaks no outreach content'> = {
+    'app/api/attendance/twiml/route.ts': 'speaks outreach content',
+    'app/api/attendance/call-context/route.ts': 'speaks outreach content',
+    'app/api/attendance/vobiz/answer/route.ts': 'speaks no outreach content',
+    'lib/vobiz/answer-xml.ts': 'speaks no outreach content',
 };
 
-/** Routes that face a call but speak nothing from an outreach record. */
+/** The one module a parent-facing path reads concern fields through, and the helper it uses. */
+const CONCERN_GATE: Record<string, string> = {
+    'lib/attendance/request-to-talk.ts': 'parentCallContent applies the request-to-talk rule',
+    'lib/voice-pipeline/spoken-script.ts': 'defines resolveSpokenMessage, called only by request-to-talk.ts (checked below)',
+};
+
+/** Files that may read concern fields because nothing they produce reaches a parent. */
+const TEACHER_FACING: Record<string, string> = {
+    'app/api/ai/parent-message/route.ts': 'drafts the message for the teacher to review in the Contact-Parent modal',
+    'ai/flows/parent-message-generator.ts': "generates the teacher's draft message for review",
+    'lib/sidecar/parent-message-dispatch.ts': "dispatches the teacher's draft generation to Genkit or the sidecar",
+    'app/api/attendance/outreach/route.ts': "stores the teacher's draft on the outreach record; returns only its id",
+    'server/attendance.ts': "saves and lists the teacher's own outreach history",
+    'components/attendance/contact-parent-modal.tsx': "the teacher's own draft, shown to the teacher in the modal",
+    'app/api/attendance/transcript-sync/route.ts': 'passes the message to the post-call summary written for the teacher',
+    'app/api/attendance/twiml-status/route.ts': 'passes the message to the post-call summary written for the teacher',
+    'scripts/seed-attendance-demo.ts': 'seeds demo outreach records; never runs on a call',
+};
+
+/** Files that face a call but speak nothing from an outreach record. */
 const FACES_A_CALL_WITHOUT_OUTREACH_CONTENT: Record<string, string> = {
     'app/api/demo-call/twiml/route.ts': "public lead magnet: a fixed script to the visitor's own number, no outreach record",
     'app/api/attendance/transcript-sync/route.ts': 'receives transcripts from the voice pipeline and returns no speakable content',
 };
 
-describe('structural: concern fields reach a parent only through parentCallContent', () => {
-    it('finds the routes (guards against the scan matching nothing)', () => {
-        expect(ROUTES.length).toBeGreaterThan(20);
-        for (const f of PARENT_FACING) expect(ROUTES.map((r) => r.rel)).toContain(f);
+describe('structural: concern fields reach a parent only through parentCallContent (all of src/)', () => {
+    it('finds the sources (guards against the scan matching nothing)', () => {
+        expect(SOURCES.length).toBeGreaterThan(200);
+        for (const f of [...Object.keys(PARENT_FACING), ...Object.keys(CONCERN_GATE)]) expect(source(f)).toBeDefined();
+        expect(SOURCES.some((s) => s.rel.startsWith('lib/'))).toBe(true);
     });
 
-    it('every route that reads spokenScript, generatedMessage or performanceContext is teacher-facing', () => {
-        const offenders = ROUTES.filter((r) => READS_CONCERN_FIELD.test(r.code) && !TEACHER_FACING[r.rel]).map(
-            (r) => `${r.rel}: reads a concern field but is not on the teacher-facing allow-list`,
+    it('every file that reads spokenScript, generatedMessage or performanceContext is teacher-facing or the gate', () => {
+        const offenders = SOURCES.filter((s) => READS_CONCERN_FIELD.test(s.code) && !TEACHER_FACING[s.rel] && !CONCERN_GATE[s.rel]).map(
+            (s) => `${s.rel}: reads a concern field but is neither teacher-facing nor the request-to-talk gate`,
         );
         expect(offenders).toEqual([]);
     });
 
-    it('the allow-list is current: no parent-facing route on it, and each entry still reads a concern field', () => {
-        for (const f of PARENT_FACING) expect(TEACHER_FACING[f]).toBeUndefined();
-        for (const [f, why] of Object.entries(TEACHER_FACING)) {
-            const route = ROUTES.find((r) => r.rel === f);
-            expect({ f, exists: !!route, reads: !!route && READS_CONCERN_FIELD.test(route.code) }).toEqual({ f, exists: true, reads: true });
+    it('the allow-lists are current: each entry exists and still reads a concern field, none is parent-facing', () => {
+        for (const [f, why] of Object.entries({ ...TEACHER_FACING, ...CONCERN_GATE })) {
+            const s = source(f);
+            expect({ f, exists: !!s, reads: !!s && READS_CONCERN_FIELD.test(s.code) }).toEqual({ f, exists: true, reads: true });
+            expect(PARENT_FACING[f]).toBeUndefined();
             expect(why.length).toBeGreaterThan(20);
         }
     });
 
-    it.each(PARENT_FACING)('%s goes through parentCallContent and reads no subject or reason itself', (f) => {
-        const code = ROUTES.find((r) => r.rel === f)!.code;
-        expect(code).toMatch(/from\s+['"]@\/lib\/attendance\/request-to-talk['"]/);
-        expect(code).toMatch(/\bparentCallContent\s*\(/);
-        expect(code).not.toMatch(/\bdata\??\.(subject|reason|teacherNote|reasonContext)\b/);
+    it('resolveSpokenMessage (it speaks the teacher message) is called only by the request-to-talk module', () => {
+        const callers = SOURCES.filter((s) => /\bresolveSpokenMessage\s*\(/.test(s.code.replace(/export function resolveSpokenMessage\s*\(/, '')));
+        expect(callers.map((s) => s.rel)).toEqual(['lib/attendance/request-to-talk.ts']);
     });
 
-    it('every route that faces a call is parent-facing or names why it speaks no outreach content', () => {
-        const offenders = ROUTES.filter(
-            (r) => FACES_A_CALL.test(r.code) && !PARENT_FACING.includes(r.rel) && !FACES_A_CALL_WITHOUT_OUTREACH_CONTENT[r.rel],
-        ).map((r) => `${r.rel}: speaks on a call or serves the voice pipeline but is not covered`);
+    it.each(Object.entries(PARENT_FACING))('%s reads no concern field itself (%s)', (f, kind) => {
+        const code = source(f)!.code;
+        expect(code).not.toMatch(READS_CONCERN_FIELD);
+        expect(code).not.toMatch(READS_OUTREACH_TOPIC);
+        if (kind === 'speaks outreach content') {
+            expect(code).toMatch(/from\s+['"]@\/lib\/attendance\/request-to-talk['"]/);
+            expect(code).toMatch(/\bparentCallContent\s*\(/);
+        }
+    });
+
+    it('every file that builds call XML or serves the voice pipeline is parent-facing or names why it speaks no outreach content', () => {
+        const offenders = SOURCES.filter(
+            (s) => FACES_A_CALL.test(s.code) && !PARENT_FACING[s.rel] && !FACES_A_CALL_WITHOUT_OUTREACH_CONTENT[s.rel],
+        ).map((s) => `${s.rel}: builds call XML or serves the voice pipeline but is not covered`);
         expect(offenders).toEqual([]);
     });
 });
+
+describe.each([...REQUEST_TO_TALK_REASONS, 'positive_feedback'].map((r) => [String(r), r] as const))(
+    'Vobiz answer (production path), reason=%s',
+    (_label, reason) => {
+        it('streams the call and speaks nothing from the outreach record', async () => {
+            process.env.VOBIZ_STREAM_BASE_URL = 'https://telephony.test';
+            store.set(OUTREACH, concernRecord(reason));
+            const res = await vobizAnswerGET({
+                method: 'GET',
+                url: 'https://app.test/api/attendance/vobiz/answer?t=answer-tok&CallUUID=cu1',
+                headers: { get: () => null },
+            } as any);
+            const xml = unescapeXml(await res.text());
+            expect(res.status).toBe(200);
+            expect(xml).toContain('<Stream');
+            expect(xml).not.toMatch(/<(Say|Speak|Play)\b/);
+            expectNoConcern(xml, reason === 'positive_feedback' ? undefined : reason);
+        });
+    },
+);
