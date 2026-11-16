@@ -39,10 +39,13 @@ in this order.
 
 ### Behaviour changes on positive_feedback
 
-positive_feedback calls keep their original prompts, greeting and phase
-guidance byte for byte (`tests/golden/positive_feedback.json`). What changes
-for them, deliberately:
+positive_feedback calls keep their original greeting and phase guidance byte
+for byte, and their prompt changes by one line
+(`tests/golden/positive_feedback.json`). What changes for them, deliberately:
 
+- The prompt gains one rule: never say whether the school will or will not
+  call again; if the parent asks, say the class teacher will decide. (The
+  request-to-talk prompt gains the same rule.)
 - When the AI-reveal guard blocks the call's **last** reply, the parent now
   hears the fixed goodbye in the call's language (`goodbye` in
   `src/call_lines.json`) instead of the old Hindi line

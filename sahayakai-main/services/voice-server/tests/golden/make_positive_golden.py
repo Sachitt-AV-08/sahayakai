@@ -7,6 +7,10 @@ change. It was produced from commit 71b365d18 (the deployed engine) with:
     python tests/golden/make_positive_golden.py \
         /tmp/base/sahayakai-main/services/voice-server > tests/golden/positive_feedback.json
 
+Regenerated once on purpose (2026-11-16) from this tree, to add the one
+deliberate change to the positive_feedback prompt: the FUTURE CALLS rule
+(tests/test_future_calls_rule.py checks that it is the only difference).
+
 Only regenerate it on purpose, from the tree whose behaviour you mean to pin.
 Needs nothing but the standard library: pipecat and the SDKs are stubbed.
 """

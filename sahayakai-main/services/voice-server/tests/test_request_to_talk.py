@@ -21,7 +21,8 @@ building the prompt from the whole record. The gate is on the class:
   * fail closed: unknown, missing, misspelt and non-string reasons all get the
     request-to-talk line;
   * positive unchanged: positive_feedback output equals the golden captured
-    from the engine before this change;
+    from the engine before this change, plus the one deliberate FUTURE CALLS
+    rule (tests/test_future_calls_rule.py);
   * language coverage: every language the engine speaks has every line.
 """
 
