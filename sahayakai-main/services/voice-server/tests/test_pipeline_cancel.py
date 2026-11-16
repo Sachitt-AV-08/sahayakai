@@ -162,3 +162,48 @@ def test_a_vobiz_disconnect_mid_call_cancels_hangs_up_once_and_saves_the_stop(tm
     assert hangups == ["call-uuid-test"]
     writes = suppressions(db)
     assert len(writes) == 1 and writes[0][2] == phone_suppression_id(PHONE)
+
+
+# ── a graceful end that never finishes ───────────────────────────────────────
+# Independent review #7: after a confirmed stop the task is blocked on its
+# EndFrame; task.cancel() only queues a CancelFrame BEHIND it, so the old
+# watchdog did nothing, runner.run() never returned and the record was never
+# written. ModelRunner models exactly that (PipelineTask.stall_end).
+
+
+def test_the_watchdog_ends_a_stalled_graceful_end_and_still_finishes_the_call(tmp_path, monkeypatch):
+    from bot_harness import ModelRunner
+
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD})
+    hangups = []
+    with stubbed_runtime():
+        from src import bot
+
+        monkeypatch.setattr(bot, "STOP_CANCEL_AFTER_SECONDS", 0.05)
+        main = import_main(tmp_path, monkeypatch)
+        main.call_store = FakeCallStore()
+
+        async def fake_hangup(call_uuid, auth_id, auth_token):
+            hangups.append(call_uuid)
+
+        main.hangup_vobiz_call = fake_hangup
+
+        async def live():
+            run = run_from_recorder()
+            run.task.stall_end = True  # a processor hangs on the EndFrame
+            await _stop_and_confirm(run, "दोबारा फ़ोन मत करना", "हाँ")
+
+        ModelRunner.script = live
+        main.WorkerRunner = ModelRunner
+        try:
+            asyncio.run(asyncio.wait_for(run_vobiz_path(main, db), 5))
+        finally:
+            ModelRunner.script = None
+        runner = ModelRunner.last
+        [task] = RECORDER.instances_of("PipelineTask")
+    assert task.end_in_flight, "the scenario really stalled the graceful end"
+    assert runner.ended and not runner.timed_out, "the watchdog could not get past the stuck EndFrame"
+    assert task.end_reason == "CancelFrame injected into the pipeline"
+    assert hangups == ["call-uuid-test"]
+    assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
+    assert len(suppressions(db)) == 1

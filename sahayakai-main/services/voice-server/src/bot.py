@@ -18,7 +18,7 @@ import asyncio
 from typing import Awaitable, Callable
 
 from loguru import logger
-from pipecat.frames.frames import EndFrame, TTSSpeakFrame
+from pipecat.frames.frames import CancelFrame, EndFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineTask, PipelineParams
 from pipecat.transports.websocket.fastapi import (
@@ -376,7 +376,20 @@ async def create_bot(
         has_finished = getattr(task, "has_finished", None)
         if callable(has_finished) and has_finished() is True:
             return
-        await _cancel_pipeline("stop request did not end the call in time")
+        why = "stop request did not end the call in time"
+        logger.warning(f"Outreach {outreach_id}: {why}; finishing the call and forcing the pipeline down")
+        # The record, the summary and the hang-up must not wait on a stuck
+        # pipeline: start the bookkeeping now (it is shared and idempotent).
+        _start_finalize()
+        await _cancel_pipeline(why)
+        # task.cancel() only queues a CancelFrame on the task's push queue,
+        # BEHIND the EndFrame that is stuck, so on its own it never runs. A
+        # CancelFrame is a system frame: put straight into the pipeline it
+        # skips the queues, reaches the sink and lets runner.run() return.
+        try:
+            await task.pipeline.queue_frame(CancelFrame())
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Could not inject a CancelFrame for outreach {outreach_id}: {e}")
 
     async def _cancel_pipeline(why: str):
         try:
