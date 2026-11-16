@@ -5,6 +5,7 @@ import { CalendarClock, RefreshCw } from "lucide-react";
 import { SectionCard } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { fmt } from "@/components/sampark/labels";
+import { callbackStatusLabel } from "@/components/sampark/callbacks/callback-status";
 import { RiyaCallHistory } from "@/components/sampark/riya-call-panel";
 import { ErrorPanel, LoadingBlock } from "@/components/sampark/states";
 import { StatusPill } from "@/components/sampark/status-pill";
@@ -56,7 +57,7 @@ export function SargvisionCallLog() {
                     <ul className="space-y-1">
                         {cbRows.map((c) => (
                             <li key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
-                                <StatusPill tone={c.status === "proposed" ? "warning" : c.status === "scheduled" ? "info" : "neutral"}>{t(c.status)}</StatusPill>
+                                <StatusPill tone={c.status === "proposed" ? "warning" : c.status === "scheduled" ? "info" : "neutral"}>{callbackStatusLabel(t, c.status)}</StatusPill>
                                 <span className="text-foreground">{c.studentDisplayName ?? c.guardianDisplayName ?? "—"}</span>
                                 <span className="text-muted-foreground">
                                     {c.scheduledAt ? f.dateTime(c.scheduledAt) : c.requestedText ? fmt(t("asked for: {text}"), { text: c.requestedText }) : t("needs a time")}

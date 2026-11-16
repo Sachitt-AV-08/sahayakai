@@ -333,7 +333,7 @@ export function CallParentDialog({ student, open, onOpenChange, placedBy, initia
                                             <span className="min-w-0">
                                                 <span className="block font-medium text-ink-900">{t(REASON_LABEL[r])}</span>
                                                 <span className="block text-xs text-ink-500">{t(REASON_HINT[r])}</span>
-                                                {signal && <span className="mt-1 block text-xs font-medium text-sampark-saffron-strong">{t(signal.label)}</span>}
+                                                {signal && <span className="mt-1 block text-xs font-medium text-sampark-saffron-strong">{fmt(t(signal.label), signal.vars)}</span>}
                                             </span>
                                         </button>
                                     );

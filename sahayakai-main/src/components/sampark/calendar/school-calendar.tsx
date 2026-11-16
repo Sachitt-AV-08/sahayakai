@@ -34,6 +34,8 @@ import { EventStatusPill, TypeMark, eventPurposeName, eventTitle, eventTypeName 
 const POLL_MS = 30_000;
 const AGENDA_DAYS = 60;
 const VIEWS: CalendarView[] = ["day", "week", "month", "year"];
+/** Month-grid column headings (t() keys; Gate 9 reads them via scripts/i18n-dynamic-keys.json). */
+const WEEKDAY_HEADINGS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 type StatusFilter = "all" | "action" | "scheduled" | "in_progress" | "completed" | "failed" | "cancelled";
 const STATUS_GROUPS: Record<Exclude<StatusFilter, "all" | "action">, CalendarStatus[]> = {
@@ -319,7 +321,7 @@ export function SchoolCalendar({ orgId, timeZone = DEFAULT_CALLBACK_TIME_ZONE }:
                     {data && view === "month" && (
                         <div>
                             <div className="hidden grid-cols-7 gap-1 pb-1 sm:grid" aria-hidden="true">
-                                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <div key={d} className="px-1 text-xs font-semibold text-muted-foreground">{t(d)}</div>)}
+                                {WEEKDAY_HEADINGS.map((d) => <div key={d} className="px-1 text-xs font-semibold text-muted-foreground">{t(d)}</div>)}
                             </div>
                             <ol className="grid grid-cols-1 gap-1 sm:grid-cols-7">
                                 {range.days.map((d) => {

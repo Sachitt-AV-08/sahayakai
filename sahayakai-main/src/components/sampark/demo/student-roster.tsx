@@ -106,7 +106,7 @@ export function StudentRoster({
                                         title={t(REASON_LABEL[sig.reason])}
                                     >
                                         <StatusPill tone={sig.reason === "positive_feedback" ? "success" : sig.reason === "behavioral_concern" ? "danger" : "warning"}>
-                                            {t(sig.label)}
+                                            {fmt(t(sig.label), sig.vars)}
                                         </StatusPill>
                                     </button>
                                 ))}

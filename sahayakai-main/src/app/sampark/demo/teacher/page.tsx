@@ -147,7 +147,7 @@ function TeacherOverview({ view }: { view: DemoView }) {
                                                 {s.name} <span className="text-xs font-normal text-ink-500">· {fmt(t("Class {id}"), { id: s.classId })}</span>
                                             </p>
                                             <p className="text-xs text-ink-500">
-                                                {t(sig.label)} · {s.guardian.name}
+                                                {fmt(t(sig.label), sig.vars)} · {s.guardian.name}
                                             </p>
                                         </div>
                                         <Button size="sm" variant={sig.reason === "positive_feedback" ? "outline" : "default"} onClick={() => setCalling({ student: s, reason: sig.reason })}>

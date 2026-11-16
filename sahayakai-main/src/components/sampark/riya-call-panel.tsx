@@ -75,6 +75,7 @@ import { StatusPill } from "./status-pill";
 import { useSamparkFormat } from "./format";
 import { useSamparkQuery } from "./use-sampark-query";
 import { refusalText, riyaBlockerLabel } from "./refusal-labels";
+import { callbackStatusLabel } from "./callbacks/callback-status";
 
 type Translate = (key: string) => string;
 
@@ -468,7 +469,7 @@ function CallbackStatusLine({ call, callback }: { call: ConversationCallView; ca
         return <p className="flex flex-wrap items-center gap-2 text-sm"><StatusPill tone="info">{t("Callback scheduled")}</StatusPill><span className="text-foreground">{f.dateTime(callback.scheduledAt)}</span></p>;
     }
     if (callback && callback.status !== "proposed") {
-        return <p className="flex flex-wrap items-center gap-2 text-sm"><StatusPill tone="neutral">{fmt(t("Callback {status}"), { status: t(callback.status) })}</StatusPill></p>;
+        return <p className="flex flex-wrap items-center gap-2 text-sm"><StatusPill tone="neutral">{fmt(t("Callback {status}"), { status: callbackStatusLabel(t, callback.status) })}</StatusPill></p>;
     }
     if (callback || requested) {
         return (

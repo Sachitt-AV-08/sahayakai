@@ -228,6 +228,9 @@ function sargvisionStudents(): DemoStudent[] {
     }));
 }
 
+/** The demo principal. `title` is a t() key (demo-frame shows it in the role chip). */
+const DEMO_ADMIN = { id: 'a-ghosh', name: 'Meera Ghosh', title: 'Principal' };
+
 export function getDemoSchool(): DemoSchool {
     if (cached) return cached;
     const classes = buildClasses();
@@ -244,7 +247,7 @@ export function getDemoSchool(): DemoSchool {
         id: DEMO_SCHOOL_ID,
         name: 'Green Valley Public School',
         city: 'Siliguri',
-        admin: { id: 'a-ghosh', name: 'Meera Ghosh', title: 'Principal' },
+        admin: DEMO_ADMIN,
         teachers: withRoster
             ? TEACHERS.map((t) => (t.id === SARGVISION_TEACHER_ID ? { ...t, classIds: [...t.classIds, SARGVISION_CLASS_ID] } : t))
             : TEACHERS,
@@ -267,13 +270,33 @@ export function studentById(id: string | null | undefined): DemoStudent | undefi
 }
 
 /** Signals a teacher would act on, strongest first; drives the suggested reason. */
-export function studentSignals(s: DemoStudent): { reason: OutreachReason; label: string }[] {
-    const out: { reason: OutreachReason; label: string }[] = [];
+/**
+ * Signal labels are t() keys with {placeholders}; the numbers travel in `vars`, so every
+ * language gets the sentence, not the English one with a number baked in. Gate 9 reads this
+ * map through scripts/i18n-dynamic-keys.json.
+ */
+export const SIGNAL_LABEL = {
+    consecutiveAbsences: '{n} days absent in a row',
+    scoresDown: 'Scores down {n} points',
+    lowScores: 'Low scores: {score}/100',
+    behaviour: 'Behaviour note this month',
+    achievement: 'Achievement to share',
+} as const;
+
+export interface DemoSignal {
+    reason: OutreachReason;
+    /** A t() key from SIGNAL_LABEL; render with fmt(t(label), vars). */
+    label: string;
+    vars: Record<string, number>;
+}
+
+export function studentSignals(s: DemoStudent): DemoSignal[] {
+    const out: DemoSignal[] = [];
     if (s.rosterContact) return out;
-    if (s.consecutiveAbsences >= 3) out.push({ reason: 'consecutive_absences', label: `${s.consecutiveAbsences} days absent in a row` });
-    if (s.scoreChange <= -10) out.push({ reason: 'poor_performance', label: `Scores down ${Math.abs(s.scoreChange)} points` });
-    else if (s.recentScore < 40) out.push({ reason: 'poor_performance', label: `Low scores: ${s.recentScore}/100` });
-    if (s.behaviourNote) out.push({ reason: 'behavioral_concern', label: 'Behaviour note this month' });
-    if (s.achievement) out.push({ reason: 'positive_feedback', label: 'Achievement to share' });
+    if (s.consecutiveAbsences >= 3) out.push({ reason: 'consecutive_absences', label: SIGNAL_LABEL.consecutiveAbsences, vars: { n: s.consecutiveAbsences } });
+    if (s.scoreChange <= -10) out.push({ reason: 'poor_performance', label: SIGNAL_LABEL.scoresDown, vars: { n: Math.abs(s.scoreChange) } });
+    else if (s.recentScore < 40) out.push({ reason: 'poor_performance', label: SIGNAL_LABEL.lowScores, vars: { score: s.recentScore } });
+    if (s.behaviourNote) out.push({ reason: 'behavioral_concern', label: SIGNAL_LABEL.behaviour, vars: {} });
+    if (s.achievement) out.push({ reason: 'positive_feedback', label: SIGNAL_LABEL.achievement, vars: {} });
     return out;
 }
