@@ -222,6 +222,7 @@ _STOP_PHRASES = _compile(
     r"\bno more (?:phone )?calls\b",
     r"^(?:please )?never (?:ever )?(?:call|phone|ring) (?:me|us|this number)\b",
     r"\b(?:do not|don't|dont) (?:ever )?(?:call|phone|ring)\b",
+    r"\b(?:do not|don't|dont|stop) keep(?:ing)? (?:calling|phoning|ringing)\b",
     r"\b(?:i|we) (?:do not|don't|dont) want (?:any )?(?:more )?(?:these |your |such |any )?(?:phone )?calls\b",
     r"\b(?:i|we) (?:do not|don't|dont) want (?:you|the school|anyone) to (?:call|phone|ring)\b",
     r"\b(?:i|we) (?:do not|don't|dont) want to (?:receive|get|have) (?:any )?(?:more )?(?:phone )?calls\b",
@@ -360,6 +361,7 @@ _STRONG_PHRASES = _compile(
     _HI_STOP_THESE_CALLS,
     rf"{_HI_CALL}\s*करना\s*बंद",
     r"\b(?:don't|dont|do not|never)\s+ever\s+(?:call|phone|ring)\b",
+    r"\b(?:don't|dont|do not|stop)\s+keep(?:ing)?\s+(?:calling|phoning|ringing)\b",
     r"\b(?:phir kabhi)\b",
     r"फिर\s*कभी",
 )
@@ -400,9 +402,12 @@ _FROM_NOW_ON_PARTS = (
 _FROM_NOW_ON = _compile(*_FROM_NOW_ON_PARTS)
 _FROM_NOW_ON_COMMA = re.compile("(" + "|".join(_FROM_NOW_ON_PARTS) + r")\s*[,]", re.IGNORECASE)
 
-# "Again and again", "बार बार": a frequency complaint, never a repeat word.
-_FREQUENCY = _compile(r"\bagain and again\b", r"\b(?:baar baar|bar bar)\b", r"बार\s*[-]?\s*बार",
-                      r"বারবার|বার\s*বার", r"वारंवार", r"વારંવાર", r"ਵਾਰ\s*ਵਾਰ")
+# "Again and again", "बार बार": not a repeat word (it is not "ever again"),
+# but next to a don't-call phrase it is a stop request in its own right ("बार
+# बार फ़ोन मत करो", "stop calling me again and again"): never a veto.
+_FREQUENCY = _compile(r"\bagain and again\b", r"\bover and over\b", r"\b(?:baar baar|bar bar)\b",
+                      r"बार\s*[-]?\s*बार", r"বারবার|বার\s*বার", r"वारंवार|पुन्हा\s*पुन्हा", r"વારંવાર|વાર\s*વાર",
+                      r"ਵਾਰ\s*ਵਾਰ", r"ಪದೇ\s*ಪದೇ", r"அடிக்கடி", r"పదే\s*పదే|మాటిమాటికి", r"വീണ്ടും\s*വീണ്ടും|ഇടയ്ക്കിടെ")
 # Multi-word repeat words, joined so each is one token.
 _REPEAT_JOIN = [(re.compile(a), b) for a, b in (
     (r"\bany more\b", "anymore"), (r"\bphir se\b", "phirse"), (r"\baage se\b", "aagese"), (r"\bab se\b", "abse"),
@@ -425,6 +430,28 @@ _REPEAT_WINDOW = 3  # tokens, with only filler between
 def _is_repeat_before(word: str, adjacent: bool) -> bool:
     return (word in _REPEAT_BEFORE or word.startswith(_REPEAT_BEFORE_PREFIX)
             or (adjacent and word in _REPEAT_RIGHT_BEFORE))
+
+
+_FREQ_TOKEN = "§freq"
+
+
+def _next_to_a_frequency_phrase(clause: str) -> bool:
+    """"बार बार फ़ोन मत करो", "don't call me again and again": next to the stop, either side."""
+    c = _FREQUENCY.sub(f" {_FREQ_TOKEN} ", clause)
+    if _FREQ_TOKEN not in c:
+        return False
+    toks = c.split()
+    for m in _STOP_PHRASES.finditer(c):
+        if _FREQ_TOKEN in m.group(0):
+            return True
+        first, last = len(c[:m.start()].split()), len(c[:m.end()].split())
+        for side in (toks[last:last + _REPEAT_WINDOW], list(reversed(toks[max(0, first - _REPEAT_WINDOW):first]))):
+            for w in side:
+                if w == _FREQ_TOKEN:
+                    return True
+                if w not in _FILLER:
+                    break
+    return False
 
 
 def _next_to_a_repeat_word(clause: str) -> bool:
@@ -563,11 +590,11 @@ def stop_kind(text: object, current: object = None) -> str | None:
     for clause, question in _stop_clauses(text):
         if question:
             return None
-        strong = _FROM_NOW_ON.search(clause) or _STRONG_PHRASES.search(clause) or _next_to_a_repeat_word(clause)
-        if strong and not _LIMITS.search(_FROM_NOW_ON.sub(" ", clause)) and not _FREQUENCY.search(clause):
+        strong = (_FROM_NOW_ON.search(clause) or _STRONG_PHRASES.search(clause)
+                  or _next_to_a_repeat_word(clause) or _next_to_a_frequency_phrase(clause))
+        if strong and not _LIMITS.search(_FROM_NOW_ON.sub(" ", clause)):
             return "strong"
-    if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t) \
-            and not _FREQUENCY.search(t):
+    if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t):
         return "plain"
     return None
 
@@ -582,7 +609,8 @@ def has_strong_marker(text: object) -> bool:
     t = normalize(text)
     return bool(t) and bool(
         _UNAMBIGUOUS.search(t) or _FROM_NOW_ON.search(t) or _STRONG_PHRASES.search(t)
-        or any(_next_to_a_repeat_word(clause) for clause, _q in _clauses(text if isinstance(text, str) else ""))
+        or any(_next_to_a_repeat_word(clause) or _next_to_a_frequency_phrase(clause)
+               for clause, _q in _clauses(text if isinstance(text, str) else ""))
     )
 
 

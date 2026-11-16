@@ -12,7 +12,7 @@ the reviewer's phrases in every call language, with and without commas, a
 repeat word counts only next to the stop phrase (English after it, the
 Indic languages before it, with only filler between, within three tokens);
 Bengali আর only right before the call word; ਫਿਰ never; "again and again"
-is a frequency complaint. Every stop that says "again" properly still is.
+is not a repeat word. Every stop that says "again" properly still is.
 """
 
 from __future__ import annotations
@@ -37,9 +37,9 @@ TALK_AGAIN = [
     "ഞാൻ തിരക്കിലാണ്, വിളിക്കരുത്, വീണ്ടും സംസാരിക്കാം",
     "Sorry, can you say that again? Don't call me, I'm busy",
     "আমি আর আমার স্বামী দুজনেই ব্যস্ত, ফোন করবেন না",
-    "I'm busy, don't call again and again",
-    "मैं बिज़ी हूँ, बार बार फ़ोन मत करो",
 ]
+# ("again and again" / "बार बार" next to a don't-call phrase IS a stop
+# request: tests/test_stop_frequency.py.)
 
 
 def _no_commas(text: str) -> str:
@@ -51,7 +51,7 @@ def test_a_repeat_word_in_another_phrase_does_not_make_a_stop(text):
     assert not is_stop_request(text), text
 
 
-@pytest.mark.parametrize("text", [t for t in TALK_AGAIN if "again and again" not in t and "बार बार" not in t])
+@pytest.mark.parametrize("text", TALK_AGAIN)
 def test_through_the_listener_it_is_not_noticed_even_after_the_quiet(text):
     c = StopListener()
     c.hear(_no_commas(text))
