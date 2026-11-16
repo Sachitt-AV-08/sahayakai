@@ -47,6 +47,12 @@ def suppressions(db) -> list[tuple]:
     return [w for w in db.writes if w[1] == SUPPRESSION_COLLECTION]
 
 
+def opt_out_requests(db) -> list[dict]:
+    """Every optOutRequested map the engine recorded on an outreach."""
+    return [w[3]["optOutRequested"] for w in db.writes
+            if w[0] == "update" and w[1] == "parent_outreach" and "optOutRequested" in w[3]]
+
+
 async def say(text: str) -> None:
     run = run_from_recorder()
     guards = [p for p in run.processors if type(p).__name__ == "StopRequestGuard"]

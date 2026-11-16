@@ -1,15 +1,15 @@
 """CLASS GATE — every way out of a call handler runs the end-of-call bookkeeping.
 
-create_bot's finalize saves an opt-out heard during the call (retrying a
-failed write), the transcript and the summary. The instance (security review
-of 67839bbb6): /ws/call never awaited finalize after the pipeline, and both
-handlers' except branches skipped it, so a stop heard during a call that then
-ended badly could be lost.
+create_bot's finalize records an opt-out request heard during the call
+(retrying a failed write), the transcript and the summary. The instance
+(security review of 67839bbb6): /ws/call never awaited finalize after the
+pipeline, and both handlers' except branches skipped it, so a stop heard
+during a call that then ended badly could be lost.
 
 Checked structurally over main.py (the normal end after runner.run() and every
 except branch of that try must call _finish), with a self-test proving the
 checker rejects a skipped branch; then behaviourally on both handlers for a
-normal end, a disconnect and an exception, with the first suppression write
+normal end, a disconnect and an exception, with the first opt-out record
 failing so only the end-of-call retry can save it.
 """
 
@@ -29,8 +29,7 @@ from bot_harness import (
     run_vobiz_path,
     stubbed_runtime,
 )
-from main_ast import PHONE, RECORD, SOURCE, call_name, handlers, say, suppressions
-from src.opt_out import phone_suppression_id
+from main_ast import RECORD, SOURCE, call_name, handlers, opt_out_requests, say, suppressions
 
 
 def unfinished_exits(source: str) -> list[str]:
@@ -86,7 +85,6 @@ def test_the_exit_checker_rejects_a_skipped_branch():
 def _ending(kind: str, main):
     async def script():
         await say("दोबारा फ़ोन मत करना")
-        await say("हाँ")  # the explicit yes to the confirmation question
         if kind == "disconnect":
             raise main.WebSocketDisconnect()
         if kind == "error":
@@ -95,9 +93,9 @@ def _ending(kind: str, main):
 
 
 @pytest.mark.parametrize("kind", ["normal", "disconnect", "error"])
-def test_vobiz_persists_an_opt_out_on_every_exit_even_after_a_failed_write(kind, tmp_path, monkeypatch):
+def test_vobiz_records_an_opt_out_request_on_every_exit_even_after_a_failed_write(kind, tmp_path, monkeypatch):
     # The immediate write fails; only the end-of-call retry can save it.
-    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD}, fail_suppression_sets=1)
+    db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD}, fail_opt_out_requests=1)
     hangups = []
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
@@ -113,9 +111,10 @@ def test_vobiz_persists_an_opt_out_on_every_exit_even_after_a_failed_write(kind,
             asyncio.run(run_vobiz_path(main, db))
         finally:
             ScriptedRunner.script = None
-    writes = suppressions(db)
-    assert len(writes) == 1, f"{kind}: opt-out lost"
-    assert writes[0][2] == phone_suppression_id(PHONE)
+    requests = opt_out_requests(db)
+    assert len(requests) == 1, f"{kind}: opt-out request lost"
+    assert requests[0]["quote"] == "दोबारा फ़ोन मत करना" and requests[0]["source"] == "live"
+    assert suppressions(db) == []
     assert hangups == ["123e4567-e89b-42d3-a456-426614174000"], f"{kind}: the leg must be ended exactly once"
 
 

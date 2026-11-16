@@ -4,13 +4,14 @@ Independent review #1: the web app's answer webhook mints a NEW stream token on
 every request, and its own answer token is reusable for minutes. Single use
 keyed on the stream token therefore did not make the stream single-use:
 replaying the answer URL yielded fresh tokens, each a "first use", each able
-to hear the greeting, overwrite the record and (then) write a do-not-call.
+to hear the greeting, overwrite the record and (then) write a do-not-call
+(today: an opt-out note on the outreach).
 
 The class is "a stream credential the attacker can re-mint". The gate keys the
 single-use record on (outreach, dial attempt), where the dial attempt is the
 `callSid` the web call route stamps from Vobiz's response at dial time. Two
 tokens from two answer replays open one stream; a genuine new dial opens a new
-one; and the stop flow on the one stream writes once.
+one; and the stop flow on the one stream records once.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from bot_harness import (
     run_vobiz_path,
     stubbed_runtime,
 )
-from main_ast import RECORD, suppressions
+from main_ast import RECORD, opt_out_requests, suppressions
 
 OID = "OutreachFs0000000001"
 
@@ -53,8 +54,7 @@ def _open_streams(db, tokens, tmp_path, monkeypatch, *, stop=False, between=None
         async def live():
             if stop:
                 guard = run_from_recorder().processor("StopRequestGuard")
-                for text in ("दोबारा फ़ोन मत करना", "हाँ"):
-                    await guard.process_frame(TranscriptionFrame(text=text), FrameDirection.DOWNSTREAM)
+                await guard.process_frame(TranscriptionFrame(text="दोबारा फ़ोन मत करना"), FrameDirection.DOWNSTREAM)
                 await asyncio.sleep(0)
 
         ScriptedRunner.script = live
@@ -73,14 +73,14 @@ def _open_streams(db, tokens, tmp_path, monkeypatch, *, stop=False, between=None
     return closed, loads
 
 
-def test_two_answer_replays_open_one_stream_and_write_one_suppression(tmp_path, monkeypatch):
+def test_two_answer_replays_open_one_stream_and_record_one_opt_out(tmp_path, monkeypatch):
     db = _db("req-dial-attempt-1")
     first, replay = mint_stream_token(OID, ttl=300), mint_stream_token(OID, ttl=301)
     assert first != replay, "two answer requests really minted two different tokens"
     closed, loads = _open_streams(db, [first, replay], tmp_path, monkeypatch, stop=True)
     assert closed == [None, (1008, "Stream already used")]
     assert loads == [OID], "the replayed stream loaded call context"
-    assert len(suppressions(db)) == 1
+    assert len(opt_out_requests(db)) == 1 and suppressions(db) == []
     [use] = [w[3] for w in db.writes if w[1] == "vobiz_stream_tokens"]
     assert use["boundTo"] == "dial_attempt"
 

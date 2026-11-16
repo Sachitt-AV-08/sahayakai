@@ -10,9 +10,9 @@ The class is "an ending that does not end the task". The gate runs the real
 Vobiz handler with a runner that ends exactly the way pipecat does
 (bot_harness.ModelRunner): only an EndFrame queued at the source, an
 EndTaskFrame sent upstream, a cancel, or a CancelFrame injected into the
-pipeline ends it. For every ending — CLOSE phase, max turns, a confirmed stop,
-the parent hanging up, a pipeline error — the call must end within a bound,
-hang up exactly once and write its record.
+pipeline ends it. For every ending — CLOSE phase, max turns, a stop request
+followed by silence, the parent hanging up, a pipeline error — the call must
+end within a bound, hang up exactly once and write its record.
 """
 
 from __future__ import annotations
@@ -61,11 +61,10 @@ async def _max_turns():
     await _model_turn(run)
 
 
-async def _confirmed_stop():
+async def _stop_request():
     run = run_from_recorder()
     guard = run.processor("StopRequestGuard")
-    for text in ("दोबारा फ़ोन मत करना", "हाँ"):
-        await guard.process_frame(TranscriptionFrame(text=text), FrameDirection.DOWNSTREAM)
+    await guard.process_frame(TranscriptionFrame(text="दोबारा फ़ोन मत करना"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0)
 
 
@@ -81,7 +80,7 @@ async def _pipeline_error():
 ENDINGS = {
     "close phase": _close_phase,
     "max turns": _max_turns,
-    "confirmed stop": _confirmed_stop,
+    "stop request": _stop_request,
     "parent hangs up": _parent_hangs_up,
     "pipeline error": _pipeline_error,
 }
@@ -94,6 +93,10 @@ def test_every_ending_hangs_up_exactly_once_and_writes_the_record(ending, tmp_pa
     with stubbed_runtime():
         main = import_main(tmp_path, monkeypatch)
         main.call_store = FakeCallStore()
+        from src import bot
+
+        # After the opt-out line the parent says nothing; close well inside the runner's bound.
+        monkeypatch.setattr(bot, "NOTED_CLOSE_AFTER_SILENCE_SECONDS", 0.05)
 
         async def fake_hangup(call_uuid, auth_id, auth_token):
             hangups.append(call_uuid)

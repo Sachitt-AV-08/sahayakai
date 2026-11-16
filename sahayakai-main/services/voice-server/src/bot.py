@@ -51,7 +51,7 @@ from src.call_policy import LANGUAGE_CODES, is_positive_feedback, lang_code_for,
 from src.conversation_state import PhaseInstructor
 from src.stt_filter import STTConfidenceFilter
 from src.stop_guard import StopRequestGuard
-from src.opt_out import StopConversation, backstop_quote
+from src.opt_out import ANALYSIS, LIVE, StopListener, backstop_quote, utc_now_iso
 from src.gemini_backend import resolve_gemini_backend
 from src.persistence import sync_transcript
 from src.call_store import CallStore
@@ -63,8 +63,10 @@ TWILIO_LANG_MAP = LANGUAGE_CODES
 
 # Sarvam TTS voice mapping — male and female options
 # See: https://docs.sarvam.ai/api-reference-docs/text-to-speech
-# After a stop request the call ends gracefully (acknowledgement, then
-# EndFrame). If that has not finished by then, cancel the pipeline anyway.
+# After a stop request the engine says its one line and moves to the closing
+# phase. If the parent then says nothing for this long, the call is closed.
+NOTED_CLOSE_AFTER_SILENCE_SECONDS = 10.0
+# A graceful close (EndFrame) that has not finished by then is cancelled.
 STOP_CANCEL_AFTER_SECONDS = 20.0
 
 SARVAM_VOICE_FEMALE = "priya"   # Female voice — for female teacher names
@@ -106,8 +108,7 @@ async def create_bot(
     call_store: CallStore | None = None,
     serializer=None,
     on_call_end=None,
-    on_opt_out: Callable[[], Awaitable[bool]] | None = None,
-    on_suspected_opt_out: Callable[[str], Awaitable[bool]] | None = None,
+    on_opt_out_request: Callable[[str, str], Awaitable[bool]] | None = None,
 ) -> tuple[PipelineTask, Callable[[], Awaitable[None]]]:
     """Create the streaming Pipecat pipeline for a parent call.
 
@@ -116,18 +117,16 @@ async def create_bot(
     there first; main.py awaits it after the pipeline ends, because when the
     bot ends the call itself the transport may not report a disconnect.
 
-    `on_opt_out` writes the do-not-call record for this call's parent and
-    returns True when it was saved. It runs the moment the parent asks not to
-    be called again, and is retried once at the end of the call if it failed.
-    The caller passes it ONLY when it has authenticated the outreach id (a
-    forged id would otherwise silence calls to someone else's parent). With
-    no writer the stop check is left out entirely: the engine must not tell a
-    parent "we will not call you again" when nothing will remember it.
+    `on_opt_out_request(quote, source)` RECORDS, on this call's outreach,
+    that the parent may prefer not to be called (`optOutRequested`); it never
+    blocks a number. It runs the moment the parent says so ("live"), or after
+    the call when the analysis finds their words ("analysis"), and a failed
+    live write is retried once at the end of the call. The caller passes it
+    ONLY when it has authenticated the outreach id. With no writer the stop
+    check is left out entirely: the engine must not tell a parent "I will let
+    the class teacher know" when nothing will tell them.
 
-    A phrase match never writes on its own: the engine asks a confirmation
-    question and writes only on an explicit yes (src/opt_out.py).
-    `on_suspected_opt_out(quote)` lets the post-call analysis FLAG an
-    unconfirmed stop on the outreach for the teacher; it never suppresses.
+    Nothing in the engine writes call_suppressions (src/opt_out.py says why).
 
     Architecture:
       transport.input()
@@ -330,54 +329,51 @@ async def create_bot(
     stt_filter = STTConfidenceFilter()
 
     # ── Do-not-call ──
-    # The parent's own words are checked before the model sees them. A stop
-    # request is written to call_suppressions at once (not at hangup, so a
-    # dropped line cannot lose it), acknowledged with the fixed line in the
-    # call language, and the call ends. See src/opt_out.py for why this is a
-    # deterministic check and not a model tool.
-    opt_out = {"requested": False, "source": None, "write": None}
+    # The parent's own words are checked before the model sees them. The first
+    # possible stop of the call is recorded for the teacher at once (not at
+    # hangup, so a dropped line cannot lose it), answered with the one fixed
+    # line in the call language, and the call moves to its closing phase:
+    # the model's next reply is a goodbye, or, if the parent says nothing,
+    # the call is closed. Nothing is blocked. See src/opt_out.py.
+    opt_out: dict = {"heard": False, "source": None, "quote": None, "at": None, "write": None}
 
-    async def _write_opt_out() -> bool:
-        if on_opt_out is None:
-            logger.error(f"Opt-out for {outreach_id} NOT saved: no writer configured")
+    async def _record_request(quote: str, source: str) -> bool:
+        if on_opt_out_request is None:
+            logger.error(f"Opt-out request for {outreach_id} NOT recorded: no writer configured")
             return False
         try:
-            saved = bool(await on_opt_out(opt_out.get("quote")))
+            saved = bool(await on_opt_out_request(quote, source))
         except Exception as e:  # noqa: BLE001
-            logger.error(f"Opt-out write raised for {outreach_id}: {e}")
+            logger.error(f"Opt-out request write raised for {outreach_id}: {type(e).__name__}")
             saved = False
         if not saved:
-            logger.error(f"Opt-out for {outreach_id} NOT saved — this parent may be called again")
+            logger.error(f"Opt-out request for {outreach_id} NOT recorded; the teacher will not see it")
         return saved
 
-    stop_conversation = StopConversation(question=plan.stop_confirmation_question, lang_code=lang_code)
-
-    async def _on_possible_stop(text: str):
-        # Ask before writing anything: a suppression is permanent. The
-        # parent's words and the question go into the conversation so that,
-        # if the answer is no, the model carries on knowing what was asked.
-        logger.info(f"Possible stop request (outreach {outreach_id}); asking the parent to confirm")
-        opt_out["asked_about"] = text
-        context.add_message({"role": "user", "content": text})
-        context.add_message({"role": "assistant", "content": plan.stop_confirmation_question})
-        await task.queue_frames([TTSSpeakFrame(text=plan.stop_confirmation_question)])
-
-    async def _on_stop_request(answer: str = ""):
-        if opt_out["requested"]:
+    async def _on_stop_heard(utterance: str, quote: str):
+        if opt_out["heard"]:
             return
-        opt_out["requested"] = True
-        opt_out["source"] = "parent_speech"
-        # The teacher must be able to see why this parent will not be called
-        # again: the parent's words, the question, the yes and the
-        # acknowledgement all go into the conversation record (the model is
-        # not asked anything further; EndFrame follows).
-        opt_out["quote"] = " / ".join(t for t in (opt_out.get("asked_about"), answer) if t)
-        if answer:
-            context.add_message({"role": "user", "content": answer})
-        context.add_message({"role": "assistant", "content": plan.stop_acknowledgement})
-        logger.info(f"Parent confirmed they do not want calls (outreach {outreach_id}); acknowledging and ending")
-        opt_out["write"] = asyncio.ensure_future(_write_opt_out())
-        await task.queue_frames([TTSSpeakFrame(text=plan.stop_acknowledgement), EndFrame()])
+        opt_out.update(heard=True, source=LIVE, quote=quote, at=utc_now_iso())
+        # The parent's words and the line go into the conversation: the
+        # transcript the teacher reads shows both, and the model's closing
+        # reply knows what was said.
+        context.add_message({"role": "user", "content": utterance})
+        context.add_message({"role": "assistant", "content": plan.opt_out_noted})
+        logger.info(f"Possible stop request (outreach {outreach_id}); recording it for the teacher and closing")
+        opt_out["write"] = asyncio.ensure_future(_record_request(quote, LIVE))
+        phase_instructor.skip_to_close()
+        await task.queue_frames([TTSSpeakFrame(text=plan.opt_out_noted)])
+        asyncio.ensure_future(_close_if_silent())
+
+    async def _close_if_silent():
+        await asyncio.sleep(NOTED_CLOSE_AFTER_SILENCE_SECONDS)
+        has_finished = getattr(task, "has_finished", None)
+        if callable(has_finished) and has_finished() is True:
+            return
+        if stop_guard is not None and stop_guard.spoken_since_notice:
+            return  # the model answers in the closing phase and CallManager ends the call
+        logger.info(f"Outreach {outreach_id}: no reply after the opt-out line; closing the call")
+        await task.queue_frames([EndFrame()])
         asyncio.ensure_future(_cancel_if_still_running())
 
     async def _cancel_if_still_running():
@@ -385,7 +381,7 @@ async def create_bot(
         has_finished = getattr(task, "has_finished", None)
         if callable(has_finished) and has_finished() is True:
             return
-        why = "stop request did not end the call in time"
+        why = "the graceful close did not end the call in time"
         logger.warning(f"Outreach {outreach_id}: {why}; finishing the call and forcing the pipeline down")
         # The record, the summary and the hang-up must not wait on a stuck
         # pipeline: start the bookkeeping now (it is shared and idempotent).
@@ -407,11 +403,12 @@ async def create_bot(
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Pipeline cancel failed for outreach {outreach_id}: {e}")
 
-    if on_opt_out is not None:
-        stop_stages = [StopRequestGuard(  # a possible "don't call me again" is confirmed before the model sees it
-            conversation=stop_conversation, on_ask=_on_possible_stop, on_confirm=_on_stop_request,
-        )]
+    if on_opt_out_request is not None:
+        # A possible "don't call me again" is answered by the engine, not the model.
+        stop_guard = StopRequestGuard(listener=StopListener(), on_stop=_on_stop_heard)
+        stop_stages = [stop_guard]
     else:
+        stop_guard = None
         stop_stages = []
         logger.warning(f"Outreach {outreach_id}: no authenticated opt-out writer — do-not-call handling is off for this call")
 
@@ -489,6 +486,8 @@ async def create_bot(
                 insights = await analyze_call(
                     call_context, transcript, api_key=config.google_api_key,
                     backend=gemini,
+                    # The teacher's note quotes these words; ask for them in English.
+                    flagged_words=opt_out["quote"] if opt_out["source"] == LIVE else None,
                 )
                 if insights and call_store:
                     call_store.save_insights(outreach_id, insights)
@@ -512,37 +511,37 @@ async def create_bot(
             except Exception as e:
                 logger.error(f"Post-call analysis failed: {e}")
 
-        # Do-not-call: make sure a spoken stop was saved (one retry), and let
-        # the post-call analysis catch a stop the phrase check missed — but
-        # only on the parent's own quoted words.
-        if on_opt_out is None:
+        # Do-not-call: make sure a stop heard on the call was recorded (one
+        # retry), and let the post-call analysis catch one the phrase check
+        # missed, but only on the parent's own quoted words. Either way it is
+        # only recorded for the teacher; nothing is blocked.
+        if on_opt_out_request is None:
             pass  # unauthenticated route: nothing may be written for this id
-        elif opt_out["requested"]:
+        elif opt_out["heard"]:
             saved = await opt_out["write"] if opt_out["write"] is not None else False
             if not saved:
-                logger.warning(f"Retrying opt-out write for {outreach_id}")
-                await _write_opt_out()
+                logger.warning(f"Retrying the opt-out request record for {outreach_id}")
+                await _record_request(opt_out["quote"], LIVE)
         else:
-            # The analysis may suspect a stop nobody confirmed. It can only
-            # FLAG the outreach for the teacher; a suppression needs the
-            # parent's own yes on the call.
             quote = backstop_quote(insights, transcript)
             if quote is not None:
-                logger.warning(f"Post-call analysis suspects an unconfirmed stop request ({outreach_id}); flagging for the teacher")
-                if on_suspected_opt_out is not None:
-                    try:
-                        await on_suspected_opt_out(quote)
-                    except Exception as e:  # noqa: BLE001
-                        logger.error(f"Suspected opt-out flag failed for {outreach_id}: {e}")
+                logger.warning(f"Post-call analysis found a possible stop request ({outreach_id}); recording it for the teacher")
+                opt_out.update(heard=True, source=ANALYSIS, quote=quote, at=utc_now_iso())
+                await _record_request(quote, ANALYSIS)
 
         # Provider-specific finalisation. The Vobiz path uses this to write the
         # transcript + summary to Firestore (for the modal) and to end the leg
         # over Vobiz REST — the Twilio serializer hangs up on its own instead.
-        if opt_out["requested"] and on_opt_out is not None:
-            # Make the summary say so even when the analysis is missing.
+        if opt_out["heard"] and on_opt_out_request is not None:
+            # The summary leads with it even when the analysis is missing.
+            analysis_opt_out = (insights or {}).get("optOut") if isinstance(insights, dict) else None
+            analysis_opt_out = analysis_opt_out if isinstance(analysis_opt_out, dict) else {}
+            in_english = analysis_opt_out.get("flaggedInEnglish" if opt_out["source"] == LIVE else "quoteInEnglish")
             insights = dict(insights or {})
-            insights["optOutConfirmed"] = True
-            insights["optOutQuote"] = opt_out.get("quote") or ""
+            insights["optOutRequested"] = {
+                "quote": opt_out["quote"], "source": opt_out["source"], "at": opt_out["at"],
+                "inEnglish": in_english if isinstance(in_english, str) else "",
+            }
         if on_call_end:
             try:
                 await on_call_end(transcript, turns, insights)

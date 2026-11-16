@@ -8,12 +8,16 @@ in this order.
 
 ## 1. Before building: the order is not optional
 
-1. **The web reader is live first.** This engine tells a parent who confirms a
-   stop "we will not call you again" and writes `call_suppressions/{sha256(E.164)}`.
-   That is only true once the web app's dial routes refuse a suppressed number
-   (`refuseIfParentOptedOut`, PR #193). Deploy #193 to production **in both
-   regions** and check that a suppressed test number gets `409 PARENT_OPTED_OUT`
-   before this engine takes any traffic.
+1. **Know what a stop request does.** This engine never blocks a number: it
+   writes nothing to `call_suppressions`. When a parent may have asked not to
+   be called again it records `optOutRequested: {quote, at, source}` on the
+   outreach (`source` is `live`, heard on the call, or `analysis`, found
+   after it), leads the teacher's call summary with a note quoting the
+   parent, says "Thank you, I will let the class teacher know you would
+   prefer not to receive these calls" in the call language and closes the
+   call. Whether that parent is called again is the teacher's decision. The
+   non-English lines in `src/call_lines.json` marked `unsure` need a native
+   speaker to read them aloud before they are trusted on a live call.
 2. **The dependency lock exists.** The image installs only from
    `requirements.lock`. Generate it with `scripts/lock.sh` (needs Docker and
    PyPI access), review the diff and commit it. Without the lock the image
@@ -62,20 +66,19 @@ On that call, check:
 - [ ] A concern-reason outreach opens with the fixed request-to-talk line, and
       nothing about the concern is said. Asking "why?" gets the
       "explain in person" line.
-- [ ] "Don't call me now, I'm driving" does **not** end the call, and no
-      `call_suppressions` document appears.
-- [ ] "Please don't call me again", then "no", carries on, and nothing is
-      written.
-- [ ] On a second test call: "please don't call me again", then "yes", gives
-      the acknowledgement and the leg hangs up. `call_suppressions/{sha256}`
-      exists, the outreach shows `optedOut`, and the transcript and summary show
-      the request. The next dial to that number is refused with `409`.
+- [ ] "Don't call me now, I'm driving" does **not** end the call, and the
+      outreach has no `optOutRequested`.
+- [ ] On a second test call: "please don't call me again" gets the fixed
+      "I will let the class teacher know" line and, if you then say nothing,
+      the leg hangs up within about 15 seconds. The outreach shows
+      `optOutRequested` with your words and `source: live`, the summary's
+      first action item quotes you, and **no** `call_suppressions` document
+      was created.
 - [ ] A normal ending (goodbye) hangs up by itself within a few seconds.
 - [ ] Cloud Logging for the candidate revision has no DEBUG lines, no
       transcript text, no phone numbers and no `?t=` token values.
 
-Delete the test suppression document afterwards, so the team member's number
-can be called again.
+Remove `optOutRequested` from the test outreach afterwards.
 
 ## 4. Promote
 
@@ -97,5 +100,6 @@ gcloud run services update-traffic sahayakai-telephony \
   --region=asia-southeast1 --project=sahayakai-b4248
 ```
 
-Rolling back the engine does not lift any suppression it wrote. Those stay
-until removed by hand, by design.
+Rolling back to 00037 brings back its behaviour: it has no stop handling at
+all, so a parent's "please don't call me again" is answered by the model and
+is not recorded for the teacher.

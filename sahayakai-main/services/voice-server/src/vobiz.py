@@ -14,8 +14,9 @@ Everything Vobiz-specific lives here so bot.py / main.py stay provider-agnostic:
     sidecar needs no web-app internal key.
   - write_call_result_firestore(): writes transcript + callSummary back onto the
     same record, which is what the Contact-Parent modal renders.
-  - persist_opt_out_firestore(): writes the do-not-call record the web app's
-    dial routes check (call_suppressions/{sha256(E.164)}).
+  - record_opt_out_request_firestore(): records on parent_outreach/{id} that
+    the parent may prefer not to be called (optOutRequested). The engine never
+    writes call_suppressions.
   - consume_stream_token_firestore(): makes each stream token single-use.
   - hangup_vobiz_call(): ends the leg over Vobiz REST (the answer XML sets
     keepCallAlive=true, so closing the socket alone does not drop the call).
@@ -132,38 +133,19 @@ async def write_call_result_firestore(
         logger.error(f"Firestore result write failed for {outreach_id}: {e}")
 
 
-async def persist_opt_out_firestore(outreach_id: str, project: str, quote: str | None = None) -> bool:
-    """Save "do not call this parent again" where the web app's dial check reads it.
+async def record_opt_out_request_firestore(outreach_id: str, project: str, quote: str, source: str) -> bool:
+    """Record (never enforce) a parent's "please don't call me" on parent_outreach/{id}.
 
-    Writes call_suppressions/{sha256(parentPhone)} (src/opt_out.py has the
-    shape and why) and flags the outreach record. True when the suppression
-    record was written. Logs the outcome; never logs the phone number.
+    Writes only `optOutRequested: {quote, at, source}` (src/opt_out.py has the
+    shape and why). True when it was written. Never logs the quote or a phone
+    number.
     """
-    from src.opt_out import persist_opt_out
+    from src.opt_out import record_opt_out_request
 
     try:
-        result = await persist_opt_out(_db(project), outreach_id, quote=quote)
+        result = await record_opt_out_request(_db(project), outreach_id, quote, source)
     except Exception as e:  # noqa: BLE001 — e.g. the client itself could not be built
-        logger.error(f"Opt-out write failed for {outreach_id}: {e}")
-        return False
-    if result.ok:
-        logger.info(f"Opt-out saved for parent_outreach/{outreach_id}: {result.detail}")
-    else:
-        logger.error(f"Opt-out NOT saved for parent_outreach/{outreach_id}: {result.detail}")
-    return result.ok
-
-
-async def flag_suspected_opt_out_firestore(outreach_id: str, project: str, quote: str) -> bool:
-    """Mark parent_outreach/{id} with a stop the analysis suspected but nobody confirmed.
-
-    Never writes call_suppressions: that needs the parent's own yes on the call.
-    """
-    from src.opt_out import flag_suspected_opt_out
-
-    try:
-        result = await flag_suspected_opt_out(_db(project), outreach_id, quote)
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Suspected opt-out flag failed for {outreach_id}: {e}")
+        logger.error(f"Opt-out request record failed for {outreach_id}: {type(e).__name__}")
         return False
     (logger.info if result.ok else logger.error)(f"parent_outreach/{outreach_id}: {result.detail}")
     return result.ok

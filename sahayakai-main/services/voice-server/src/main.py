@@ -34,14 +34,14 @@ from src.vobiz import (
     fetch_context_firestore,
     write_call_result_firestore,
     hangup_vobiz_call,
-    persist_opt_out_firestore,
-    flag_suspected_opt_out_firestore,
+    record_opt_out_request_firestore,
     consume_stream_token_firestore,
     read_dial_attempt_firestore,
 )
 from src.stream_tokens import StreamUse, is_call_uuid
 from src.log_redaction import with_redaction
 from src.gemini_backend import resolve_gemini_backend
+from src.opt_out import opt_out_note
 
 # After the pipeline ends on its own (last turn, or a stop request) the final
 # sentence may still be playing from the carrier's buffer: the transport sends
@@ -55,38 +55,32 @@ def _is_test_scenario(outreach_id: str) -> bool:
     return outreach_id.startswith("__test__")
 
 
-def _opt_out_writer(authenticated_outreach_id: str):
-    """What create_bot calls when this call's parent asks not to be called again.
+def _opt_out_request_writer(authenticated_outreach_id: str):
+    """What create_bot calls when this call's parent may not want these calls.
 
-    A do-not-call record silently stops every future call to a parent, so it
-    may only ever be written for an outreach id the handler has AUTHENTICATED
-    (today: the signed stream token on the Vobiz route). Never pass an id read
-    from an unauthenticated handshake. tests/test_opt_out_auth.py enforces
-    this over every handler in this file.
+    It only RECORDS the request on the outreach (`optOutRequested`, for the
+    teacher); nothing in the engine blocks a number. Even so it writes to an
+    outreach record, so it may only ever be built for an outreach id the
+    handler has AUTHENTICATED (today: the signed stream token on the Vobiz
+    route). Never pass an id read from an unauthenticated handshake.
+    tests/test_opt_out_auth.py enforces this over every handler in this file.
     """
-    async def _write(quote: str | None = None) -> bool:
-        if authenticated_outreach_id.startswith("__test__"):
-            logger.info(f"Test call {authenticated_outreach_id}: opt-out heard, nothing persisted")
-            return True
-        return await persist_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project, quote)
-
-    return _write
-
-
-def _suspected_opt_out_writer(authenticated_outreach_id: str):
-    """Lets the post-call analysis FLAG (never suppress) an unconfirmed stop."""
-    async def _flag(quote: str) -> bool:
+    async def _record(quote: str, source: str) -> bool:
         if _is_test_scenario(authenticated_outreach_id):
+            logger.info(f"Test call {authenticated_outreach_id}: opt-out request heard, nothing persisted")
             return True
-        return await flag_suspected_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project, quote)
+        return await record_opt_out_request_firestore(
+            authenticated_outreach_id, config.google_cloud_project, quote, source,
+        )
 
-    return _flag
+    return _record
 
 
 async def _finish(finalize) -> None:
     """Run create_bot's end-of-call bookkeeping on every way out of a handler.
 
-    It saves an opt-out heard during the call (retrying a failed write),
+    It records an opt-out request heard during the call (retrying a failed
+    write),
     the transcript and the summary. Idempotent and shielded, so running it
     after the disconnect event already did is harmless. Never raises.
     """
@@ -255,19 +249,19 @@ async def handle_call(websocket: WebSocket):
 
         # Create and run the Pipecat pipeline.
         #
-        # on_opt_out=None ON PURPOSE. This route is unauthenticated: the
-        # outreachId comes from the stream's own `start` event, so anyone who
-        # can open the socket can name any outreach. Writing a do-not-call
-        # record from it would let them silence calls to someone else's
-        # parent. Without a writer create_bot leaves the stop check out
-        # rather than promise "we will not call you again". To enable it,
+        # on_opt_out_request=None ON PURPOSE. This route is unauthenticated:
+        # the outreachId comes from the stream's own `start` event, so anyone
+        # who can open the socket can name any outreach. Without a writer
+        # create_bot leaves the stop check out rather than tell a parent "I
+        # will let the class teacher know" when nothing will. To enable it,
         # authenticate the route first (a signed token from the web app's
-        # TwiML, verified like the Vobiz route, or Twilio's X-Twilio-Signature
-        # with TWILIO_AUTH_TOKEN), then pass _opt_out_writer(<that id>).
+        # TwiML, verified like the Vobiz route, or Twilio's
+        # X-Twilio-Signature with TWILIO_AUTH_TOKEN), then pass
+        # _opt_out_request_writer(<that id>).
         task, finalize = await create_bot(
             config, call_context, websocket, stream_sid,
             call_sid=call_sid, call_store=call_store,
-            on_opt_out=None,
+            on_opt_out_request=None,
         )
 
         logger.info(f"Bot pipeline started for outreach {outreach_id}")
@@ -439,7 +433,7 @@ async def handle_vobiz_call(websocket: WebSocket):
     finalize = None
     try:
         # outreach_id here is the one verify_stream_token returned above:
-        # authenticated, so this route may record a parent's opt-out.
+        # authenticated, so this route may record a parent's opt-out request.
         task, finalize = await create_bot(
             config,
             call_context,
@@ -449,8 +443,7 @@ async def handle_vobiz_call(websocket: WebSocket):
             call_store=call_store,
             serializer=serializer,
             on_call_end=_on_call_end,
-            on_opt_out=_opt_out_writer(outreach_id),
-            on_suspected_opt_out=_suspected_opt_out_writer(outreach_id),
+            on_opt_out_request=_opt_out_request_writer(outreach_id),
         )
         logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
         # Pipecat 1.12 moved the event loop onto the runner and dropped the
@@ -513,22 +506,16 @@ async def _wait_for_plivo_start(websocket: WebSocket, max_messages: int = 5) -> 
     return ""
 
 
-OPT_OUT_NOTE = (
-    "The parent asked not to be called again and confirmed it on the call. "
-    "They will not be called by this system; please reach them another way."
-)
-
-
 def _to_call_summary(insights: dict) -> dict:
     """Map post-call analysis insights onto the parent_outreach.callSummary shape
     the Contact-Parent modal renders (src/types/attendance CallSummary)."""
     summary = _summary_from_insights(insights)
-    if insights.get("optOutConfirmed"):
+    request = insights.get("optOutRequested")
+    if isinstance(request, dict):
         # First thing the teacher reads, with the parent's own words.
-        quote = insights.get("optOutQuote") or ""
-        note = OPT_OUT_NOTE + (f' Their words: "{quote}"' if quote else "")
+        note = opt_out_note(request, request.get("inEnglish"))
         summary["actionItemsForTeacher"] = [note, *summary["actionItemsForTeacher"]]
-        summary["parentResponse"] = summary["parentResponse"] or "The parent asked not to be called again."
+        summary["parentResponse"] = summary["parentResponse"] or "The parent may prefer not to receive these calls."
         summary["followUpNeeded"] = True
     return summary
 

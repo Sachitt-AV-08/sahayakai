@@ -82,7 +82,7 @@ async def _build(backend: str) -> None:
 
     task, finalize = await create_bot(
         config, dict(SMOKE_CONTEXT), _FakeWebSocket(), stream_sid="smoke", call_sid="",
-        call_store=None, serializer=serializer, on_opt_out=no_write,
+        call_store=None, serializer=serializer, on_opt_out_request=no_write,
     )
     if not isinstance(task, PipelineTask) or not callable(finalize):
         raise TypeError(f"create_bot({backend}) returned {type(task).__name__}, {type(finalize).__name__}")

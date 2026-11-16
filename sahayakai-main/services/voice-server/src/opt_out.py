@@ -1,45 +1,44 @@
 """
-Do-not-call: noticing that a parent asked not to be called again, and saving it.
+Do-not-call: noticing that a parent would prefer not to be called, and telling
+the teacher. The engine never blocks a number.
 
-The web app refuses to dial a number when `call_suppressions/{id}` exists,
-where id = lower-case hex sha256 of the E.164 number
-(sahayakai-main/src/lib/call-suppression.ts, `refuseIfParentOptedOut`). This
-engine writes that same document, with the same fields the sahayakai-agents
-bridge writes (`_persist_opt_out`), so either engine's "no" stops both.
+A parent's "please don't call me again" is RECORDED, never enforced, here:
 
-Pure on purpose: stdlib only, Firestore is passed in. A suppression is
-permanent (nothing on the web side lifts it), so nothing is written on a phrase
-match alone:
+  StopListener          runs on every final transcription of the PARENT's
+                        speech, before the model sees it. A possible stop
+                        (is_stop_request, tuned for recall) is noticed once per
+                        call: bot.py records it on the outreach, says one fixed,
+                        honest line ("I will let the class teacher know you
+                        would prefer not to receive these calls") and closes
+                        the call politely.
+  backstop_quote        after the call, the post-call analysis may find a stop
+                        the phrase check missed. It is recorded the same way,
+                        only on the parent's own quoted words.
+  record_opt_out_request
+                        the only write: `optOutRequested: {quote, at, source}`
+                        on parent_outreach/{id}, source "live" or "analysis".
+  opt_out_note          the note that leads the teacher's call summary.
 
-  StopConversation — runs on every final transcription of the PARENT's speech,
-                     before the model sees it. A possible stop (is_stop_request,
-                     tuned for recall) makes bot.py ask ONE fixed, localized
-                     question: should the school stop calling this number?
-                     Only an explicit yes (classify_confirmation) writes the
-                     suppression, speaks the acknowledgement and ends the call.
-                     A no, an unclear answer or silence carries on and writes
-                     nothing.
-  backstop_quote   — after the call, the post-call analysis may report a stop
-                     nobody confirmed. It can only FLAG the outreach for the
-                     teacher (suspected_opt_out_fields); it never writes a
-                     suppression.
-  persist_opt_out  — writes the suppression record (and flags the outreach).
+WHY THE ENGINE DOES NOT WRITE call_suppressions
+A suppression silently stops every future call to that number and nothing on
+the web side lifts it. Independent review (rereview-0b #1, #2, #3, #6) showed a
+spoken yes/no confirmation cannot be trusted with that: "yes, call me", "yes,
+tomorrow evening", a backchannel or a bystander's "haan" all confirmed, while
+"yes, please don't call" did not. So the decision stays with the teacher, who
+sees the parent's own words. `persist_opt_out` and the digest
+(`phone_suppression_id`, `suppression_record`) are kept, unused, for a later
+designed feature; tests/test_opt_out_never_suppresses.py fails if any engine
+code path reaches them.
 
 WHY A DETERMINISTIC DETECTOR, NOT A MODEL TOOL
 Missed stops are the failure that matters: a parent who said "do not call me"
-and is called again. The model here is capped at 40 tokens and one sentence,
-and its output is cut and filtered by CallManager, so a tool call or marker
-from it would be the least reliable signal in the pipeline; it also depends on
-Gemini answering at all. A phrase check on the parent's own words runs on every
-utterance whether or not the model behaves, and the post-call backstop catches
-paraphrases the list does not know.
-
-False stops are what the confirmation question is for: "don't call me NOW",
-"don't call my husband, call me", "call karna na" (an invitation) or "phone
-band karo" (hang up) must never become a permanent do-not-call. The detector
-also skips the question when the utterance carries a time, third-party or
-redirection cue, so a parent is not asked needlessly. The engine's own lines,
-the question included, never trigger it (echo).
+and is called again without the teacher knowing. The model here is capped at
+40 tokens and one sentence, and its output is cut and filtered by CallManager,
+so a tool call or marker from it would be the least reliable signal in the
+pipeline. A phrase check on the parent's own words runs on every utterance
+whether or not the model behaves, and the post-call backstop catches
+paraphrases the list does not know. A false hit costs one honest sentence and a
+note the teacher can read and dismiss; it never silences a parent.
 """
 
 from __future__ import annotations
@@ -92,6 +91,10 @@ async def persist_opt_out(
 ) -> OptOutWrite:
     """Write call_suppressions/{sha256(phone)} for this outreach's parent.
 
+    UNUSED ON PURPOSE: no engine code path may call this (see the module
+    docstring and tests/test_opt_out_never_suppresses.py). It is kept, with
+    its tests and the shared digest fixture, for a later designed feature.
+
     `db` is a google.cloud.firestore.AsyncClient (or a fake with the same
     shape). The phone comes from the outreach record itself, the source of
     truth, not from whatever context the call was started with.
@@ -127,10 +130,9 @@ async def persist_opt_out(
 
 # ── Noticing a possible stop request in the parent's speech ──────────────────
 #
-# The phrase check only decides whether to ASK. It favours recall: a false hit
-# costs one polite question, a miss costs a parent who said "do not call me"
-# being called again. Nothing is written until the parent answers the
-# confirmation question with an explicit yes (classify_confirmation).
+# The phrase check favours recall: a false hit costs one honest sentence and a
+# note the teacher can dismiss; a miss costs a parent who said "do not call me"
+# being called again without the teacher knowing.
 
 # Every letter or combining mark of the Indic scripts this engine speaks.
 _INDIC = "ऀ-෿"
@@ -296,7 +298,7 @@ def is_stop_request(text: object) -> bool:
 
     True for an unambiguous phrase ("remove my number"), or for a "don't call"
     phrase in an utterance with no time, third-party or redirection cue. A
-    True never writes anything by itself (see StopConversation).
+    True only ever leads to a flag for the teacher (StopListener).
     """
     t = normalize(text)
     if not t:
@@ -311,131 +313,37 @@ def has_reschedule_cue(text: object) -> bool:
     return bool(_NOT_A_STOP.search(normalize(text)))
 
 
-# ── The confirmation answer ──────────────────────────────────────────────────
+# ── Noticing it during the call ──────────────────────────────────────────────
 
 
-class Confirmation(enum.Enum):
-    YES = "yes"
-    NO = "no"
-    UNCLEAR = "unclear"
+class StopListener:
+    """Notice, once per call, that the parent may be asking not to be called.
 
-
-# Words that, ON THEIR OWN in a short answer, mean yes. Deliberately narrow:
-# "okay", "sari", "theek hai" are left out because they also mean "go on".
-_YES_WORDS = frozenset({
-    "yes", "yeah", "yep", "yup", "yea", "sure", "correct", "definitely", "exactly",
-    "haan", "han", "haanji", "hanji", "bilkul", "zaroor", "jaroor",
-    "हाँ", "हां", "हाँजी", "हांजी", "बिल्कुल", "बिलकुल", "ज़रूर", "जरूर",
-    "होय",                             # Marathi ("हो" only on a Marathi call, below)
-    "হ্যাঁ", "হ্যা", "হাঁ", "অবশ্যই",      # Bengali
-    "હા", "હાં", "ચોક્કસ",               # Gujarati
-    "ਹਾਂ", "ਬਿਲਕੁਲ",                   # Punjabi
-    "ಹೌದು", "ಹೂಂ",                     # Kannada
-    "ஆமா", "ஆமாம்", "ஆம்",              # Tamil
-    "అవును", "అవునండి",                # Telugu
-    "അതെ", "ഉവ്വ്",                     # Malayalam
-})
-_NO_WORDS = frozenset({
-    "no", "nope", "nah", "not", "nahi", "nahin", "nai", "na",
-    "नहीं", "नही", "नहि", "ना", "न", "नाही", "नको",
-    "না", "নাহ", "ના", "નહીં", "નહિ", "ਨਹੀਂ", "ਨਾ",
-    "ಇಲ್ಲ", "ಬೇಡ", "இல்லை", "இல்ல", "வேண்டாம்", "లేదు", "వద్దు", "ഇല്ല", "വേണ്ട",
-})
-_YES_PHRASES = re.compile(r"\b(?:please do|go ahead|that's right|that is right|ji haan|haan ji)\b")
-MAX_YES_WORDS = 6
-# Yes words that are ordinary words in another call language ("हो" is
-# Marathi's yes and Hindi's "be"), honoured only on a call in that language.
-_LANGUAGE_YES_WORDS = {"mr-IN": frozenset({"हो"})}
-
-
-def classify_confirmation(text: object, lang_code: str | None = None) -> Confirmation:
-    """Classify the answer to "should the school stop calling this number?".
-
-    YES only for a short answer that contains a yes word and no no word.
-    Anything mixed, long or unknown is UNCLEAR, and UNCLEAR never writes.
-    """
-    t = normalize(text)
-    tokens = t.split()
-    if not tokens:
-        return Confirmation.UNCLEAR
-    yes_words = _YES_WORDS | _LANGUAGE_YES_WORDS.get(lang_code or "", frozenset())
-    yes = any(tok in yes_words for tok in tokens) or bool(_YES_PHRASES.search(t))
-    no = any(tok in _NO_WORDS for tok in tokens)
-    if yes and not no and len(tokens) <= MAX_YES_WORDS:
-        return Confirmation.YES
-    if no and not yes:
-        return Confirmation.NO
-    return Confirmation.UNCLEAR
-
-
-def _looks_like_echo(text: str, line: str) -> bool:
-    """Speech-to-text hearing the engine's own question back."""
-    heard, said = set(normalize(text).split()), set(normalize(line).split())
-    return bool(heard) and len(heard & said) >= max(2, int(0.6 * len(heard)))
-
-
-# ── The conversation around a possible stop ──────────────────────────────────
-
-
-class StopAction(enum.Enum):
-    PASS = "pass"        # ordinary speech: give it to the model
-    ASK = "ask"          # possible stop: ask the confirmation question
-    CONFIRM = "confirm"  # explicit yes: write the suppression, acknowledge, end
-    DECLINE = "decline"  # no or unclear: carry on, hand the answer to the model
-    IGNORE = "ignore"    # our own question heard back; keep waiting
-
-
-class StopConversation:
-    """Detect, confirm, then (and only then) write.
-
-    Speech-to-text splits an utterance wherever the parent pauses, so the
-    detector checks each transcription alone, then joined to the one before.
-    A possible stop asks the question at most `max_questions` times per call;
-    after that, "don't call" is just speech for the model.
+    Speech-to-text splits an utterance wherever the parent pauses, so each
+    transcription is checked alone, then joined to the one before. After the
+    first notice everything else is ordinary speech for the model: the engine
+    says its line once and never argues.
     """
 
-    def __init__(self, question: str = "", lang_code: str | None = None, max_questions: int = 2) -> None:
+    def __init__(self) -> None:
         self._previous = ""
-        self._question = question
-        self._lang_code = lang_code
-        self.max_questions = max_questions
-        self.questions = 0
-        self.awaiting = False
-        self.confirmed = False
-        self.asked_about: str | None = None
-        self.answer: str | None = None
+        self._previous_raw = ""
+        self.noticed = False
+        self.quote: str | None = None
 
-    def on_parent_speech(self, text: object) -> StopAction:
+    def on_parent_speech(self, text: object) -> bool:
+        """True exactly once: when this utterance (alone or joined) is a possible stop."""
+        raw = text.strip() if isinstance(text, str) else ""
         utterance = normalize(text)
-        if self.confirmed:
-            return StopAction.IGNORE
-        if not utterance:
-            return StopAction.PASS
-        if self.awaiting:
-            if self._question and _looks_like_echo(utterance, self._question):
-                return StopAction.IGNORE
-            self.awaiting = False
-            self._previous = ""
-            if classify_confirmation(utterance, self._lang_code) is Confirmation.YES:
-                self.confirmed = True
-                self.answer = text if isinstance(text, str) else utterance
-                return StopAction.CONFIRM
-            return StopAction.DECLINE
-        previous, self._previous = self._previous, utterance
-        if self.questions >= self.max_questions:
-            return StopAction.PASS
-        for window in (utterance, f"{previous} {utterance}" if previous else None):
-            if window and is_stop_request(window):
-                self.awaiting = True
-                self.questions += 1
-                self.asked_about = window
-                self._previous = ""
-                return StopAction.ASK
-        return StopAction.PASS
-
-    def on_no_answer(self) -> None:
-        """The parent said nothing after the question: carry on, write nothing."""
-        self.awaiting = False
+        if self.noticed or not utterance:
+            return False
+        previous, previous_raw = self._previous, self._previous_raw
+        self._previous, self._previous_raw = utterance, raw
+        if is_stop_request(utterance):
+            self.noticed, self.quote = True, raw
+        elif previous and is_stop_request(f"{previous} {utterance}"):
+            self.noticed, self.quote = True, f"{previous_raw} {raw}".strip()
+        return self.noticed
 
 
 # ── After the call: the analysis backstop ────────────────────────────────────
@@ -465,22 +373,51 @@ def backstop_quote(insights: Mapping[str, Any] | None, transcript: Sequence[Mapp
     return None
 
 
-def suspected_opt_out_fields(quote: str, now: str) -> dict[str, Any]:
-    """Outreach fields that let the teacher see a stop the parent never confirmed."""
-    return {
-        "optOutSuspected": True,
-        "optOutSuspectedQuote": quote[:500],
-        "optOutSuspectedSource": "post_call_analysis",
-        "optOutSuspectedAt": now,
-        "updatedAt": now,
-    }
+LIVE = "live"          # heard by StopListener during the call
+ANALYSIS = "analysis"  # found by the post-call analysis (backstop_quote)
+OPT_OUT_REQUEST_FIELD = "optOutRequested"
+MAX_QUOTE_CHARS = 500
 
 
-async def flag_suspected_opt_out(db: Any, outreach_id: str, quote: str, *, now: str | None = None) -> OptOutWrite:
-    """Flag (never suppress) the outreach. Never raises."""
+def opt_out_request(quote: str, at: str, source: str) -> dict[str, Any]:
+    """The `optOutRequested` map on parent_outreach/{id}."""
+    if source not in (LIVE, ANALYSIS):
+        raise ValueError(f"unknown opt-out source {source!r}")
+    return {"quote": quote[:MAX_QUOTE_CHARS], "at": at, "source": source}
+
+
+async def record_opt_out_request(
+    db: Any, outreach_id: str, quote: str, source: str, *, now: str | None = None,
+) -> OptOutWrite:
+    """Record (never enforce) that the parent may not want these calls. Never raises.
+
+    The one write the engine makes for a stop request: it updates only the
+    outreach the call was authenticated for, and never touches
+    call_suppressions.
+    """
     now = now or utc_now_iso()
     try:
-        await db.collection(OUTREACH_COLLECTION).document(outreach_id).update(suspected_opt_out_fields(quote, now))
+        fields = {OPT_OUT_REQUEST_FIELD: opt_out_request(quote, now, source), "updatedAt": now}
+        await db.collection(OUTREACH_COLLECTION).document(outreach_id).update(fields)
     except Exception as exc:  # noqa: BLE001
-        return OptOutWrite(False, f"suspected opt-out flag failed for {outreach_id}: {type(exc).__name__}")
-    return OptOutWrite(True, "suspected opt-out flagged")
+        return OptOutWrite(False, f"opt-out request not recorded for {outreach_id}: {type(exc).__name__}")
+    return OptOutWrite(True, f"opt-out request recorded ({source})")
+
+
+def opt_out_note(request: Mapping[str, Any], in_english: str | None = None) -> str:
+    """The first line of the teacher's call summary, quoting the parent.
+
+    English like the rest of the summary, with the parent's own words and,
+    when the post-call analysis gave one, their English translation.
+    """
+    quote = str(request.get("quote") or "").strip()
+    if request.get("source") == ANALYSIS:
+        lead = "The call review found the parent may prefer not to receive these calls"
+    else:
+        lead = ("The parent said they would prefer not to receive these calls, and was told "
+                "the class teacher would be informed")
+    note = lead + (f'. Their words: "{quote}"' if quote else "")
+    english = (in_english or "").strip()
+    if quote and english and normalize(english) != normalize(quote):
+        note += f' (in English: "{english}")'
+    return note + ". Nothing has been blocked: they can still be called. Please decide how to follow up."

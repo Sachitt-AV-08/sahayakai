@@ -771,6 +771,9 @@ class _AsyncDoc:
         self._db.docs[self._key] = dict(data)
 
     async def update(self, data):
+        if "optOutRequested" in data and self._db.fail_opt_out_requests > 0:
+            self._db.fail_opt_out_requests -= 1
+            raise RuntimeError("simulated Firestore outage")
         if self._key not in self._db.docs:
             raise LookupError(f"{self._key} not found")
         self._db.writes.append(("update", *self._key, dict(data), None))
@@ -793,9 +796,11 @@ class FakeAsyncFirestore:
         docs: dict[tuple[str, str], dict] | None = None,
         fail: Exception | None = None,
         fail_suppression_sets: int = 0,
+        fail_opt_out_requests: int = 0,
     ) -> None:
         self.docs = {k: dict(v) for k, v in (docs or {}).items()}
         self.fail_suppression_sets = fail_suppression_sets
+        self.fail_opt_out_requests = fail_opt_out_requests
         self.reads: list[tuple[str, str]] = []
         self.writes: list[tuple] = []
         self._fail = fail

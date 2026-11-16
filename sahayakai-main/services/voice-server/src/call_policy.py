@@ -75,7 +75,7 @@ LANGUAGE_NAMES: dict[str, str] = {
     "pa-IN": "Punjabi",
 }
 
-LINE_KEYS = ("request_to_talk", "explain_in_person", "stop_acknowledgement", "stop_confirmation_question")
+LINE_KEYS = ("request_to_talk", "explain_in_person", "opt_out_noted")
 CALL_LINES_PATH = Path(__file__).with_name("call_lines.json")
 
 # The only record fields a request-to-talk call may hand to the model.
@@ -115,8 +115,9 @@ class CallPlan:
     # None keeps CallManager's original Hindi replacement (positive feedback).
     ai_reveal_line: str | None
     ai_reveal_pattern: re.Pattern[str]
-    stop_acknowledgement: str
-    stop_confirmation_question: str
+    # Said once when the parent may have asked not to be called again: the
+    # class teacher will be told. Never a promise that nobody will call.
+    opt_out_noted: str
     uses_parent_history: bool
 
     @property
@@ -206,8 +207,7 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
             manager_context=dict(call_context),
             ai_reveal_line=None,
             ai_reveal_pattern=AI_REVEAL_ORIGINAL,
-            stop_acknowledgement=lines["stop_acknowledgement"],
-            stop_confirmation_question=lines["stop_confirmation_question"],
+            opt_out_noted=lines["opt_out_noted"],
             uses_parent_history=True,
         )
 
@@ -233,7 +233,6 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
         # which would contradict an opening spoken on the teacher's behalf.
         ai_reveal_line=greeting,
         ai_reveal_pattern=AI_REVEAL_WORD_BOUNDED,
-        stop_acknowledgement=lines["stop_acknowledgement"],
-        stop_confirmation_question=lines["stop_confirmation_question"],
+        opt_out_noted=lines["opt_out_noted"],
         uses_parent_history=False,
     )

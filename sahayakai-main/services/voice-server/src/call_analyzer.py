@@ -68,9 +68,16 @@ Respond ONLY with a JSON object (no markdown, no code fences):
   ],
   "optOut": {{
     "requested": <true ONLY if the parent clearly asked the school to stop calling them altogether; false for 'not now', 'call later', 'I am busy' or a preferred time>,
-    "quote": "<the parent's exact words asking not to be called again, copied character for character from a Parent line above, or empty>"
+    "quote": "<the parent's exact words asking not to be called again, copied character for character from a Parent line above, or empty>",
+    "quoteInEnglish": "<that quote translated into English, or empty>"{flagged_field}
   }}
 }}"""
+
+# Asked only when the call itself noticed a possible stop: the teacher's note
+# quotes those words, with this translation.
+_FLAGGED_FIELD = (
+    ',\n    "flaggedInEnglish": "<English translation of these words the parent said: {words}>"'
+)
 
 
 async def analyze_call(
@@ -78,12 +85,15 @@ async def analyze_call(
     transcript: list[dict],
     api_key: str | None = None,
     backend=None,
+    flagged_words: str | None = None,
 ) -> dict | None:
     """Analyze a completed call transcript and return structured insights.
 
     Returns dict with keys matching call_insights + concerns + followUps.
     `backend` is a gemini_backend.GeminiBackend; Vertex needs no API key.
     Without one (or with the AI Studio backend) the key is used as before.
+    `flagged_words`: the parent's words the call noticed as a possible stop;
+    the result's optOut.flaggedInEnglish then carries their translation.
     """
     if not _HAS_GENAI:
         logger.warning("Skipping call analysis — google-genai not installed")
@@ -114,6 +124,8 @@ async def analyze_call(
         school_name=call_context.get("schoolName", "School"),
         parent_language=call_context.get("parentLanguage", "Hindi"),
         transcript_text=transcript_text,
+        flagged_field=_FLAGGED_FIELD.format(words=json.dumps(flagged_words, ensure_ascii=False))
+        if isinstance(flagged_words, str) and flagged_words.strip() else "",
     )
 
     try:

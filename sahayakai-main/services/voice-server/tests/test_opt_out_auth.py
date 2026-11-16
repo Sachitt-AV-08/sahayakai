@@ -1,20 +1,24 @@
-"""CLASS GATE — no handler writes a do-not-call record for an unauthenticated id.
+"""CLASS GATE — no handler writes an opt-out record for an unauthenticated id.
 
-A suppression silently stops every future call to a parent, so a forged
-outreach id is an attack on someone else's family. The instance (security
-review of 67839bbb6): /ws/call passed `_opt_out_writer(outreach_id)` with the
-id read from the socket's own, unauthenticated `start` event. The web app
-cannot supply a signed token for /ws/call today and the live service has no
-TWILIO_AUTH_TOKEN to check Twilio's signature, so that route gets no writer at
-all (and therefore no stop check and no promise).
+The instance (security review of 67839bbb6): /ws/call passed
+`_opt_out_writer(outreach_id)` with the id read from the socket's own,
+unauthenticated `start` event, so anyone could silence calls to someone
+else's family. The engine no longer blocks numbers at all
+(test_opt_out_never_suppresses.py), but it still records `optOutRequested`
+on the outreach, and a forged id must not plant that note in another
+teacher's record either. The web app cannot supply a signed token for
+/ws/call today and the live service has no TWILIO_AUTH_TOKEN to check
+Twilio's signature, so that route gets no writer at all (and therefore no
+stop check and no "I will let the class teacher know").
 
 Checked structurally over the AST of main.py, so a new handler is covered the
-day it is written: every create_bot(on_opt_out=...) must be None or
-_opt_out_writer(<name>) where every assignment to <name> in that handler comes
-from an authenticator (verify_stream_token), and nothing else may call the
-suppression writers. A self-test proves the checker rejects the original bug.
-Then behaviourally: a stranger naming a real outreach on /ws/call and saying
-"stop" changes nothing, and a forged Vobiz token is refused before any read.
+day it is written: every create_bot(on_opt_out_request=...) must be None or
+_opt_out_request_writer(<name>) where every assignment to <name> in that
+handler comes from an authenticator (verify_stream_token), and nothing else
+may call the record writers. A self-test proves the checker rejects the
+original bug. Then behaviourally: a stranger naming a real outreach on
+/ws/call and saying "stop" changes nothing, and a forged Vobiz token is
+refused before any read.
 """
 
 from __future__ import annotations
@@ -37,14 +41,12 @@ from main_ast import RECORD, SOURCE, call_name, handlers, say, suppressions
 
 # Calls that turn untrusted input into an authenticated outreach id.
 AUTHENTICATORS = {"verify_stream_token"}
-# Writes keyed by the outreach id: the suppression, and the post-call
-# "suspected opt-out" flag. Each may only be reached through its writer.
+# Writes keyed by the outreach id. Each may only be reached through its writer.
 WRITER_FOR = {
-    "on_opt_out": "_opt_out_writer",
-    "on_suspected_opt_out": "_suspected_opt_out_writer",
+    "on_opt_out_request": "_opt_out_request_writer",
 }
-WRITERS = {"persist_opt_out_firestore", "persist_opt_out",
-           "flag_suspected_opt_out_firestore", "flag_suspected_opt_out"}
+WRITERS = {"record_opt_out_request_firestore", "record_opt_out_request",
+           "persist_opt_out_firestore", "persist_opt_out"}
 
 
 def _assignments(fn: ast.AST, name: str) -> list[ast.AST]:
@@ -78,7 +80,7 @@ def _is_authenticated(fn: ast.AST, name: str) -> bool:
 
 
 def unauthenticated_writes(source: str) -> list[str]:
-    """Places where a suppression could be written for an unauthenticated id."""
+    """Places where an opt-out record could be written for an unauthenticated id."""
     tree = ast.parse(source)
     problems: list[str] = []
     approved: set[int] = set()
@@ -118,7 +120,7 @@ def test_the_checkers_see_both_handlers():
     assert {"handle_call", "handle_vobiz_call"} <= set(names), names
 
 
-def test_no_handler_writes_suppressions_for_an_unauthenticated_id():
+def test_no_handler_writes_opt_out_records_for_an_unauthenticated_id():
     assert unauthenticated_writes(SOURCE) == []
 
 
@@ -128,12 +130,12 @@ def test_the_vobiz_handler_is_recognised_as_authenticated():
     vobiz = next(fn for fn in handlers(tree) if fn.name == "handle_vobiz_call")
     assert _is_authenticated(vobiz, "outreach_id")
     writers = [kw.value for n in ast.walk(vobiz) if call_name(n) == "create_bot"
-               for kw in n.keywords if kw.arg == "on_opt_out"]
-    assert [call_name(w) for w in writers] == ["_opt_out_writer"]
+               for kw in n.keywords if kw.arg == "on_opt_out_request"]
+    assert [call_name(w) for w in writers] == ["_opt_out_request_writer"]
 
 
 def test_the_auth_checker_rejects_the_original_bug():
-    bad = SOURCE.replace("on_opt_out=None,", "on_opt_out=_opt_out_writer(outreach_id),", 1)
+    bad = SOURCE.replace("on_opt_out_request=None,", "on_opt_out_request=_opt_out_request_writer(outreach_id),", 1)
     assert bad != SOURCE
     assert any("handle_call" in p for p in unauthenticated_writes(bad))
 
@@ -141,7 +143,7 @@ def test_the_auth_checker_rejects_the_original_bug():
 # ── behaviour ────────────────────────────────────────────────────────────────
 
 
-def test_ws_call_cannot_write_a_suppression_for_a_named_outreach(tmp_path, monkeypatch):
+def test_ws_call_cannot_record_anything_for_a_named_outreach(tmp_path, monkeypatch):
     """Anyone can open /ws/call and claim an outreach id; saying "stop" must change nothing."""
     db = FakeAsyncFirestore({("parent_outreach", "VictimOutreach000001"): RECORD})
     web_ctx = {"studentName": "Aarav", "reason": "", "requestToTalk": True, "parentLanguage": "Hindi"}
@@ -160,7 +162,7 @@ def test_ws_call_cannot_write_a_suppression_for_a_named_outreach(tmp_path, monke
             ScriptedRunner.script = None
     assert suppressions(db) == [] and db.writes == []
     assert "StopRequestGuard" not in [type(p).__name__ for p in run.processors]
-    assert run.task.queued == [], "no 'we will not call you again' promise on an unauthenticated route"
+    assert run.task.queued == [], "no 'I will let the class teacher know' on an unauthenticated route"
 
 
 def test_vobiz_rejects_a_forged_token_before_reading_anything(tmp_path, monkeypatch):

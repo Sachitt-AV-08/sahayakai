@@ -116,7 +116,6 @@ async def _live_call() -> None:
             await stage.process_frame(TranscriptionFrame(text=f"{MARK}-PARENT mera number {PHONE} hai"), FrameDirection.DOWNSTREAM)
     for stage in [p for p in run.processors if type(p).__name__ == "StopRequestGuard"]:
         await stage.process_frame(TranscriptionFrame(text=f"{MARK} please don't call me again"), FrameDirection.DOWNSTREAM)
-        await stage.process_frame(TranscriptionFrame(text=f"{MARK} हाँ"), FrameDirection.DOWNSTREAM)
     for _ in range(5):
         await asyncio.sleep(0)
 
@@ -160,10 +159,10 @@ def test_a_vobiz_call_logs_no_conversation_text_or_phone(reason, tmp_path, monke
         spoken = [f.text for f in task.queued if f.text]
     _assert_clean(records)
     # The call really carried the sentinels: a positive call speaks the
-    # teacher's message, and the stop was heard and saved.
+    # teacher's message, and the stop was heard and recorded.
     if reason == "positive_feedback":
         assert any(MARK in text for text in spoken)
-    assert any(w[1] == "call_suppressions" for w in db.writes), "the stop was not heard"
+    assert any("optOutRequested" in w[3] for w in db.writes), "the stop was not heard"
     assert any("Playing greeting" in text for _, text in records)
 
 

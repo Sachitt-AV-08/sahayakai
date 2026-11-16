@@ -1,23 +1,23 @@
-"""CLASS GATE — a parent's "do not call me again" outlives the call.
+"""CLASS GATE — a parent's "do not call me again" reaches the teacher.
 
 The live engine had no stop handling at all: a parent who asked not to be
-called was answered by the model (which might even say "noted") and the next
-click called them again. The web app refuses a dial when
-call_suppressions/{sha256(E.164)} exists, so the class of bug is "a stop
-request that does not end up as that exact document". The gate:
+called was answered by the model (which might even say "noted"), nothing was
+recorded, and the next click called them again with the teacher none the
+wiser. The class of bug is "a stop request that leaves no trace the teacher
+can see". (Blocking the number is NOT the engine's job: see
+test_opt_out_never_suppresses.py.) The gate:
 
-  * stop writes, non-stop never does: the real create_bot pipeline (pipecat
-    stubbed) is fed the parent's words; a stop request writes the suppression
-    under the right id with the web app's document shape, speaks the fixed
-    acknowledgement, ends the call and keeps the words from the model; any
-    ordinary or rescheduling sentence writes nothing;
-  * the authenticated entry point (Vobiz) wires the writer to Firestore
+  * the real create_bot pipeline (pipecat stubbed) is fed the parent's words;
+    a stop request is recorded on the outreach (optOutRequested), answered with
+    the fixed line, moves the call to its close and is kept from the model;
+    any ordinary or rescheduling sentence records nothing and reaches the model;
+  * a failed record is retried once at the end of the call;
+  * the authenticated entry point (Vobiz) wires the recorder to Firestore
     (/ws/call deliberately does not; see test_opt_out_auth.py);
   * the post-call backstop counts only a verbatim parent quote;
-  * digest parity: the shared fixture digest equals what Python computes,
-    what Node computes with the web module's exact expression, and the
-    literals pinned in the web and agents tests when they are present;
-  * the detector never fires on the engine's own lines (echo).
+  * the detector never fires on the engine's own lines (echo);
+  * the kept, unused suppression writer and its digest still agree with the
+    web app and the agents bridge, for the later designed feature.
 """
 
 from __future__ import annotations
@@ -46,14 +46,16 @@ from bot_harness import (
     stubbed_runtime,
 )
 from src.call_policy import load_call_lines
+from main_ast import opt_out_requests
 from src.opt_out import (
     SUPPRESSION_COLLECTION,
-    StopAction,
-    StopConversation,
+    StopListener,
     backstop_quote,
     is_stop_request,
+    opt_out_request,
     persist_opt_out,
     phone_suppression_id,
+    record_opt_out_request,
     suppression_record,
     utc_now_iso,
 )
@@ -224,16 +226,51 @@ def test_the_engine_never_hears_its_own_lines_as_a_stop():
     assert [t for t in own if is_stop_request(t)] == []
 
 
-def test_a_stop_split_across_two_transcriptions_still_asks():
-    c = StopConversation()
-    assert c.on_parent_speech("please don't") is StopAction.PASS
-    assert c.on_parent_speech("call me again") is StopAction.ASK
+def test_a_stop_split_across_two_transcriptions_is_still_noticed():
+    c = StopListener()
+    assert c.on_parent_speech("please don't") is False
+    assert c.on_parent_speech("call me again") is True
+    assert c.quote == "please don't call me again"
 
 
 def test_an_earlier_reschedule_cannot_veto_a_later_plain_stop():
-    c = StopConversation()
-    assert c.on_parent_speech("I am free in the evening") is StopAction.PASS
-    assert c.on_parent_speech("actually, don't call me") is StopAction.ASK
+    c = StopListener()
+    assert c.on_parent_speech("I am free in the evening") is False
+    assert c.on_parent_speech("actually, don't call me") is True
+    assert c.quote == "actually, don't call me"
+
+
+def test_a_stop_is_noticed_once_per_call():
+    c = StopListener()
+    assert c.on_parent_speech("don't call me") is True
+    assert c.on_parent_speech("I said don't call me") is False
+
+
+# ── the record ───────────────────────────────────────────────────────────────
+
+
+def test_the_record_is_the_outreach_field_and_nothing_else():
+    db = FakeAsyncFirestore({("parent_outreach", "out-1"): outreach()})
+    result = asyncio.run(record_opt_out_request(db, "out-1", "phone mat karo", "live", now="2026-11-16T10:00:00Z"))
+    assert result.ok, result.detail
+    assert db.writes == [("update", "parent_outreach", "out-1", {
+        "optOutRequested": {"quote": "phone mat karo", "at": "2026-11-16T10:00:00Z", "source": "live"},
+        "updatedAt": "2026-11-16T10:00:00Z",
+    }, None)]
+
+
+@pytest.mark.parametrize("db", [FakeAsyncFirestore(), FakeAsyncFirestore(fail=RuntimeError("firestore down"))])
+def test_a_failed_record_is_reported_not_raised(db):
+    result = asyncio.run(record_opt_out_request(db, "out-missing", "stop calling", "analysis"))
+    assert not result.ok and db.writes == []
+
+
+def test_only_the_two_sources_exist():
+    with pytest.raises(ValueError):
+        opt_out_request("x", "2026-11-16T10:00:00Z", "parent_speech")
+    db = FakeAsyncFirestore({("parent_outreach", "out-1"): outreach()})
+    assert not asyncio.run(record_opt_out_request(db, "out-1", "x", "parent_speech")).ok
+    assert db.writes == []
 
 
 # ── backstop ─────────────────────────────────────────────────────────────────
@@ -269,11 +306,11 @@ def test_backstop_ignores_anything_but_a_verbatim_stop(insights):
 class Writer:
     def __init__(self, results=(True,)):
         self.results = list(results)
-        self.calls = 0
+        self.calls: list[tuple] = []
 
     async def __call__(self, *args):
-        self.calls += 1
-        return self.results[min(self.calls, len(self.results)) - 1]
+        self.calls.append(args)
+        return self.results[min(len(self.calls), len(self.results)) - 1]
 
 
 async def _hear(run, text: str):
@@ -284,72 +321,59 @@ async def _hear(run, text: str):
     return guard.pushed[before:]
 
 
-YES = {"Hindi": "हाँ", "Tamil": "ஆமாம்", "English": "yes"}
-
-
-async def _stop_and_confirm(run, text: str, yes: str = "yes"):
-    """The parent asks not to be called, hears the question, and says yes."""
-    return await _hear(run, text) + await _hear(run, yes)
-
-
 @pytest.mark.parametrize("reason", ["consecutive_absences", "positive_feedback"])
 @pytest.mark.parametrize("language", ["Hindi", "Tamil", "English"])
-def test_a_stop_writes_acknowledges_ends_and_hides_the_words_from_the_model(reason, language):
+def test_a_stop_is_recorded_answered_once_and_hidden_from_the_model(reason, language):
     writer = Writer()
     ctx = {**outreach(), "id": "out-1", "reason": reason, "parentLanguage": language}
     with stubbed_runtime():
         async def go():
-            run = await build_bot(ctx, call_store=FakeCallStore(), on_opt_out=writer)
-            passed = await _stop_and_confirm(run, "Please don't call me again", YES[language])
+            run = await build_bot(ctx, call_store=FakeCallStore(), on_opt_out_request=writer)
+            passed = await _hear(run, "Please don't call me again")
             after = await _hear(run, "hello? are you there?")
             return run, passed, after
 
         run, passed, after = asyncio.run(go())
 
     lines = load_call_lines()[{"Hindi": "hi-IN", "Tamil": "ta-IN", "English": "en-IN"}[language]]
-    assert writer.calls == 1
-    assert passed == [] and after == [], "the model must not see the stop, the yes, or anything after"
-    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame", "TTSSpeakFrame", "EndFrame"]
-    assert run.task.queued[0].text == lines["stop_confirmation_question"]
-    assert run.task.queued[1].text == lines["stop_acknowledgement"]
+    assert writer.calls == [("Please don't call me again", "live")]
+    assert passed == [], "the model must not answer the stop itself"
+    assert [f.text for f, _ in after] == ["hello? are you there?"], "after the line the parent is heard again"
+    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame"]
+    assert run.task.queued[0].text == lines["opt_out_noted"]
+    assert run.processor("PhaseInstructor").phase.value == "close", "the call moves to its goodbye"
 
 
 @pytest.mark.parametrize("text", NOT_STOPS[:12])
-def test_a_non_stop_writes_nothing_and_reaches_the_model(text):
+def test_a_non_stop_records_nothing_and_reaches_the_model(text):
     writer = Writer()
     with stubbed_runtime():
         async def go():
-            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out=writer)
+            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out_request=writer)
             return run, await _hear(run, text)
 
         run, passed = asyncio.run(go())
-    assert writer.calls == 0
+    assert writer.calls == []
     assert run.task.queued == []
     if text:
         assert [f.text for f, _ in passed] == [text]
 
 
-def test_a_failed_write_is_retried_once_at_the_end_of_the_call():
+def test_a_failed_record_is_retried_once_at_the_end_of_the_call():
     writer = Writer(results=(False, True))
     with stubbed_runtime():
         async def go():
-            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out=writer)
-            await _stop_and_confirm(run, "stop calling me")
+            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out_request=writer)
+            await _hear(run, "stop calling me")
             await run.finalize()
             await run.finalize()  # idempotent
         asyncio.run(go())
-    assert writer.calls == 2
+    assert writer.calls == [("stop calling me", "live")] * 2
 
 
 @pytest.mark.parametrize("found", [True, False])
-def test_the_post_call_backstop_only_flags_and_never_suppresses(found, monkeypatch):
+def test_the_post_call_backstop_records_only_a_verbatim_quote(found, monkeypatch):
     writer = Writer()
-    flagged = []
-
-    async def flag(quote):
-        flagged.append(quote)
-        return True
-
     quote = "we would rather the school did not ring this house"
     with stubbed_runtime():
         from src import bot
@@ -360,19 +384,17 @@ def test_the_post_call_backstop_only_flags_and_never_suppresses(found, monkeypat
         monkeypatch.setattr(bot, "analyze_call", fake_analysis)
 
         async def go():
-            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(),
-                                  on_opt_out=writer, on_suspected_opt_out=flag)
+            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out_request=writer)
             run.context.add_message({"role": "user", "content": f"Honestly, {quote}."})
             await run.finalize()
         asyncio.run(go())
-    assert writer.calls == 0, "the analysis must never write a suppression by itself"
-    assert flagged == ([quote] if found else [])
+    assert writer.calls == ([(quote, "analysis")] if found else [])
 
 
-# ── both entry points write to Firestore ─────────────────────────────────────
+# ── the authenticated entry point records to Firestore ───────────────────────
 
 
-def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypatch):
+def test_vobiz_path_records_the_request_and_hangs_up_once(tmp_path, monkeypatch):
     db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): outreach()})
     hangups = []
     with stubbed_runtime():
@@ -387,19 +409,20 @@ def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypat
         async def go():
             await run_vobiz_path(main, db)  # runs to the end: pipeline, hangup, finalize
             run = run_from_recorder()
-            await _stop_and_confirm(run, "दोबारा फ़ोन मत करना", "हाँ")
+            await _hear(run, "दोबारा फ़ोन मत करना")
             for _ in range(5):
                 await asyncio.sleep(0)
         asyncio.run(go())
 
     assert hangups == ["123e4567-e89b-42d3-a456-426614174000"], "the leg is ended exactly once after the pipeline stops"
-    writes = suppression_writes(db)
-    assert len(writes) == 1 and writes[0][2] == DIGEST and writes[0][3]["outreachId"] == "OutreachFs0000000001"
+    [request] = opt_out_requests(db)
+    assert request["quote"] == "दोबारा फ़ोन मत करना" and request["source"] == "live"
+    assert suppression_writes(db) == []
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
 
 
-# /ws/call is unauthenticated, so it must NOT write: see
-# test_opt_out_auth.test_ws_call_cannot_write_a_suppression_for_a_named_outreach.
+# /ws/call is unauthenticated, so it must NOT record: see
+# test_opt_out_auth.test_ws_call_cannot_record_anything_for_a_named_outreach.
 
 
 def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
@@ -415,11 +438,11 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
             main.config = replace(main.config, allow_test_scenarios=True)
             await run_vobiz_path(main, db, outreach_id="__test__003")
             run = run_from_recorder()
-            await _stop_and_confirm(run, "please stop calling")
+            await _hear(run, "please stop calling")
             for _ in range(5):
                 await asyncio.sleep(0)
             return run
         run = asyncio.run(go())
     # Only the stream-token consumption touches Firestore on a built-in test call.
     assert [w[1] for w in db.writes] == ["vobiz_stream_tokens"] and db.reads == []
-    assert [type(f).__name__ for f in run.task.queued][-2:] == ["TTSSpeakFrame", "EndFrame"]
+    assert [type(f).__name__ for f in run.task.queued][-1:] == ["TTSSpeakFrame"]

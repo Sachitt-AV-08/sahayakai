@@ -1,88 +1,58 @@
 """
 Pipeline stage that hears a possible "please don't call me again" before the
-model does, and confirms it before anything is written.
+model does.
 
 Pipeline position: stt → StopRequestGuard → stt_filter → context_aggregator.user()
 
 Every final transcription of the parent's speech goes through
-opt_out.StopConversation:
-
-  ASK      a possible stop. The guard swallows it and bot.py asks one fixed,
-           localized question ("should the school stop calling this
-           number?"). A timer starts; if the parent says nothing before it
-           runs out, the question lapses and the call carries on.
-  CONFIRM  an explicit yes to that question. Swallowed; bot.py writes the
-           do-not-call record, speaks the acknowledgement and ends the call.
-  DECLINE  a no or an unclear answer. Handed to the model like any other
-           speech, so the call carries on. Nothing is written.
-  IGNORE   our own question heard back, or speech after a confirmed stop.
-  PASS     ordinary speech.
+opt_out.StopListener. The first possible stop of the call is swallowed (the
+model does not answer it) and handed to bot.py, which records it for the
+teacher, says the one fixed line and closes the call politely. Nothing here
+writes anything, and nothing anywhere in the engine blocks a number. All
+other speech, including everything after the notice, passes through to the
+model unchanged.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Awaitable, Callable
 
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from src.opt_out import StopAction, StopConversation
-
-# How long the parent has to answer the confirmation question (it takes about
-# four seconds to speak) before it lapses and the call carries on.
-CONFIRM_ANSWER_SECONDS = 12.0
+from src.opt_out import StopListener, normalize
 
 
 class StopRequestGuard(FrameProcessor):
     def __init__(
         self,
         *,
-        conversation: StopConversation,
-        on_ask: Callable[[str], Awaitable[None]],
-        on_confirm: Callable[[str], Awaitable[None]],
-        answer_seconds: float | None = None,
+        listener: StopListener,
+        on_stop: Callable[[str, str], Awaitable[None]],
         **kwargs,
     ):
+        """`on_stop(utterance, quote)`: the swallowed transcription, and the
+        parent's words that made it a stop (the utterance, or the previous one
+        joined to it when speech-to-text split the sentence)."""
         super().__init__(**kwargs)
-        self._conversation = conversation
-        self._on_ask = on_ask
-        self._on_confirm = on_confirm
-        self._answer_seconds = CONFIRM_ANSWER_SECONDS if answer_seconds is None else answer_seconds
-        self._timer: asyncio.Task | None = None
+        self._listener = listener
+        self._on_stop = on_stop
+        self.spoken_since_notice = False
 
     @property
-    def stopped(self) -> bool:
-        return self._conversation.confirmed
-
-    def _cancel_timer(self) -> None:
-        if self._timer is not None and not self._timer.done():
-            self._timer.cancel()
-        self._timer = None
-
-    async def _lapse_after(self, seconds: float) -> None:
-        await asyncio.sleep(seconds)
-        if self._conversation.awaiting:
-            self._conversation.on_no_answer()  # silence: carry on, write nothing
+    def noticed(self) -> bool:
+        return self._listener.noticed
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, TranscriptionFrame):
             text = frame.text or ""
-            action = self._conversation.on_parent_speech(text)
-            if action is StopAction.ASK:
-                self._cancel_timer()
-                await self._on_ask(text)
-                self._timer = asyncio.ensure_future(self._lapse_after(self._answer_seconds))
+            if self._listener.noticed:
+                if normalize(text):
+                    self.spoken_since_notice = True
+            elif self._listener.on_parent_speech(text):
+                await self._on_stop(text, self._listener.quote or text)
                 return
-            if action is StopAction.CONFIRM:
-                self._cancel_timer()
-                await self._on_confirm(text)
-                return
-            if action is StopAction.IGNORE:
-                return
-            if action is StopAction.DECLINE:
-                self._cancel_timer()
 
         await self.push_frame(frame, direction)
