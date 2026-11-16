@@ -233,11 +233,14 @@ def test_a_stop_split_across_two_transcriptions_is_still_noticed():
     assert c.quote == "please don't call me again"
 
 
-def test_an_earlier_reschedule_cannot_veto_a_later_plain_stop():
+def test_an_earlier_reschedule_cannot_veto_a_later_strong_stop():
+    # A PLAIN "don't call me" is judged together with what was just said
+    # before it (precision first: "मेरे पति को" + "फ़ोन मत करना"); a strong
+    # stop is judged on its own utterance.
     c = StopListener()
     assert c.on_parent_speech("I am free in the evening") is False
-    assert c.on_parent_speech("actually, don't call me") is True
-    assert c.quote == "actually, don't call me"
+    assert c.on_parent_speech("actually, don't call me again") is True
+    assert c.quote == "actually, don't call me again"
 
 
 def test_a_stop_is_noticed_once_per_call():
@@ -468,7 +471,7 @@ NOT_STOPS_OVER_RECALL = [
 ]
 TWO_UTTERANCES = ("Sorry, can you say that again?", "I'm at work, don't call me at work")
 STILL_STOPS = ["Stop calling me, I am busy", "मुझे ये कॉल्स नहीं चाहिए",
-               "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ", "बंद करो ये कॉल"]
+               "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ", "बंद करो ये कॉल्स"]
 
 
 @pytest.mark.parametrize("text", NOT_STOPS_OVER_RECALL)
@@ -577,8 +580,10 @@ def test_through_the_handler_a_never_again_stop_is_recorded(tmp_path, monkeypatc
 
 # ── "बंद करो ये फ़ोन" with more said (review #5) ─────────────────────────────
 
-STOP_THESE_PHONE_CALLS = ["बंद करो ये फ़ोन कॉल्स", "बंद करो ये फ़ोन, दोबारा मत करना", "बंद कर दो ये फोन कॉल"]
-HANG_UPS = ["बंद करो ये फ़ोन", "बंद करो यह फ़ोन", "बंद कर दो ये फ़ोन", "फ़ोन बंद करो"]
+STOP_THESE_PHONE_CALLS = ["बंद करो ये फ़ोन कॉल्स", "बंद करो ये फ़ोन, दोबारा मत करना", "बंद कर दो ये फोन कॉल्स"]
+# Singular "ये (फ़ोन) कॉल" is "this call": end it, i.e. hang up (final review #1).
+HANG_UPS = ["बंद करो ये फ़ोन", "बंद करो यह फ़ोन", "बंद कर दो ये फ़ोन", "फ़ोन बंद करो", "बंद करो ये कॉल",
+            "बंद कर दो ये फोन कॉल"]
 
 
 @pytest.mark.parametrize("text", STOP_THESE_PHONE_CALLS)

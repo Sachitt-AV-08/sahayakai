@@ -80,7 +80,7 @@ NOT_PROMISES = [
     "Thank you, have a lovely evening, goodbye.", "आरव ने इस हफ़्ते बहुत अच्छा किया।",
 ]
 MISSED_STOPS = ["Stop calling me, I am busy", "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ",
-                "मुझे ये कॉल्स नहीं चाहिए", "बंद करो ये कॉल"]
+                "मुझे ये कॉल्स नहीं चाहिए", "बंद करो ये कॉल्स"]
 MODES = {
     "request_to_talk": {"reason": "consecutive_absences"},
     "positive_feedback": {"reason": "positive_feedback", "studentName": "Vaibhav",

@@ -160,10 +160,11 @@ _HI_DONT = rf"(?:मत|ना|न|नहीं)\s*{_HI_VERB}"
 _HI_AGAIN = r"(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|कभी\s*भी|कभी|आगे\s*से|अब\s*से)"
 _HI_CALLS = rf"{_HI_CALL}(?:्स|ें|े)?"  # कॉल्स, कॉलें: plural "calls"
 _HI_STOP_VERB = r"(?:करो|कीजिए|कीजिये|करें|करिए|कर\s*दो|कर\s*दीजिए)"
-# "बंद करो ये कॉल", "ये कॉल्स बंद करो": stop THESE calls. Not "फ़ोन बंद करो"
-# or "बंद करो ये फ़ोन" (hang up): कॉल after the verb, or plural with "these".
+# "बंद करो ये कॉल्स", "ये कॉल्स बंद करो": stop THESE calls. Not "फ़ोन बंद
+# करो", "बंद करो ये फ़ोन" or "बंद करो ये कॉल" (hang up / end this call): the
+# calls must be plural.
 _HI_STOP_THESE_CALLS = (
-    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*(?:(?:फ़ोन|फोन)\s*)?(?:कॉल|काल)(?:्स|ें|े)?"  # not "बंद करो ये फ़ोन" (hang up)
+    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*(?:(?:फ़ोन|फोन)\s*)?(?:कॉल|काल)(?:्स|ें)"  # plural only: "बंद करो ये (फ़ोन) कॉल" is "end this call"
     rf"|(?:ये|यह|इन|ऐसे)\s*{_HI_CALL}(?:्स|ें)\s*बंद\s*{_HI_STOP_VERB})"
 )
 _BN_CALL = r"(?:ফোন|কল)"
@@ -202,6 +203,15 @@ _UNAMBIGUOUS = _compile(
     r"(?:நம்பர்|நம்பரை|எண்ணை)\s*.{0,6}(?:நீக்க|எடுத்து|டிலீட்)",
     r"నంబర్\s*.{0,6}(?:తీసేయండి|తొలగించండి|డిలీట్)",
     r"നമ്പർ\s*.{0,6}(?:മാറ്റ|നീക്ക|ഡിലീറ്റ്)",
+)
+
+# "Delete the old number, write down the new one": a change of number.
+_NUMBER_CHANGE = _compile(
+    r"\b(?:new|other|another|different|second) number\b",
+    r"\b(?:naya|nayi|dusra|dusre|doosra|doosre) number\b",
+    r"(?:नया|नए|नई|दूसरा|दूसरे|दूसरी)\s*(?:नंबर|नम्बर)",
+    r"(?:নতুন|অন্য)\s*(?:নাম্বার|নম্বর)",
+    r"(?:नवा|दुसरा|दुसऱ्या)\s*नंबर",
 )
 
 # Ways to say "don't call (me) (again)". Only counted when the utterance has no
@@ -309,7 +319,21 @@ _PARTY_PARTS = (
     _word(r"ওকে|ওঁকে|তাকে|তাঁকে|ওনাকে|ওদের"),
     _starts(r"(?:স্বামী|বাবা|মা|ছেলে|মেয়ে|বাচ্চা|ভাই|বোন)কে"),  # word start: "আমাকে" (me) is not "মাকে"
 )
-_WEAK_PARTY_PARTS = (r"\b(?:his|their)\b", r"\bthe (?:child|kid|boy|girl)\b")
+_WEAK_PARTY_PARTS = (
+    r"\b(?:his|their)\b",
+    r"\bthe (?:child|kid|boy|girl|father|mother|parents?|husband|wife)\b",
+    r"\b\w+'s (?:father|mother|dad|mom|mum|husband|wife|parents?)\b",
+    r"\b(?:mother|father|brother|sister)-in-law\b",
+    _word(r"सास|ससुर|मिस्टर|उसके|उनके|इसके|इनके"),
+    _starts(r"(?:শাশুড়ি|শ্বশুর)কে"),
+    _word(r"त्याला|तिला|त्यांना|त्याच्या|तिच्या|त्यांच्या|वडिलांना|आईला|बाबांना|मिस्टरांना|नवऱ्याला|बायकोला|सासूबाईंना"),
+    _word(r"એને|એના|તેને|તેના|તેમને|પપ્પાને|મમ્મીને|પતિને|પત્નીને"),
+    _word(r"ਉਹਨੂੰ|ਉਹਦੇ|ਉਸਨੂੰ|ਉਹਨਾਂ\s*ਨੂੰ") , r"(?:ਪਾਪਾ|ਮੰਮੀ|ਪਤੀ|ਪਤਨੀ)\s*ਨੂੰ",
+    _starts(r"ಅಪ್ಪನಿಗೆ|ಅಮ್ಮನಿಗೆ|ಗಂಡನಿಗೆ|ಹೆಂಡತಿಗೆ|ಅವರಿಗೆ|ಅವನಿಗೆ|ಅವಳಿಗೆ|ಅವರ\s"),
+    _starts(r"அப்பாவுக்கு|அம்மாவுக்கு|கணவருக்கு|மனைவிக்கு|அவருக்கு|அவங்களுக்கு|அவனுக்கு|அவளுக்கு|அவங்க\s"),
+    _starts(r"నాన్నకి|నాన్నకు|అమ్మకి|అమ్మకు|ఆయనకి|ఆయనకు|వాళ్ళ\s|అతనికి|ఆమెకి"),
+    _starts(r"അച്ഛനെ|അമ്മയെ|ഭർത്താവിനെ|ഭാര്യയെ|അവനെ|അവളെ|അവരെ|അവന്റെ|അവളുടെ"),
+)
 # Redirection: "I'll come myself", "I'll call you".
 _REDIRECT_PARTS = (
     r"\bi(?:'ll| will) (?:call|phone|ring|come|visit|message|text)\b",
@@ -322,22 +346,24 @@ _REDIRECT_PARTS = (
 _NOT_A_STOP = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_REASON_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
 _LIMITS = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
 
-# A strong stop: "stop calling", "no more calls", "I don't want these calls",
-# or any "don't call" said with "again"/"anymore" in the call language, or
-# "don't ever call" / "फिर कभी" / "phir kabhi". Bare "ever" / "कभी" is not
-# strong ("मीटिंग में कभी फ़ोन मत करना"). Only a limit (time, place, someone
-# else, redirection) vetoes a strong stop, not "busy".
-_STRONG_STOP = _compile(
+# What makes a stop STRONG: it fires at once, and only a limit in its own
+# clause (time, place, someone else, redirection) stops it; "busy" never does.
+_STRONG_PHRASES = _compile(
     r"\bstop (?:calling|phoning|ringing|these calls|the calls|your calls)\b",
     r"\bno more (?:phone )?calls\b",
     r"\b(?:i|we) (?:do not|don't|dont) want (?:any )?(?:more )?(?:these |your |such |any )?(?:phone )?calls\b",
     rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
     _HI_STOP_THESE_CALLS,
     rf"{_HI_CALL}\s*करना\s*बंद",
-    r"\b(?:again|anymore|any more)\b",
     r"\b(?:don't|dont|do not|never)\s+ever\s+(?:call|phone|ring)\b",
-    r"\b(?:dobara|dubara|phir se|phir kabhi|aage se|ab se)\b",
-    r"(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|आगे\s*से|अब\s*से)",
+    r"\b(?:phir kabhi)\b",
+    r"फिर\s*कभी",
+)
+# "Again / anymore" in the call language: a "don't call" said with one is strong.
+_REPEAT_WORDS = _compile(
+    r"\b(?:again|anymore|any more)\b",
+    r"\b(?:dobara|dubara|phir se|aage se|ab se)\b",
+    r"(?:दोबारा|दुबारा|फिर\s*से|आगे\s*से|अब\s*से)",
     _word(r"আর|আবার"),
     _word(r"पुन्हा|परत"),
     _word(r"ફરીથી|ફરી"),
@@ -347,6 +373,36 @@ _STRONG_STOP = _compile(
     _starts(r"మళ్ళీ|ఇంకెప్పుడూ"),
     _starts(r"ഇനി|വീണ്ടും"),
 )
+_STRONG_STOP = _compile(_STRONG_PHRASES.pattern, _REPEAT_WORDS.pattern)
+
+# Not saying it: "I never said don't call me", "मैंने कब कहा कि फ़ोन मत करना".
+_DENIAL = _compile(
+    r"\b(?:not that|never said|didn't say|did not say|didn't mean|who said|did i say)\b",
+    r"कब\s*कहा|किसने\s*कहा|नहीं\s*कहा",
+)
+# A plain "don't call" fires live only when little else is said: these words
+# do not count as "else" (politeness, "me", "this number").
+_FILLER = frozenset("""
+please pls plz kindly me us sir madam maam mam ma'am okay ok thanks thank you ji jee bas bhai sahab saheb
+this number just actually look listen well fine so
+मुझे मुझको हमें हमको बस जी प्लीज़ प्लीज कृपया आप सर मैडम मैम भाई साहब धन्यवाद शुक्रिया इस नंबर पर
+আমাকে আমাদের দয়া করে প্লিজ দাদা দিদি স্যার ম্যাডাম ধন্যবাদ আপনি এই নম্বরে
+मला आम्हाला कृपया प्लीज सर मॅडम धन्यवाद तुम्ही या नंबरवर
+મને અમને મહેરબાની કરીને પ્લીઝ સર મેડમ આભાર તમે આ નંબર પર
+ਮੈਨੂੰ ਸਾਨੂੰ ਕਿਰਪਾ ਕਰਕੇ ਪਲੀਜ਼ ਜੀ ਸਰ ਮੈਡਮ ਧੰਨਵਾਦ ਤੁਸੀਂ
+ನನಗೆ ನನ್ಗೆ ನಮಗೆ ದಯವಿಟ್ಟು ಸರ್ ಮೇಡಂ ಧನ್ಯವಾದ ನೀವು ಪ್ಲೀಸ್
+எனக்கு எங்களுக்கு என்னை தயவுசெய்து ப்ளீஸ் சார் மேடம் நன்றி நீங்க நீங்கள்
+నాకు మాకు నన్ను దయచేసి ప్లీజ్ సార్ మేడం ధన్యవాదాలు మీరు అండి
+എന്നെ ഞങ്ങളെ ദയവായി പ്ലീസ് സാർ മാഡം നന്ദി നിങ്ങൾ
+""".split())
+
+# Clauses: a limit only counts in the clause that holds the stop phrase
+# ("Don't call me again, my husband handles school things" is a stop;
+# "Don't call his father again, call me" is not).
+_CLAUSE_SPLIT = re.compile(
+    r"([,.;!?।॥|]+)|\s(?:because|but|cause|coz|क्योंकि|लेकिन|কারণ|কিন্তু|पण|ਕਿਉਂਕਿ)\s", re.IGNORECASE
+)
+_QUESTION_START = re.compile(r"^(?:why|should|shall|didn't|did|will|can|could|would|क्या|क्यों)\b")
 
 # Punctuation that only separates words (kept: apostrophes, Indic marks).
 _PUNCT = re.compile(r"[.,!?;:।॥\"“”()\[\]{}…\-–—/]+")
@@ -360,34 +416,86 @@ def normalize(text: object) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def is_stop_request(text: object, current: object = None) -> bool:
-    """Should the engine ASK whether this parent wants the calls to stop?
+def _clauses(text: str) -> list[tuple[str, bool]]:
+    """(normalized clause, ended with a question mark), in order."""
+    out: list[tuple[str, bool]] = []
+    pos = 0
+    raw = text.replace("’", "'").replace("‘", "'")
+    for m in _CLAUSE_SPLIT.finditer(raw):
+        out.append((normalize(raw[pos:m.start()]), "?" in (m.group(1) or "")))
+        pos = m.end()
+    out.append((normalize(raw[pos:]), False))
+    return [(c, q) for c, q in out if c]
 
-    True for an unambiguous phrase ("remove my number"); for a "don't call"
-    phrase in an utterance with no time, reason, third-party or redirection
-    cue; or for a strong stop ("stop calling me, I'm busy") with no time,
-    place, third-party or redirection cue. A True only ever leads to a flag
-    for the teacher (StopListener).
+
+def _stop_clauses(text: str) -> list[tuple[str, bool]]:
+    """The clauses a stop phrase touches (a phrase may run across a comma)."""
+    clauses = _clauses(text)
+    joined, spans, at = [], [], 0
+    for c, _q in clauses:
+        spans.append((at, at + len(c)))
+        joined.append(c)
+        at += len(c) + 1
+    t = " ".join(joined)
+    hit: set[int] = set()
+    for m in _STOP_PHRASES.finditer(t):
+        hit |= {i for i, (a, b) in enumerate(spans) if a < m.end() and m.start() < b}
+    if not hit:
+        return []
+    lo, hi = min(hit), max(hit)
+    return [(" ".join(c for c, _q in clauses[lo:hi + 1]), any(q for _c, q in clauses[lo:hi + 1]))]
+
+
+def _leftover(t: str) -> list[str]:
+    """What is said besides the stop phrase and filler."""
+    return [w for w in _STOP_PHRASES.sub(" ", t).split() if w not in _FILLER]
+
+
+def stop_kind(text: object, current: object = None) -> str | None:
+    """"strong", "plain" or None for one utterance (or two joined; see `current`).
+
+    unambiguous ("remove my number") and strong stops ("stop calling",
+    "don't call me again") are "strong": they fire at once unless a time,
+    place, someone else or a redirection sits in the stop phrase's own clause.
+    A plain "don't call" is "plain" only when nothing else is said besides
+    politeness (_FILLER): "I'm busy, don't call", "Don't call Rahul's father",
+    "रविवार को फ़ोन मत करना" are left to the model and the post-call check.
+    A question or a denial ("I never said don't call me") is never a stop.
 
     `current`: when `text` is the previous transcription joined to the
     current one, the part that was just said. When the stop phrase is wholly
-    in it, what makes the stop strong must be in it too ("can you say that
-    AGAIN?" then "don't call me, I'm busy" is not a strong stop). When the
-    stop itself is split across the two ("मुझे दोबारा फ़ोन" then "मत करना,
-    मैं व्यस्त रहता हूँ"), the joined text is judged.
+    in it, its strength is judged on it alone; a plain stop's "nothing else"
+    is judged on the joined text.
     """
+    if not isinstance(text, str):
+        return None
     t = normalize(text)
     if not t:
-        return False
+        return None
     if _UNAMBIGUOUS.search(t):
-        return True
+        return None if (_NUMBER_CHANGE.search(t) or _DENIAL.search(t)) else "strong"
     if not _STOP_PHRASES.search(t):
-        return False
-    if not _NOT_A_STOP.search(t):
-        return True
-    cur = None if current is None else normalize(current)
-    strong_in = cur if cur and _STOP_PHRASES.search(cur) else t
-    return bool(_STRONG_STOP.search(strong_in)) and not _LIMITS.search(t)
+        return None
+    if isinstance(current, str) and _STOP_PHRASES.search(normalize(current)):
+        own = stop_kind(current)
+        if own == "plain":
+            return "plain" if not _leftover(t) and not _QUESTION_START.search(t) else None
+        return own
+    if _DENIAL.search(t):
+        return None
+    for clause, question in _stop_clauses(text):
+        if question:
+            return None
+        if (_STRONG_PHRASES.search(clause) or _REPEAT_WORDS.search(clause)) and not _LIMITS.search(clause):
+            return "strong"
+    if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t):
+        return "plain"
+    return None
+
+
+def is_stop_request(text: object, current: object = None) -> bool:
+    """Should the engine treat this as the parent asking not to be called? (stop_kind)"""
+    return stop_kind(text, current) is not None
 
 
 def has_reschedule_cue(text: object) -> bool:
