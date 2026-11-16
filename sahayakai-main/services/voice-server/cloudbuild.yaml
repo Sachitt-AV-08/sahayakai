@@ -38,11 +38,14 @@
 #   - The service-level instance cap (run.googleapis.com/maxScale: 10).
 #
 # Reproducible image: the Dockerfile installs ONLY from requirements.lock
-# (every package pinned, sha256-hashed; regenerate with scripts/lock.sh, which
-# needs PyPI access). Revision 00037's exact package set could not be
-# recovered (its build log is empty and reading the image needs a pull), so
-# the first lock pins the set resolved on the day it is generated. Until the
-# lock is committed the image build fails, on purpose.
+# (every package pinned, sha256-hashed). Do not regenerate it to promote: it
+# is resolved by scripts/lock.sh at the pinned cutoff 2026-10-01T10:36:44Z,
+# when the source of revision 00037's image was uploaded, the closest
+# recoverable match to 00037's package set (its build log is empty and
+# reading the image needs a pull). The test step below fails unless the lock
+# was resolved at that cutoff (VOICE_SERVER_REQUIRE_PINNED_LOCK=1). An upgrade
+# is its own reviewed change: scripts/lock.sh <new cutoff>, moving the pinned
+# cutoff in lock.sh, PROMOTE.md and here together.
 #
 # Leftovers from the never-deployed sahayakai-agents engine that this Pipecat
 # app does not read: SAHAYAKAI_AGENTS_ENV, SAHAYAKAI_PROMPTS_DIR,
@@ -75,6 +78,7 @@ steps:
     # without the monorepo they must fail, not skip.
     env:
       - VOICE_SERVER_REQUIRE_MONOREPO=1
+      - VOICE_SERVER_REQUIRE_PINNED_LOCK=1
     entrypoint: bash
     args:
       - -ceu

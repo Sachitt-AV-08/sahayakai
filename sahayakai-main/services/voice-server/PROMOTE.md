@@ -18,10 +18,17 @@ in this order.
    call. Whether that parent is called again is the teacher's decision. The
    non-English lines in `src/call_lines.json` marked `unsure` need a native
    speaker to read them aloud before they are trusted on a live call.
-2. **The dependency lock exists.** The image installs only from
-   `requirements.lock`. Generate it with `scripts/lock.sh` (needs Docker and
-   PyPI access), review the diff and commit it. Without the lock the image
-   build fails on purpose.
+2. **The dependency lock is committed; do not regenerate it as part of a
+   promotion.** The image installs only from `requirements.lock`, so the
+   candidate runs exactly the reviewed package set. It must be resolved with
+   `scripts/lock.sh` at the pinned cutoff `2026-10-01T10:36:44Z` (when the
+   source of revision 00037's image was uploaded), so it matches what 00037
+   runs as closely as can be recovered without pulling that image. The lock's
+   first line shows its `--exclude-newer`; the build's test step
+   (`VOICE_SERVER_REQUIRE_PINNED_LOCK=1`) fails unless it is that cutoff.
+   Upgrading dependencies is its own reviewed change:
+   `scripts/lock.sh <new cutoff>`, moving the pinned cutoff here, in
+   `scripts/lock.sh` and in the `cloudbuild.yaml` header with it.
 3. **Choose the Gemini backend.** On 2026-11-16 the AI Studio key returned
    `402 RESOURCE_EXHAUSTED`. To run on Vertex AI as the service account, add
    `SAHAYAKAI_GEMINI_BACKEND=vertex` (and optionally
