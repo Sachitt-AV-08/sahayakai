@@ -58,7 +58,7 @@ PROMISES = {
     "English": ["Okay, we won't call you anymore, thank you.", "We will never call you again.",
                 "Of course, we will not call you again."],
     "Hindi": ["जी ठीक है, अब आपको फ़ोन नहीं करेंगे।", "हम आपको दोबारा फ़ोन नहीं करेंगे।",
-              "theek hai, ab hum phone nahi karenge."],
+              "theek hai, ab hum phone nahi karenge.", "theek hai, ab phone nahi karenge."],
     "Bengali": ["অবশ্যই, আমরা আপনাকে আর ফোন করব না।"],
     "Marathi": ["नक्कीच, आम्ही तुम्हाला पुन्हा फोन करणार नाही."],
     "Gujarati": ["ચોક્કસ, અમે તમને ફરીથી ફોન નહીં કરીએ."],
@@ -247,3 +247,56 @@ def test_a_polite_reply_to_a_busy_parent_is_spoken_and_records_nothing(language,
     assert tts == [], "no opt-out line, no goodbye"
     assert opt_out_requests(db) == []
     assert not [f for f, _ in run.processor("CallManager").pushed if type(f).__name__ == "EndTaskFrame"]
+
+
+# ── a time word does not excuse a promise ────────────────────────────────────
+# Independent review of 5191d1e72 (#2): any time word (now, after, today,
+# बाद, आज, এখন, आता) vetoed the match, so "आज के बाद आपको फ़ोन नहीं
+# करेंगे" ("after today we won't call you") was spoken. Only a genuine
+# reschedule (a time AND a "will call") excuses a reply, and "from now on /
+# after today / আজ থেকে / आता पासून" mark a promise.
+
+TIMED_PROMISES = [
+    "आज के बाद आपको फ़ोन नहीं करेंगे।",
+    "अब के बाद फ़ोन नहीं करेंगे।",
+    "इसके बाद आपको कोई फ़ोन नहीं आएगा।",
+    "Okay, from now on we won't call you.",
+    "we won't call you again after this",
+    "no more calls from now on",
+    "এখন থেকে আর ফোন করব না।",
+    "আজ থেকে আর ফোন করব না।",
+    "आता पासून फोन करणार नाही.",
+    "जी ठीक है, आज के बाद आपको फ़ोन नहीं करेंगे।",  # the probe's reply
+]
+RESCHEDULES = [
+    "हम अभी फ़ोन नहीं करेंगे, शाम को करेंगे।",
+    "We won't call now, the class teacher will call you this evening.",
+    "abhi phone nahi karenge, shaam ko karenge",
+    "আমরা এখন ফোন করব না, সন্ধ্যায় ফোন করব।",
+]
+
+
+@pytest.mark.parametrize("text", TIMED_PROMISES)
+def test_a_time_word_does_not_excuse_a_promise(text):
+    assert is_no_more_calls_promise(text), text
+
+
+@pytest.mark.parametrize("text", RESCHEDULES)
+def test_a_genuine_reschedule_is_not_a_promise(text):
+    assert not is_no_more_calls_promise(text), text
+
+
+TIMED_CALLS = [("Hindi", TIMED_PROMISES[-1]), ("Hindi", TIMED_PROMISES[2]), ("English", TIMED_PROMISES[3]),
+               ("Bengali", TIMED_PROMISES[6]), ("Marathi", TIMED_PROMISES[8])]
+
+
+@pytest.mark.parametrize("mode", sorted(MODES))
+@pytest.mark.parametrize("language,reply", TIMED_CALLS, ids=lambda v: v if len(v) < 30 else v[:30])
+def test_a_promise_with_a_time_word_never_reaches_tts(language, reply, mode, tmp_path, monkeypatch):
+    runner, run, model_text, tts, hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
+    lines = load_call_lines()[LANGUAGE_CODES[language]]
+    assert model_text == "", "no model text reached TTS"
+    assert tts == [lines["opt_out_noted"], lines["goodbye"]]
+    assert runner.ended and len(hangups) == 1
+    [request] = opt_out_requests(db)
+    assert request["source"] == "live"

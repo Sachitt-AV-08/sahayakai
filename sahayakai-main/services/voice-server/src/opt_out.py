@@ -407,7 +407,8 @@ _PROMISE_FIRST = _compile(
     rf"{_TE_CALL}\s*{_N}(?:చేయము|చేయం|చేయను|చెయ్యము|చెయ్యం|చెయ్యను)",
 )
 # Forms that do not say who: a promise only with a we/I subject or a you
-# object in the same reply (_PROMISE_PERSON).
+# object in the same reply (_PROMISE_PERSON), or a "from now on / again"
+# marker (_PROMISE_MARKER).
 _PROMISE_NEUTRAL = _compile(
     r"\b(?:phone|fone|call)\s*(?:nahi|nahin|nhi)\s*(?:karenge|karega|aayega|ayega|aayenge|kiya jayega)\b",
     rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करेंगे|करेंगी|करेगा|करेगी|आएगा|आयेगा|आएगी|आएँगे|आएंगे|आयेंगे"
@@ -435,9 +436,55 @@ _PROMISE_PERSON = _compile(
     _starts(r"మేము|నేను|మీకు|మిమ్మల్ని"),
     _starts(r"ഞങ്ങൾ|ഞാൻ|നിങ്ങളെ|നിങ്ങൾക്ക്"),
 )
-# A reply about a time ("we won't call now, the teacher will call this
-# evening") or someone else ("we won't call your husband") is not a promise.
-_PROMISE_VETO = _compile(*_TIME_PARTS, *_PARTY_PARTS)
+# "From now on", "after today", "again": they make a promise, never excuse
+# one, and they make a form that does not say who into a promise.
+_PROMISE_MARKER = _compile(
+    r"\b(?:from now on|from today|after today|after this|again|anymore|any more|any longer)\b",
+    r"\b(?:ab|ab se|aage se|aaj ke baad|ab ke baad|iske baad|dobara|dubara|phir se|kabhi)\b",
+    r"(?:आज|अब|इस)\s*के\s*बाद",
+    r"इसके\s*बाद",
+    r"अब\s*से",
+    r"आगे\s*से",
+    r"फिर\s*(?:से|कभी)",
+    _word(r"अब|दोबारा|दुबारा|कभी"),
+    r"(?:এখন|আজ)\s*থেকে",
+    _word(r"আর|আবার"),
+    r"(?:आता|आज)\s*पासून",
+    _word(r"आतापासून|आजपासून|यापुढे|पुन्हा"),
+    r"(?:હવે|આજ)\s*થી",
+    _word(r"હવેથી|આજથી|ફરીથી|ફરી"),
+    r"(?:ਹੁਣ|ਅੱਜ)\s*ਤੋਂ",
+    _word(r"ਦੁਬਾਰਾ|ਫਿਰ"),
+    r"ಇನ್ನು\s*ಮುಂದೆ",
+    _starts(r"ಇನ್ಮೇಲೆ|ಮತ್ತೆ"),
+    _starts(r"இனிமேல்|இனி|மறுபடியும்|இன்றிலிருந்து"),
+    r"ఇక\s*(?:పై|నుంచి|నుండి)",
+    _starts(r"ఇకపై|మళ్ళీ|ఇంకెప్పుడూ"),
+    _starts(r"ഇനിമുതൽ|ഇനി|വീണ്ടും"),
+)
+
+# Someone else ("we won't call your husband") is not the parent.
+_PROMISE_PARTY = _compile(*_PARTY_PARTS)
+# A genuine reschedule is a time AND a "will call" ("we won't call now, the
+# teacher will call this evening", "अभी फ़ोन नहीं करेंगे, शाम को करेंगे").
+# A time word on its own ("आज के बाद", "from now on") excuses nothing.
+_TIME = _compile(*_TIME_PARTS)
+_NOT_NEG_HI = r"(?:(?!नहीं|न\s|मत|ना\s)\S+\s+)?"
+_WILL_CALL = _compile(
+    r"\b(?:will|'ll|shall)\s+(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\b",
+    r"\b(?:phone|fone|call|ko)\s+(?:kar\s+)?(?:karenge|karunga|karungi|karega|lenge)\b",
+    rf"(?:{_HI_CALLS}|{_word('को')})\s*{_NOT_NEG_HI}(?:कर\s*)?(?:करेंगे|करेंगी|करूँगा|करूंगा|करूँगी|करूंगी|करेगा|करेगी"
+    r"|लेंगे|लूँगा|लूंगा)",
+    rf"{_BN_CALL}\s*(?:\S+\s+)?(?:করব|করবো|করবেন|দেব|দেবো)(?!\s*না)",
+    rf"{_MR_CALL}\s*(?:\S+\s+)?(?:करू|करेन|करतील|करणार|करेल)(?!\s*नाही)",
+    rf"{_GU_CALL}\s*(?:(?!નહીં|નહિ)\S+\s+)?(?:કરીશું|કરીશ|કરશે|કરીએ)(?!\s*(?:નહીં|નહિ))",
+    rf"{_PA_CALL}\s*(?:(?!ਨਹੀਂ|ਨਹੀ)\S+\s+)?(?:ਕਰਾਂਗੇ|ਕਰਾਂਗਾ|ਕਰਾਂਗੀ|ਕਰਨਗੇ|ਕਰੇਗਾ)",
+    rf"{_KN_CALL}\s*(?:\S+\s+)?(?:ಮಾಡುತ್ತೇವೆ|ಮಾಡುತ್ತೇನೆ|ಮಾಡುತ್ತಾರೆ|ಮಾಡ್ತೀವಿ|ಮಾಡ್ತಾರೆ)",
+    rf"{_TA_CALL}\s*(?:\S+\s+)?(?:பண்ணுவோம்|பண்ணுவேன்|பண்ணுவாங்க|பண்ணுவார்)",
+    r"அழைப்போம்|அழைப்பார்|கூப்பிடுவோம்|கூப்பிடுவார்",
+    rf"{_TE_CALL}\s*(?:\S+\s+)?(?:చేస్తాము|చేస్తాం|చేస్తాను|చేస్తారు)",
+    r"വിളിക്കും",
+)
 
 
 def is_no_more_calls_promise(text: object) -> bool:
@@ -445,8 +492,12 @@ def is_no_more_calls_promise(text: object) -> bool:
     t = normalize(text)
     if not t:
         return False
-    said = bool(_PROMISE_FIRST.search(t)) or bool(_PROMISE_NEUTRAL.search(t) and _PROMISE_PERSON.search(t))
-    return said and not _PROMISE_VETO.search(t)
+    said = bool(_PROMISE_FIRST.search(t)) or bool(
+        _PROMISE_NEUTRAL.search(t) and (_PROMISE_PERSON.search(t) or _PROMISE_MARKER.search(t))
+    )
+    if not said or _PROMISE_PARTY.search(t):
+        return False
+    return not (_TIME.search(t) and _WILL_CALL.search(t))
 
 
 # ── Noticing it during the call ──────────────────────────────────────────────
