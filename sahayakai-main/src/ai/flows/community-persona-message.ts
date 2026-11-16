@@ -10,6 +10,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { INJECTION_GUARD, frameUserInput } from '@/ai/prompt-hardening';
+import { isInNativeScript } from '@/lib/native-script';
 import type { PersonaDef } from '@/ai/data/community-personas';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -102,17 +103,33 @@ const personaMessageFlow = ai.defineFlow(
   async (input) => {
     // Plain-text generation — more reliable than schema-bound output for
     // this single-field shape. We do the cleanup ourselves below.
-    const result = await ai.generate({
-      prompt: buildPrompt(input),
-      config: {
-        temperature: 0.85,
-        maxOutputTokens: 220,
-      },
-    });
+    const generate = async (prompt: string) => {
+      const result = await ai.generate({
+        prompt,
+        config: {
+          temperature: 0.85,
+          maxOutputTokens: 220,
+        },
+      });
+      return (result.text ?? '').trim();
+    };
 
-    const raw = (result.text ?? '').trim();
+    let raw = await generate(buildPrompt(input));
     if (!raw) {
       throw new Error('Persona message generation returned empty output');
+    }
+
+    // The prompt mandates the native script, but the model sometimes drifts into English or
+    // Latin transliteration anyway (the live evals caught a Tamil reply with six Tamil letters).
+    // Check the output and ask once more, plainly; a message in the wrong script is not posted.
+    if (!isInNativeScript(raw, input.preferredLanguage)) {
+      raw = await generate(
+        `${buildPrompt(input)}\n\nYour previous answer was not written in ${input.preferredLanguage} script. ` +
+          `Write the message again, entirely in ${input.preferredLanguage} script.`,
+      );
+      if (!raw || !isInNativeScript(raw, input.preferredLanguage)) {
+        throw new Error(`Persona message is not in ${input.preferredLanguage} script after one retry`);
+      }
     }
 
     // Cleanup: strip surrounding quotes, leading "Name:" if model added it,
