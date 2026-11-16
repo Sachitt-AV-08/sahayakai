@@ -58,7 +58,7 @@ PROMISES = {
     "English": ["Okay, we won't call you anymore, thank you.", "We will never call you again.",
                 "Of course, we will not call you again."],
     "Hindi": ["जी ठीक है, अब आपको फ़ोन नहीं करेंगे।", "हम आपको दोबारा फ़ोन नहीं करेंगे।",
-              "theek hai, ab phone nahi karenge."],
+              "theek hai, ab hum phone nahi karenge."],
     "Bengali": ["অবশ্যই, আমরা আপনাকে আর ফোন করব না।"],
     "Marathi": ["नक्कीच, आम्ही तुम्हाला पुन्हा फोन करणार नाही."],
     "Gujarati": ["ચોક્કસ, અમે તમને ફરીથી ફોન નહીં કરીએ."],
@@ -126,7 +126,8 @@ async def _model_reply(run, text):
     await asyncio.sleep(0)
 
 
-def _vobiz_call(language, mode, reply, tmp_path, monkeypatch):
+def _vobiz_call(language, mode, reply, tmp_path, monkeypatch, parent_says=None):
+    parent_says = PARENT_SAYS if parent_says is None else parent_says
     db = FakeAsyncFirestore({("parent_outreach", OID): {**RECORD, **MODES[mode], "parentLanguage": language}})
     hangups = []
     with stubbed_runtime():
@@ -139,8 +140,8 @@ def _vobiz_call(language, mode, reply, tmp_path, monkeypatch):
         async def script():
             run = run_from_recorder()
             guard = run.processor("StopRequestGuard")
-            await guard.process_frame(TranscriptionFrame(text=PARENT_SAYS), FrameDirection.DOWNSTREAM)
-            run.context.add_message({"role": "user", "content": PARENT_SAYS})  # the aggregator's job
+            await guard.process_frame(TranscriptionFrame(text=parent_says), FrameDirection.DOWNSTREAM)
+            run.context.add_message({"role": "user", "content": parent_says})  # the aggregator's job
             await _model_reply(run, reply)
 
         main.hangup_vobiz_call = fake_hangup
@@ -205,3 +206,44 @@ def test_on_the_unauthenticated_route_the_promise_is_still_never_said(tmp_path, 
     assert not [f for f, _ in manager.pushed if isinstance(f, LLMTextFrame)]
     assert [f.text for f, _ in manager.pushed if isinstance(f, TTSSpeakFrame)] == [load_call_lines()["hi-IN"]["goodbye"]]
     assert any(type(f).__name__ == "EndTaskFrame" for f, _ in manager.pushed)
+
+
+# ── politeness is not a promise ──────────────────────────────────────────────
+# Independent review of 5191d1e72 (#1): "won't disturb / bother" counted as a
+# promise with no "again" and no check on who is speaking, so an ordinary
+# polite reply ended the call and recorded a bogus optOutRequested. Only
+# CALLING counts, and only a promise made by us (we/I) or to the parent (you).
+
+POLITE = [
+    "I won't disturb you for long.",
+    "I won't bother you much, just wanted to share good news.",
+    "जी, मैं आपको ज़्यादा परेशान नहीं करूँगा।",
+    "Thank you, I won't disturb you any further, have a good day.",
+    "আপনাকে বেশিক্ষণ বিরক্ত করব না।",
+    "जास्त वेळ त्रास देणार नाही.",
+    "Rahul won't disturb anyone in class anymore, he has improved a lot.",
+    "क्लास टीचर फ़ोन नहीं करेंगे, आप स्कूल आकर मिल सकते हैं।",
+]
+
+
+@pytest.mark.parametrize("text", POLITE)
+def test_politeness_and_someone_elses_plans_are_not_promises(text):
+    assert not is_no_more_calls_promise(text), text
+
+
+POLITE_CALLS = [("Hindi", POLITE[2]), ("English", POLITE[0]), ("English", POLITE[3]), ("Bengali", POLITE[4]),
+                ("Marathi", POLITE[5]), ("English", POLITE[6]), ("Hindi", POLITE[7])]
+
+
+@pytest.mark.parametrize("mode", sorted(MODES))
+@pytest.mark.parametrize("language,reply", POLITE_CALLS, ids=lambda v: v if len(v) < 30 else v[:30])
+def test_a_polite_reply_to_a_busy_parent_is_spoken_and_records_nothing(language, reply, mode, tmp_path, monkeypatch):
+    # The reviewer's probe: the parent says they are a bit busy; the model is polite.
+    monkeypatch.setattr(ModelRunner, "max_wait", 0.05)  # the call rightly goes on; do not wait for it
+    runner, run, model_text, tts, hangups, db = _vobiz_call(
+        language, mode, reply, tmp_path, monkeypatch, parent_says="मैं थोड़ा बिज़ी हूँ")
+    first = reply.split("।")[0].split(". ")[0]
+    assert model_text.startswith(first[:20]), (model_text, reply)
+    assert tts == [], "no opt-out line, no goodbye"
+    assert opt_out_requests(db) == []
+    assert not [f for f, _ in run.processor("CallManager").pushed if type(f).__name__ == "EndTaskFrame"]

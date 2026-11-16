@@ -379,42 +379,61 @@ def has_reschedule_cue(text: object) -> bool:
 # modes; a match is dropped and handled as a stop request.
 
 _N = r"(?:\S+\s+){0,2}"  # up to two words between the call word and the negation
-_PROMISES = _compile(
-    # English
-    r"\b(?:won't|wont|will not|shall not|would not|wouldn't)\s+(?:be\s+)?(?:call|phone|ring|contact|disturb|bother)(?:ing|ed)?\b",
-    r"\bnever\s+(?:call|phone|ring|contact|disturb|bother)\b",
+
+# Only CALLING counts: "I won't disturb you for long" or "मैं आपको ज़्यादा
+# परेशान नहीं करूँगा" is politeness, not a promise. And only a promise made
+# BY us or TO the parent: "Rahul won't …", "क्लास टीचर फ़ोन नहीं करेंगे, आप
+# स्कूल आकर मिल सकते हैं" is not one.
+
+# First-person forms: the verb itself says "we / I will not call".
+_PROMISE_FIRST = _compile(
+    # English: a we/I subject, or a you object
+    r"\b(?:we|i)(?:'ll|'d)?\s+(?:will not|won't|wont|shall not|would not|wouldn't|will never|never|not)\s+"
+    r"(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\b",
+    r"\b(?:we|i)(?:'ll| will| shall)?\s+stop\s+(?:calling|phoning|contacting)\b",
+    r"\b(?:won't|wont|will not|shall not|never)\s+(?:be\s+)?(?:call|phone|ring|contact)(?:ing)?\s+you\b",
+    r"\byou\s+(?:will not|won't|wont|will never)\s+(?:be\s+(?:called|contacted|phoned)|get\s+(?:any\s+)?(?:more\s+)?calls)\b",
     r"\bno (?:more|further) (?:phone )?calls?\b",
-    r"\b(?:will|we'll|i'll|shall)\s+stop\s+(?:calling|the calls|these calls|contacting)\b",
-    r"\bnot\s+(?:call|phone|ring|contact)(?:ing)?\s+(?:you\s+)?(?:again|anymore|any more)\b",
     r"\b(?:take|remove)\s+(?:you|your number)\s+(?:off|from)\b",
-    # Hinglish
-    r"\b(?:phone|fone|call)\s*(?:nahi|nahin|nhi)\s*(?:karenge|karunga|karungi|karega|aayega|ayega|aayenge|kiya jayega)\b",
-    r"\b(?:pareshan|disturb)\s*(?:nahi|nahin)\s*(?:karenge|karunga|karungi)\b",
-    # Hindi
-    rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करेंगे|करेंगी|करूँगा|करूंगा|करूँगी|करूंगी|करेगा|करेगी|आएगा|आयेगा|आएगी|आएँगे|आएंगे|आयेंगे"
-    r"|आएँगी|आएंगी|किया\s*जाएगा|किया\s*जायेगा)",
-    r"(?:परेशान|डिस्टर्ब)\s*नहीं\s*(?:करेंगे|करूँगा|करूंगा|करूँगी|करूंगी|किया\s*जाएगा)",
-    rf"{_HI_CALLS}\s*{_N}बंद\s*(?:कर\s*देंगे|कर\s*दी\s*जाएँगी|कर\s*दी\s*जाएंगी|हो\s*जाएँगे|हो\s*जाएंगे|हो\s*जाएँगी|हो\s*जाएंगी)",
-    # Bengali
-    rf"{_BN_CALL}\s*{_N}(?:করব|করবো|করা\s*হবে|আসবে|দেব|দেবো)\s*না",
-    r"বিরক্ত\s*করব\s*না",
-    # Marathi
-    rf"{_MR_CALL}\s*{_N}(?:करणार\s*नाही|करणार\s*नाहीत|येणार\s*नाही|केला\s*जाणार\s*नाही)",
-    r"त्रास\s*देणार\s*नाही",
-    # Gujarati
-    rf"{_GU_CALL}\s*{_N}(?:(?:નહીં|નહિ)\s*(?:કરીએ|કરીશું|કરું|કરીશ|આવે)|(?:કરીએ|કરીશું|કરીશ)\s*(?:નહીં|નહિ))",
-    r"હેરાન\s*(?:નહીં|નહિ)\s*કરીએ",
-    # Punjabi
-    rf"{_PA_CALL}\s*{_N}(?:ਨਹੀਂ|ਨਹੀ)\s*(?:ਕਰਾਂਗੇ|ਕਰਾਂਗਾ|ਕਰਾਂਗੀ|ਕਰੇਗਾ|ਆਵੇਗਾ|ਆਉਣਗੇ)",
-    # Kannada
-    rf"{_KN_CALL}\s*{_N}(?:ಮಾಡುವುದಿಲ್ಲ|ಮಾಡಲ್ಲ|ಮಾಡೋದಿಲ್ಲ|ಮಾಡುವುದು\s*ಇಲ್ಲ|ಬರುವುದಿಲ್ಲ|ಬರಲ್ಲ)",
-    # Tamil
-    rf"{_TA_CALL}\s*{_N}(?:பண்ண\s*மாட்டோம்|பண்ணமாட்டோம்|செய்ய\s*மாட்டோம்|வராது)",
+    # Hinglish, Hindi: first person singular
+    r"\b(?:phone|fone|call)\s*(?:nahi|nahin|nhi)\s*(?:karunga|karungi)\b",
+    rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करूँगा|करूंगा|करूँगी|करूंगी)",
+    # Bengali করব না, Gujarati કરીએ/કરીશું/કરું, Punjabi ਕਰਾਂਗੇ, Tamil மாட்டோம், Telugu చేయము
+    rf"{_BN_CALL}\s*{_N}(?:করব|করবো|দেব|দেবো)\s*না",
+    rf"{_GU_CALL}\s*{_N}(?:(?:નહીં|નહિ)\s*(?:કરીએ|કરીશું|કરું|કરીશ)|(?:કરીએ|કરીશું|કરીશ)\s*(?:નહીં|નહિ))",
+    rf"{_PA_CALL}\s*{_N}(?:ਨਹੀਂ|ਨਹੀ)\s*(?:ਕਰਾਂਗੇ|ਕਰਾਂਗਾ|ਕਰਾਂਗੀ)",
+    rf"{_TA_CALL}\s*{_N}(?:பண்ண\s*மாட்டோம்|பண்ணமாட்டோம்|செய்ய\s*மாட்டோம்)",
     r"(?:அழைக்க|கூப்பிட)\s*மாட்டோம்",
-    # Telugu
-    rf"{_TE_CALL}\s*{_N}(?:చేయము|చేయం|చేయను|చెయ్యము|చెయ్యం|చెయ్యను|రాదు)",
-    # Malayalam
+    rf"{_TE_CALL}\s*{_N}(?:చేయము|చేయం|చేయను|చెయ్యము|చెయ్యం|చెయ్యను)",
+)
+# Forms that do not say who: a promise only with a we/I subject or a you
+# object in the same reply (_PROMISE_PERSON).
+_PROMISE_NEUTRAL = _compile(
+    r"\b(?:phone|fone|call)\s*(?:nahi|nahin|nhi)\s*(?:karenge|karega|aayega|ayega|aayenge|kiya jayega)\b",
+    rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करेंगे|करेंगी|करेगा|करेगी|आएगा|आयेगा|आएगी|आएँगे|आएंगे|आयेंगे"
+    r"|आएँगी|आएंगी|किया\s*जाएगा|किया\s*जायेगा)",
+    rf"{_HI_CALLS}\s*{_N}बंद\s*(?:कर\s*देंगे|कर\s*दी\s*जाएँगी|कर\s*दी\s*जाएंगी|हो\s*जाएँगे|हो\s*जाएंगे|हो\s*जाएँगी|हो\s*जाएंगी)",
+    rf"{_BN_CALL}\s*{_N}(?:করা\s*হবে|আসবে)\s*না",
+    rf"{_MR_CALL}\s*{_N}(?:करणार\s*नाही|करणार\s*नाहीत|येणार\s*नाही|केला\s*जाणार\s*नाही)",
+    rf"{_GU_CALL}\s*{_N}(?:નહીં|નહિ)\s*આવે",
+    rf"{_PA_CALL}\s*{_N}(?:ਨਹੀਂ|ਨਹੀ)\s*(?:ਆਵੇਗਾ|ਆਉਣਗੇ)",
+    rf"{_KN_CALL}\s*{_N}(?:ಮಾಡುವುದಿಲ್ಲ|ಮಾಡಲ್ಲ|ಮಾಡೋದಿಲ್ಲ|ಮಾಡುವುದು\s*ಇಲ್ಲ|ಬರುವುದಿಲ್ಲ|ಬರಲ್ಲ)",
+    rf"{_TA_CALL}\s*{_N}வராது",
+    rf"{_TE_CALL}\s*{_N}రాదు",
     r"വിളിക്കില്ല|വിളിക്കുകയില്ല|വിളിക്കുന്നില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യില്ല|(?:ഫോൺ|കോൾ)\s*ചെയ്യുകയില്ല",
+)
+# We / I as the subject, or you as the object, in each call language.
+_PROMISE_PERSON = _compile(
+    r"\b(?:hum|hamne|main|mai|aapko|apko|tumhe|tumko)\b",
+    _word(r"हम|मैं|आपको|आपके|तुम्हें|तुमको"),
+    _word(r"আমরা|আমি|আপনাকে|তোমাকে"),
+    _word(r"आम्ही|मी|तुम्हाला|तुम्हांला|आपल्याला"),
+    _word(r"અમે|હું|તમને|આપને"),
+    _word(r"ਅਸੀਂ|ਮੈਂ|ਤੁਹਾਨੂੰ"),
+    _starts(r"ನಾವು|ನಾನು|ನಿಮಗೆ|ನಿಮ್ಮನ್ನು"),
+    _starts(r"நாங்கள்|நான்|உங்களை|உங்களுக்கு"),
+    _starts(r"మేము|నేను|మీకు|మిమ్మల్ని"),
+    _starts(r"ഞങ്ങൾ|ഞാൻ|നിങ്ങളെ|നിങ്ങൾക്ക്"),
 )
 # A reply about a time ("we won't call now, the teacher will call this
 # evening") or someone else ("we won't call your husband") is not a promise.
@@ -424,7 +443,10 @@ _PROMISE_VETO = _compile(*_TIME_PARTS, *_PARTY_PARTS)
 def is_no_more_calls_promise(text: object) -> bool:
     """Would saying this promise the parent that the school will not call again?"""
     t = normalize(text)
-    return bool(t) and bool(_PROMISES.search(t)) and not _PROMISE_VETO.search(t)
+    if not t:
+        return False
+    said = bool(_PROMISE_FIRST.search(t)) or bool(_PROMISE_NEUTRAL.search(t) and _PROMISE_PERSON.search(t))
+    return said and not _PROMISE_VETO.search(t)
 
 
 # ── Noticing it during the call ──────────────────────────────────────────────
