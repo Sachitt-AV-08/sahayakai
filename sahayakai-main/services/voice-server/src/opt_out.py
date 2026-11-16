@@ -252,6 +252,7 @@ _STOP_PHRASES = _compile(
     rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
     _HI_STOP_THESE_CALLS,
     r"डोंट\s*(?:कॉल|काल)",
+    r"नो\s*मोर\s*(?:कॉल्स|कॉल|काल्स|कॉलें)",  # English said on a Hindi call, as Sarvam writes it
     r"परेशान\s*(?:मत|ना)\s*(?:करो|कीजिए|करें|करिए)",
     # Bengali
     rf"{_BN_CALL}\s*{_BN_DONT}",
@@ -377,6 +378,8 @@ _STRONG_PHRASES = _compile(
     r"\b(?:don't|dont|do not|stop)\s+keep(?:ing)?\s+(?:calling|phoning|ringing)\b",
     r"\b(?:phir kabhi)\b",
     r"फिर\s*कभी",
+    r"नो\s*मोर\s*(?:कॉल्स|कॉल|काल्स|कॉलें)",
+    r"(?:स्टॉप|स्टाप)\s*(?:कॉलिंग|कालिंग)",
     r"\bnever (?:ever )?(?:call|phone|ring|contact)(?: me| us| this number)? again\b",
     r"\b(?:i|we) (?:do not|don't|dont) want to (?:talk|speak) (?:to|with) (?:the school|you|the teacher|anyone)\b",
     r"\b(?:mujhe|humein|hume|hamein|mujhko)\s*(?:\S+\s+)?(?:call|calls|phone)\s*(?:nahi|nahin)\s*(?:chahiye|chahie)\b",
@@ -405,6 +408,7 @@ _STRONG_STOP = _compile(_STRONG_PHRASES.pattern, _REPEAT_WORDS.pattern)
 # for the parent's words).
 _FROM_NOW_ON_PARTS = (
     r"\b(?:from now on|from today|after today|after this|from this day)\b",
+    r"फ्रॉम\s*नाउ\s*(?:ऑन|आन)",
     r"\b(?:ab se|aage se|aaj se|aaj ke baad|ab ke baad|iske baad)\b",
     r"(?:आज|अब|इस)\s*के\s*बाद", r"इसके\s*बाद", r"(?:अब|आगे|आज)\s*से",
     r"(?:এখন|আজ|এরপর)\s*থেকে",
@@ -434,7 +438,7 @@ _REPEAT_JOIN = [(re.compile(a), b) for a, b in (
 # again"); the Indic call languages say it BEFORE ("दोबारा फ़ोन मत करना",
 # "আর ফোন করবেন না"). Bengali আর ("and" as well as "anymore") counts only
 # right before the call word. Punjabi ਫਿਰ ("then") is not one.
-_REPEAT_AFTER = frozenset({"again", "anymore"})
+_REPEAT_AFTER = frozenset({"again", "anymore", "अगेन", "एनीमोर"})  # also as Sarvam writes them in Devanagari
 _REPEAT_BEFORE = frozenset("""
 dobara dubara phirse aagese abse दोबारा दुबारा फिरसे आगेसे अबसे আবার पुन्हा परत ફરીથી ફરી ਦੁਬਾਰਾ
 """.split())
@@ -505,7 +509,7 @@ _DENIAL = _compile(
 _FILLER = frozenset("""
 please pls plz kindly me us sir madam maam mam ma'am okay ok thanks thank you ji jee bas bhai sahab saheb
 this number just actually look listen well fine so
-मुझे मुझको हमें हमको बस जी प्लीज़ प्लीज कृपया आप सर मैडम मैम भाई साहब धन्यवाद शुक्रिया इस नंबर पर है हैं
+मुझे मुझको हमें हमको बस जी प्लीज़ प्लीज कृपया आप सर मैडम मैम भाई साहब धन्यवाद शुक्रिया इस नंबर पर है हैं मी
 আমাকে আমাদের দয়া করে প্লিজ দাদা দিদি স্যার ম্যাডাম ধন্যবাদ আপনি এই নম্বরে
 मला आम्हाला कृपया प्लीज सर मॅडम धन्यवाद तुम्ही या नंबरवर
 મને અમને મહેરબાની કરીને પ્લીઝ સર મેડમ આભાર તમે આ નંબર પર
