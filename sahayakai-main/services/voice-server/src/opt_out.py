@@ -155,7 +155,7 @@ def _compile(*parts: str) -> re.Pattern[str]:
 _END = rf"(?![{_INDIC}])"  # the verb ends here ("करें" must not match "करेंगे")
 
 _HI_CALL = r"(?:फ़ोन|फोन|कॉल|काल)"
-_HI_VERB = rf"(?:करना|करो|कीजिए|कीजिये|करें|करिए|करिएगा|किया\s*करो){_END}"
+_HI_VERB = rf"(?:करना|करो|कीजिएगा|कीजिए|कीजिये|करें|करिएगा|करियेगा|करिए|करिये|किया\s*करो){_END}"
 _HI_DONT = rf"(?:मत|ना|न|नहीं)\s*{_HI_VERB}"
 _HI_AGAIN = r"(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|कभी\s*भी|कभी|आगे\s*से|अब\s*से)"
 _HI_CALLS = rf"{_HI_CALL}(?:्स|ें|े)?"  # कॉल्स, कॉलें: plural "calls"
@@ -170,23 +170,23 @@ _HI_STOP_THESE_CALLS = (
 _BN_CALL = r"(?:ফোন|কল)"
 _BN_DONT = r"(?:করবেন|কোরো|করো|করিস|দিবেন|দেবেন|দিও|দিয়ো|দিস)\s*না"
 _MR_CALL = r"(?:फोन|फ़ोन|कॉल)"
-_MR_DONT = r"(?:(?:करू|करु)\s*(?:नका|नकोस)|(?:नका|नकोस)\s*(?:करू|करु))"
+_MR_DONT = r"(?:(?:करू|करु)\s*(?:नका|नकोस|नको)|(?:नका|नकोस|नको)\s*(?:करू|करु))"
 _GU_CALL = r"(?:ફોન|કૉલ|કોલ)"
 _GU_VERB = r"(?:કરો|કરશો|કરતા|કરજો)"
 _GU_DONT = rf"(?:(?:ન|ના|નહીં|નહિ)\s*{_GU_VERB}|{_GU_VERB}\s*(?:નહીં|નહિ|ના))"
 _PA_CALL = "(?:ਫ਼ੋਨ|ਫ਼ੋਨ|ਫੋਨ|ਕਾਲ)"  # ਫ਼ੋਨ (both forms), ਫੋਨ, ਕਾਲ
-_PA_VERB = r"(?:ਕਰੋ|ਕਰਿਓ|ਕਰਨਾ)"
+_PA_VERB = r"(?:ਕਰਿਆ\s*ਕਰੋ|ਕਰੋ|ਕਰਿਓ|ਕਰਨਾ)"
 _PA_DONT = rf"(?:(?:ਨਾ|ਨ|ਨਹੀਂ)\s*{_PA_VERB}|{_PA_VERB}\s*(?:ਨਹੀਂ|ਨਾ))"
 _KN_CALL = r"(?:ಫೋನ್|ಕರೆ|ಕಾಲ್)"
-_KN_DONT = r"(?:ಮಾಡಬೇಡಿ|ಮಾಡ್ಬೇಡಿ|ಮಾಡಬೇಡ)"
+_KN_DONT = r"(?:ಮಾಡಬೇಡಿ|ಮಾಡ್ಬೇಡಿ|ಮಾಡಬೇಡ|ಮಾಡ್ಬೇಡ)"
 _TA_CALL = r"(?:போன்|ஃபோன்|கால்)"
 _TA_DONT = r"(?:பண்ணாதீங்க|பண்ணாதீர்கள்|பண்ணாதே|பண்ண\s*வேண்டாம்|செய்ய\s*வேண்டாம்)"
 _TA_CALLVERB = r"(?:கூப்பிடாதீங்க|கூப்பிடாதீர்கள்|கூப்பிட\s*வேண்டாம்|அழைக்க\s*வேண்டாம்|அழைக்காதீர்கள்)"
 _TE_CALL = r"(?:ఫోన్|కాల్)"
-_TE_DONT = r"(?:చేయవద్దు|చేయకండి|చెయ్యకండి|చేయొద్దు|చెయ్యొద్దు)"
+_TE_DONT = r"(?:చేయవద్దు|చేయకండి|చెయ్యకండి|చేయొద్దు|చెయ్యొద్దు|చెయ్యద్దు|చేయద్దు)"
 _ML_DONT = (
     r"(?:വിളിക്കരുത്|വിളിക്കേണ്ട|വിളിക്കണ്ട|വിളിക്കല്ലേ|"
-    r"ഫോൺ\s*ചെയ്യരുത്|ഫോൺ\s*ചെയ്യേണ്ട|ഫോൺ\s*ചെയ്യണ്ട|ഫോൺ\s*ചെയ്യല്ലേ)"
+    r"(?:ഫോൺ|കോൾ)\s*(?:ചെയ്യരുത്|ചെയ്യേണ്ട|ചെയ്യണ്ട|ചെയ്യല്ലേ))"
 )
 
 # Phrases that mean "stop calling this number" whatever else is said.
@@ -194,6 +194,8 @@ _UNAMBIGUOUS = _compile(
     r"\bunsubscribe\b",
     r"\b(?:remove|delete|take off|take out|block) (?:my|this|our) (?:number|phone number|mobile number|mobile)\b",
     r"\btake (?:me|us|my number|this number) off\b",
+    r"\bremove (?:me|us|my name|our name) from (?:your|the) (?:list|calling list|call list|contact list)\b",
+    r"(?:नाम|नंबर|नम्बर)\s*.{0,8}लिस्ट\s*से\s*(?:हटा|निकाल)",
     r"\bnumber\b.{0,6}\b(?:hata|hatao|hataiye|hata do|delete)\b",
     r"(?:नंबर|नम्बर)\s*.{0,8}(?:हटा|डिलीट|काट\s*द)",
     r"(?:নাম্বার|নম্বর)\s*.{0,6}(?:বাদ|মুছ|কেটে)",
@@ -221,10 +223,13 @@ _STOP_PHRASES = _compile(
     r"\bstop (?:calling|phoning|ringing|these calls|the calls|your calls)\b",
     r"\bno more (?:phone )?calls\b",
     r"^(?:please )?never (?:ever )?(?:call|phone|ring) (?:me|us|this number)\b",
-    r"\b(?:do not|don't|dont) (?:ever )?(?:call|phone|ring)\b",
+    r"\b(?:do not|don't|dont) (?:ever )?(?:call|phone|ring|contact)\b",
+    r"\bnot to (?:call|phone|ring|contact) (?:me|us|this number)\b",
+    r"\bnever (?:ever )?(?:call|phone|ring|contact)(?: me| us| this number)?\b",
+    r"\b(?:i|we) (?:do not|don't|dont) want to (?:talk|speak) (?:to|with) (?:the school|you|the teacher|anyone)\b",
     r"\b(?:do not|don't|dont|stop) keep(?:ing)? (?:calling|phoning|ringing)\b",
     r"\b(?:i|we) (?:do not|don't|dont) want (?:any )?(?:more )?(?:these |your |such |any )?(?:phone )?calls\b",
-    r"\b(?:i|we) (?:do not|don't|dont) want (?:you|the school|anyone) to (?:call|phone|ring)\b",
+    r"\b(?:i|we) (?:do not|don't|dont) want (?:you|the school|anyone) (?:to (?:call|phone|ring)|calling|phoning)\b",
     r"\b(?:i|we) (?:do not|don't|dont) want to (?:receive|get|have) (?:any )?(?:more )?(?:phone )?calls\b",
     r"\b(?:do not|don't|dont) want to be (?:called|contacted)\b",
     r"\b(?:do not|don't|dont) (?:disturb|bother) (?:me|us)\b",
@@ -233,8 +238,11 @@ _STOP_PHRASES = _compile(
     r"\b(?:phone|fone|call)\s*(?:mat\s*(?:karo|karna|kijiye|kijie|kariye|karein|kiya karo)|"
     r"(?:na|nahi|nahin)\s*(?:karo|karna|kijiye|kariye|karein))\b",
     r"\b(?:phone|fone|call)\s*karna\s*band\s*(?:karo|kijiye|kariye|kar do|kar dijiye)\b",
-    # Hindi
+    r"\b(?:mujhe|humein|hume|hamein|mujhko)\s*(?:\S+\s+)?(?:call|calls|phone)\s*(?:nahi|nahin)\s*(?:chahiye|chahie)\b",
+    # Hindi (also with the English word "call": "मुझे call मत करो")
     rf"{_HI_CALL}\s*{_HI_DONT}",
+    rf"\b(?:call|phone)\s*{_HI_DONT}",
+    rf"{_HI_CALL}\s*(?:करने|करना)\s*की\s*(?:ज़रूरत|जरूरत|आवश्यकता)\s*नहीं",
     # "फ़ोन, दोबारा मत करना": the call word, then "don't (do it) again"
     rf"{_HI_CALL}\s*(?:दोबारा|दुबारा|फिर\s*से|फिर\s*कभी|आगे\s*से)\s*{_HI_DONT}",
     rf"{_HI_CALL}\s*करना\s*बंद\s*(?:करो|कीजिए|करें|कर\s*दो|कर\s*दीजिए|करिए)",
@@ -246,13 +254,16 @@ _STOP_PHRASES = _compile(
     # Bengali
     rf"{_BN_CALL}\s*{_BN_DONT}",
     rf"{_BN_CALL}\s*করা\s*বন্ধ\s*(?:করুন|করো|করবেন)",
+    rf"{_BN_CALL}\s*(?:করার|দেওয়ার)\s*(?:দরকার|প্রয়োজন)\s*নেই",
     rf"বিরক্ত\s*{_BN_DONT}",
     # Marathi
     rf"{_MR_CALL}\s*{_MR_DONT}",
     rf"{_MR_CALL}\s*(?:करणं|करणे)\s*बंद\s*(?:करा|कर)",
     r"त्रास\s*(?:देऊ|देउ)\s*(?:नका|नकोस)",
+    rf"(?:असे|असले|हे)\s*{_MR_CALL}\s*(?:नकोत|नको)",
     # Gujarati, Punjabi, Kannada, Tamil, Telugu, Malayalam, Odia
     rf"{_GU_CALL}\s*{_GU_DONT}",
+    rf"{_GU_CALL}\s*કરવાની\s*(?:જરૂર|જરુર)\s*નથી",
     rf"{_PA_CALL}\s*{_PA_DONT}",
     rf"{_KN_CALL}\s*{_KN_DONT}",
     rf"{_TA_CALL}\s*{_TA_DONT}",
@@ -364,6 +375,10 @@ _STRONG_PHRASES = _compile(
     r"\b(?:don't|dont|do not|stop)\s+keep(?:ing)?\s+(?:calling|phoning|ringing)\b",
     r"\b(?:phir kabhi)\b",
     r"फिर\s*कभी",
+    r"\bnever (?:ever )?(?:call|phone|ring|contact)(?: me| us| this number)? again\b",
+    r"\b(?:i|we) (?:do not|don't|dont) want to (?:talk|speak) (?:to|with) (?:the school|you|the teacher|anyone)\b",
+    r"\b(?:mujhe|humein|hume|hamein|mujhko)\s*(?:\S+\s+)?(?:call|calls|phone)\s*(?:nahi|nahin)\s*(?:chahiye|chahie)\b",
+    rf"(?:असे|असले|हे)\s*{_MR_CALL}\s*(?:नकोत|नको)",
 )
 # "Again / anymore" in the call language: a "don't call" said with one, NEXT
 # to it, is strong (_next_to_a_repeat_word). This list is the post-call
@@ -488,7 +503,7 @@ _DENIAL = _compile(
 _FILLER = frozenset("""
 please pls plz kindly me us sir madam maam mam ma'am okay ok thanks thank you ji jee bas bhai sahab saheb
 this number just actually look listen well fine so
-मुझे मुझको हमें हमको बस जी प्लीज़ प्लीज कृपया आप सर मैडम मैम भाई साहब धन्यवाद शुक्रिया इस नंबर पर
+मुझे मुझको हमें हमको बस जी प्लीज़ प्लीज कृपया आप सर मैडम मैम भाई साहब धन्यवाद शुक्रिया इस नंबर पर है हैं
 আমাকে আমাদের দয়া করে প্লিজ দাদা দিদি স্যার ম্যাডাম ধন্যবাদ আপনি এই নম্বরে
 मला आम्हाला कृपया प्लीज सर मॅडम धन्यवाद तुम्ही या नंबरवर
 મને અમને મહેરબાની કરીને પ્લીઝ સર મેડમ આભાર તમે આ નંબર પર
