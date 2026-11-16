@@ -37,6 +37,23 @@ in this order.
 4. **Optional but recommended:** a Firestore TTL policy on
    `vobiz_stream_tokens.expiresAt`, so consumed-stream records are swept.
 
+### Behaviour changes on positive_feedback
+
+positive_feedback calls keep their original prompts, greeting and phase
+guidance byte for byte (`tests/golden/positive_feedback.json`). What changes
+for them, deliberately:
+
+- When the AI-reveal guard blocks the call's **last** reply, the parent now
+  hears the fixed goodbye in the call's language (`goodbye` in
+  `src/call_lines.json`) instead of the old Hindi line
+  "जी, मैं … बोल रहा हूँ। … के बारे में बात करते हैं।", which started a new
+  topic and then hung up. Mid-call, the old line is unchanged.
+- A possible stop request gets the same handling as on every call: it is
+  recorded for the teacher, the fixed opt-out line and goodbye are said, and
+  the model is not heard again on that call.
+- A model reply that would promise no more calls ("अब आपको फ़ोन नहीं
+  करेंगे") is never spoken; it is handled as a stop request.
+
 ## 2. Build the candidate
 
 From the monorepo root:
