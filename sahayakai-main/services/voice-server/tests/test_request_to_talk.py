@@ -122,6 +122,24 @@ def concern_context(reason, language="Hindi", **overrides) -> dict:
     return ctx
 
 
+# The concern-call instructions the original prompt carries (seen in the live
+# prompt on 2026-11-16): "ANSWER DIRECT QUESTIONS HONESTLY ... GIVE THE HONEST
+# ANSWER ... (100 mein se 18 number aaye hain, science mein)" and friends. Any of
+# them in a request-to-talk call tells the model to disclose what it must not.
+DISCLOSURE_INSTRUCTIONS = re.compile(
+    r"honest|100 mein se|number aaye|score kitna|actual score|actual incident|"
+    r"problem kya hai|kya hua hai|share concern|ease into problems|dodg|"
+    r"attendance/absent|exam performance|behavioral issues|fees scenario",
+    re.IGNORECASE,
+)
+
+
+def assert_no_disclosure_instruction(texts) -> None:
+    for text in texts:
+        hit = DISCLOSURE_INSTRUCTIONS.search(text)
+        assert hit is None, (hit.group(0) if hit else None, text[:200])
+
+
 def reason_markers(reason) -> list[str]:
     """Strings that must never reach the model for this reason."""
     markers = [MARK]
@@ -148,6 +166,7 @@ def test_every_non_positive_reason_fails_closed_to_request_to_talk(reason, langu
     for text in model_facing:
         for marker in reason_markers(reason):
             assert marker not in text, (marker, text)
+    assert_no_disclosure_instruction(model_facing)
 
 
 def test_only_the_exact_enum_value_is_positive():
@@ -224,6 +243,7 @@ def test_sentinels_never_reach_any_model_input_through_create_bot(reason, langua
     for text in checked:
         for marker in reason_markers(reason):
             assert marker not in text, (marker, text[:200])
+    assert_no_disclosure_instruction([run.system_instruction, *guidance.values()])
 
 
 def test_wiring_and_plan_agree_for_a_concern_call():
@@ -248,6 +268,15 @@ def test_positive_feedback_output_matches_the_pre_change_golden():
     assert set(now) == set(golden)
     for name in golden:
         assert now[name] == golden[name], name
+
+
+def test_the_disclosure_check_would_catch_the_original_prompt():
+    """The regex is not vacuous: the pre-change prompt, used for every call, trips it."""
+    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    hi = golden["hindi_with_message_subject_and_history"]
+    assert "GIVE THE HONEST ANSWER" in hi["system_instruction"]
+    assert "100 mein se 18 number aaye hain" in hi["system_instruction"]
+    assert DISCLOSURE_INSTRUCTIONS.search(hi["system_instruction"])
 
 
 def test_positive_feedback_still_speaks_the_teacher_message_and_reads_history():

@@ -112,6 +112,9 @@ def _assert_request_to_talk(run, store, greeting, guidance, replacement, added, 
                  *(m["content"] for m in added), *everything]:
         for marker in (MARK, *extra_markers):
             assert marker not in text, (marker, text[:200])
+    from test_request_to_talk import assert_no_disclosure_instruction
+
+    assert_no_disclosure_instruction([run.system_instruction, *guidance.values()])
 
 
 async def _drive():
