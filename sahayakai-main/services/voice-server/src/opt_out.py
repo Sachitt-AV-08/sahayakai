@@ -161,9 +161,9 @@ _HI_AGAIN = r"(?:दोबारा|दुबारा|फिर\s*से|फि
 _HI_CALLS = rf"{_HI_CALL}(?:्स|ें|े)?"  # कॉल्स, कॉलें: plural "calls"
 _HI_STOP_VERB = r"(?:करो|कीजिए|कीजिये|करें|करिए|कर\s*दो|कर\s*दीजिए)"
 # "बंद करो ये कॉल", "ये कॉल्स बंद करो": stop THESE calls. Not "फ़ोन बंद करो"
-# (hang up): the call word comes after the verb, or is plural with "these".
+# or "बंद करो ये फ़ोन" (hang up): कॉल after the verb, or plural with "these".
 _HI_STOP_THESE_CALLS = (
-    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*{_HI_CALLS}"
+    rf"(?:बंद\s*{_HI_STOP_VERB}\s*(?:ये|यह|इन|ऐसे)\s*(?:कॉल|काल)(?:्स|ें|े)?"  # not "बंद करो ये फ़ोन" (hang up)
     rf"|(?:ये|यह|इन|ऐसे)\s*{_HI_CALL}(?:्स|ें)\s*बंद\s*{_HI_STOP_VERB})"
 )
 _BN_CALL = r"(?:ফোন|কল)"
@@ -268,17 +268,26 @@ _TIME_PARTS = (
     _starts(r"ഇപ്പോൾ|പിന്നെ|പിന്നീട്|നാളെ|വൈകുന്നേരം|രാവിലെ|രാത്രി|ഉച്ചയ്ക്ക്|ഇന്ന്"),
     _word(r"ଏବେ|ପରେ|କାଲି"),
 )
-# Reasons, not limits: "I'm busy", "I'm driving", "at the office". They veto a
-# plain "don't call" (usually "not now"), but not a strong stop ("stop calling
-# me, I'm busy", "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ").
-_REASON_PARTS = (
-    r"\b(?:office|work|working|busy|driving|meeting)\b",
-    _word(r"बिज़ी|बिजी|व्यस्त|ऑफिस|मीटिंग|ड्राइव"),
+# Where or while ("at the office", "in a meeting", "while I'm driving",
+# "ऑफिस में", "मीटिंग में"): a limit on WHEN not to call, so it vetoes even a
+# strong stop ("don't call me at the office again").
+_PLACE_PARTS = (
+    r"\b(?:office|work|working|driving|meeting)\b",
+    _word(r"ऑफिस|ऑफ़िस|दफ़्तर|दफ्तर|मीटिंग|ड्राइव|ड्राइविंग|काम\s*पर"),
     r"गाड़ी\s*चला",
-    _word(r"कामात"),
-    _word(r"ব্যস্ত|অফিস|মিটিং"),
+    _word(r"कामात|ऑफिसमध्ये"),
+    _word(r"অফিস|অফিসে|মিটিং|মিটিংয়ে"),
     r"গাড়ি\s*চালা",
-    _word(r"વ્યસ્ત|ઓફિસ"),
+    _word(r"ઓફિસ|ઓફિસમાં"),
+)
+# The one reason that is not a limit: "busy". It vetoes a plain "don't call"
+# (usually "not now"), but not a strong stop ("stop calling me, I'm busy",
+# "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ").
+_REASON_PARTS = (
+    r"\bbusy\b",
+    _word(r"बिज़ी|बिजी|व्यस्त"),
+    _word(r"ব্যস্ত"),
+    _word(r"વ્યસ્ત"),
     _word(r"ਬਿਜ਼ੀ|ਰੁੱਝਿਆ"),
     _starts(r"ಬ್ಯುಸಿ"),
     _starts(r"பிஸி"),
@@ -307,12 +316,13 @@ _REDIRECT_PARTS = (
     _word(r"ख़ुद|खुद"),
     r"আমি\s*নিজে",
 )
-_NOT_A_STOP = _compile(*_TIME_PARTS, *_REASON_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
-_LIMITS = _compile(*_TIME_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
+_NOT_A_STOP = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_REASON_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
+_LIMITS = _compile(*_TIME_PARTS, *_PLACE_PARTS, *_PARTY_PARTS, *_WEAK_PARTY_PARTS, *_REDIRECT_PARTS)
 
 # A strong stop: "stop calling", "no more calls", "I don't want these calls",
-# or any "don't call" said with "again"/"anymore" in the call language. Only a
-# limit (time, someone else, redirection) vetoes it, not a reason.
+# or any "don't call" said with "again"/"anymore" in the call language (not
+# "ever" / "कभी": "don't ever call me while I'm driving" is a limit). Only a
+# limit (time, place, someone else, redirection) vetoes it, not "busy".
 _STRONG_STOP = _compile(
     r"\bstop (?:calling|phoning|ringing|these calls|the calls|your calls)\b",
     r"\bno more (?:phone )?calls\b",
@@ -320,9 +330,9 @@ _STRONG_STOP = _compile(
     rf"(?:हमें|मुझे)\s*.{{0,10}}{_HI_CALLS}\s*(?:नहीं\s*चाहिए|नहीं\s*चाहिये)",
     _HI_STOP_THESE_CALLS,
     rf"{_HI_CALL}\s*करना\s*बंद",
-    r"\b(?:again|anymore|any more|ever)\b",
+    r"\b(?:again|anymore|any more)\b",
     r"\b(?:dobara|dubara|phir se|aage se|ab se)\b",
-    _HI_AGAIN,
+    r"(?:दोबारा|दुबारा|फिर\s*से|आगे\s*से|अब\s*से)",
     _word(r"আর|আবার"),
     _word(r"पुन्हा|परत"),
     _word(r"ફરીથી|ફરી"),
@@ -345,14 +355,19 @@ def normalize(text: object) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def is_stop_request(text: object) -> bool:
+def is_stop_request(text: object, current: object = None) -> bool:
     """Should the engine ASK whether this parent wants the calls to stop?
 
     True for an unambiguous phrase ("remove my number"); for a "don't call"
     phrase in an utterance with no time, reason, third-party or redirection
     cue; or for a strong stop ("stop calling me, I'm busy") with no time,
-    third-party or redirection cue. A True only ever leads to a flag for the
-    teacher (StopListener).
+    place, third-party or redirection cue. A True only ever leads to a flag
+    for the teacher (StopListener).
+
+    `current`: when `text` is the previous transcription joined to the
+    current one, the part that was just said. What makes a stop strong must
+    be in it: "can you say that AGAIN?" followed by "don't call me at work"
+    is not a strong stop.
     """
     t = normalize(text)
     if not t:
@@ -363,7 +378,8 @@ def is_stop_request(text: object) -> bool:
         return False
     if not _NOT_A_STOP.search(t):
         return True
-    return bool(_STRONG_STOP.search(t)) and not _LIMITS.search(t)
+    strong_in = t if current is None else normalize(current)
+    return bool(_STRONG_STOP.search(strong_in)) and not _LIMITS.search(t)
 
 
 def has_reschedule_cue(text: object) -> bool:
@@ -528,7 +544,7 @@ class StopListener:
         self._previous, self._previous_raw = utterance, raw
         if is_stop_request(utterance):
             self.noticed, self.quote = True, raw
-        elif previous and is_stop_request(f"{previous} {utterance}"):
+        elif previous and is_stop_request(f"{previous} {utterance}", current=utterance):
             self.noticed, self.quote = True, f"{previous_raw} {raw}".strip()
         return self.noticed
 

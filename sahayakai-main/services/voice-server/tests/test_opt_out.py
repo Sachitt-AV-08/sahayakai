@@ -446,3 +446,54 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
     # Only the stream-token consumption touches Firestore on a built-in test call.
     assert [w[1] for w in db.writes] == ["vobiz_stream_tokens"] and db.reads == []
     assert [type(f).__name__ for f in run.task.queued][-1:] == ["TTSSpeakFrame"]
+
+
+# ── over-recall: a limit is not a stop ───────────────────────────────────────
+# Independent review of 5191d1e72 (#3): putting place/activity words with
+# "busy", counting "ever / कभी" as strong, checking "strong" on the joined
+# window, and taking "बंद करो ये फ़ोन" (hang up) as "stop these calls" made
+# these into stop requests: each one ended an ordinary call with the opt-out
+# line and recorded optOutRequested.
+
+NOT_STOPS_OVER_RECALL = [
+    "Don't call me at the office again.",
+    "Don't call me at work anymore.",
+    "Don't ever call me while I'm driving.",
+    "ऑफिस में दोबारा फ़ोन मत करना।",
+    "मीटिंग में कभी फ़ोन मत करना।",
+    "आप मुझे कभी भी फ़ोन कर लीजिए, बस मीटिंग में फ़ोन मत करना",
+    "बंद करो ये फ़ोन",
+    "बंद करो यह फ़ोन",
+    "बंद कर दो ये फ़ोन",
+]
+TWO_UTTERANCES = ("Sorry, can you say that again?", "I'm at work, don't call me at work")
+STILL_STOPS = ["Stop calling me, I am busy", "मुझे ये कॉल्स नहीं चाहिए",
+               "मुझे दोबारा फ़ोन मत करना, मैं व्यस्त रहता हूँ", "बंद करो ये कॉल"]
+
+
+@pytest.mark.parametrize("text", NOT_STOPS_OVER_RECALL)
+def test_a_place_or_activity_limit_is_not_a_stop(text):
+    assert not is_stop_request(text), text
+
+
+def test_strength_is_judged_on_what_was_just_said():
+    c = StopListener()
+    assert [c.on_parent_speech(t) for t in TWO_UTTERANCES] == [False, False]
+
+
+@pytest.mark.parametrize("text", STILL_STOPS)
+def test_the_strong_stops_are_still_detected(text):
+    assert is_stop_request(text), text
+
+
+@pytest.mark.parametrize("utterances", [(t,) for t in NOT_STOPS_OVER_RECALL] + [TWO_UTTERANCES],
+                         ids=lambda u: " / ".join(u)[:40])
+def test_a_limit_through_the_real_handler_records_nothing_and_reaches_the_model(utterances, tmp_path, monkeypatch):
+    from test_opt_out_never_suppresses import _run_call
+
+    language = "English" if utterances[0].isascii() else "Hindi"
+    db, _persisted, spoken, passed = _run_call(language, utterances, tmp_path, monkeypatch)
+    assert opt_out_requests(db) == [], "a limit was recorded as a stop request"
+    noted = load_call_lines()["en-IN" if language == "English" else "hi-IN"]["opt_out_noted"]
+    assert noted not in spoken
+    assert passed == list(utterances), "the model hears the parent as usual"
