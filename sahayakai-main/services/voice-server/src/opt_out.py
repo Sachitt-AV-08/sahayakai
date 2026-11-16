@@ -359,7 +359,9 @@ _STRONG_PHRASES = _compile(
     r"\b(?:phir kabhi)\b",
     r"फिर\s*कभी",
 )
-# "Again / anymore" in the call language: a "don't call" said with one is strong.
+# "Again / anymore" in the call language: a "don't call" said with one, NEXT
+# to it, is strong (_next_to_a_repeat_word). This list is the post-call
+# check's looser "any strong marker".
 _REPEAT_WORDS = _compile(
     r"\b(?:again|anymore|any more)\b",
     r"\b(?:dobara|dubara|phir se|aage se|ab se)\b",
@@ -374,6 +376,57 @@ _REPEAT_WORDS = _compile(
     _starts(r"ഇനി|വീണ്ടും"),
 )
 _STRONG_STOP = _compile(_STRONG_PHRASES.pattern, _REPEAT_WORDS.pattern)
+
+# "Again and again", "बार बार": a frequency complaint, never a repeat word.
+_FREQUENCY = _compile(r"\bagain and again\b", r"\b(?:baar baar|bar bar)\b", r"बार\s*[-]?\s*बार",
+                      r"বারবার|বার\s*বার", r"वारंवार", r"વારંવાર", r"ਵਾਰ\s*ਵਾਰ")
+# Multi-word repeat words, joined so each is one token.
+_REPEAT_JOIN = [(re.compile(a), b) for a, b in (
+    (r"\bany more\b", "anymore"), (r"\bphir se\b", "phirse"), (r"\baage se\b", "aagese"), (r"\bab se\b", "abse"),
+    (r"फिर\s*से", "फिरसे"), (r"आगे\s*से", "आगेसे"), (r"अब\s*से", "अबसे"),
+)]
+# Where a repeat word sits: English says it AFTER the stop ("don't call me
+# again"); the Indic call languages say it BEFORE ("दोबारा फ़ोन मत करना",
+# "আর ফোন করবেন না"). Bengali আর ("and" as well as "anymore") counts only
+# right before the call word. Punjabi ਫਿਰ ("then") is not one.
+_REPEAT_AFTER = frozenset({"again", "anymore"})
+_REPEAT_BEFORE = frozenset("""
+dobara dubara phirse aagese abse दोबारा दुबारा फिरसे आगेसे अबसे আবার पुन्हा परत ફરીથી ફરી ਦੁਬਾਰਾ
+""".split())
+_REPEAT_BEFORE_PREFIX = ("ಮತ್ತೆ", "ಇನ್ನು", "ಇನ್ಮೇಲೆ", "இனிமேல்", "இனிமே", "இனி", "மறுபடியும்", "మళ్ళీ", "ఇంకెప్పుడూ",
+                         "ഇനി", "വീണ്ടും")
+_REPEAT_RIGHT_BEFORE = frozenset({"আর"})
+_REPEAT_WINDOW = 3  # tokens, with only filler between
+
+
+def _is_repeat_before(word: str, adjacent: bool) -> bool:
+    return (word in _REPEAT_BEFORE or word.startswith(_REPEAT_BEFORE_PREFIX)
+            or (adjacent and word in _REPEAT_RIGHT_BEFORE))
+
+
+def _next_to_a_repeat_word(clause: str) -> bool:
+    """Is a repeat word next to a stop phrase in this clause (only filler between)?"""
+    c = _FREQUENCY.sub(" ", clause)
+    for pattern, joined in _REPEAT_JOIN:
+        c = pattern.sub(joined, c)
+    toks = c.split()
+    for m in _STOP_PHRASES.finditer(c):
+        inside = m.group(0).split()
+        if any(_is_repeat_before(w, True) or w in _REPEAT_AFTER for w in inside):
+            return True
+        first, last = len(c[:m.start()].split()), len(c[:m.end()].split())
+        for i, w in enumerate(toks[last:last + _REPEAT_WINDOW]):
+            if w in _REPEAT_AFTER:
+                return True
+            if w not in _FILLER:
+                break
+        before = toks[max(0, first - _REPEAT_WINDOW):first]
+        for i, w in enumerate(reversed(before)):
+            if _is_repeat_before(w, adjacent=i == 0):
+                return True
+            if w not in _FILLER:
+                break
+    return False
 
 # Not saying it: "I never said don't call me", "मैंने कब कहा कि फ़ोन मत करना".
 _DENIAL = _compile(
@@ -486,9 +539,11 @@ def stop_kind(text: object, current: object = None) -> str | None:
     for clause, question in _stop_clauses(text):
         if question:
             return None
-        if (_STRONG_PHRASES.search(clause) or _REPEAT_WORDS.search(clause)) and not _LIMITS.search(clause):
+        if (_STRONG_PHRASES.search(clause) or _next_to_a_repeat_word(clause)) and not _LIMITS.search(clause) \
+                and not _FREQUENCY.search(clause):
             return "strong"
-    if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t):
+    if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t) \
+            and not _FREQUENCY.search(t):
         return "plain"
     return None
 
