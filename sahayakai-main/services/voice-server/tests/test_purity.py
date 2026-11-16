@@ -17,6 +17,7 @@ PURE_MODULES = [
     "src.prompts.agent_reply",
     "src.prompts.phase_guidance",
     "src.opt_out",
+    "src.stt_noise",
     "src.stream_tokens",
     "src.log_redaction",
     "src.gemini_backend",

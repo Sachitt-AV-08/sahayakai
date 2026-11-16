@@ -33,6 +33,7 @@ from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from src.opt_out import HOLD, NOTICE, NOTICE_HELD, WAIT, StopListener, normalize
+from src.stt_noise import drop_reason
 
 # How long a plain stop waits, after the parent stops speaking, for the rest
 # of the sentence; plus the time a final transcription takes to arrive after
@@ -96,7 +97,8 @@ class StopRequestGuard(FrameProcessor):
 
     def _held_text(self, extra: str = "") -> str:
         texts = [f.text or "" for f, _ in self._held] + ([extra] if extra else [])
-        return " ".join(t.strip() for t in texts if normalize(t))  # punctuation-only finals are not words
+        # Punctuation-only finals and noise fragments are not words.
+        return " ".join(t.strip() for t in texts if normalize(t) and not drop_reason(t))
 
     async def _fire(self, extra: str = "") -> None:
         utterance = self._held_text(extra)

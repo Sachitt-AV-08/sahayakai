@@ -50,6 +50,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
+from src.stt_noise import drop_reason
+
 SUPPRESSION_COLLECTION = "call_suppressions"
 OUTREACH_COLLECTION = "parent_outreach"
 OPT_OUT_REASON = "opt_out"
@@ -868,9 +870,11 @@ class StopListener:
         raw = text.strip() if isinstance(text, str) else ""
         if self.noticed:
             return PASS
-        if not normalize(raw):
-            # A punctuation-only final ("." or "।"): nothing to judge. While a
-            # stop is held it stays with the held words and changes nothing.
+        if not normalize(raw) or (self.pending is not None and drop_reason(raw)):
+            # A punctuation-only final ("." or "।"), or while a stop is held a
+            # fragment the STT filter drops ("हम्म", "हां", "hmm", a single
+            # letter): nothing to judge. While a stop is held it stays with
+            # the held words and changes nothing.
             return HOLD if self.pending is not None else PASS
         recent = self._previous_raw and (now is None or self._previous_at is None
                                          or now - self._previous_at <= JOIN_SECONDS)

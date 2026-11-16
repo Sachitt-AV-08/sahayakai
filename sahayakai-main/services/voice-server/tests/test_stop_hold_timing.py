@@ -147,3 +147,36 @@ def test_a_transcription_long_after_the_last_sound_does_not_join_the_held_stop()
         [(0.0, "Don't call me"), (0.3, VADUserStartedSpeakingFrame()), (3.2, "after nine")], until=3.5)
     assert [q for _, q in records] == ["Don't call me"], "the held stop stands on its own"
     assert [t for _, t in to_model] == ["after nine"]
+
+
+# ── D3: a noise fragment during the hold ────────────────────────────────────
+# "फ़ोन मत करना" + "हम्म" (or "हां", "hmm", a single letter) cancelled the
+# held stop: the fragment was judged as the rest of the sentence. Those
+# fragments are what STTConfidenceFilter drops before the model; the hold
+# now ignores the same ones (src/stt_noise.py, shared by both).
+
+FRAGMENTS = ["हम्म", "हां", "hmm", "a"]
+
+
+@pytest.mark.parametrize("fragment", FRAGMENTS)
+def test_a_noise_fragment_does_not_cancel_a_held_stop(fragment):
+    keep: dict = {}
+    records, to_model, _guard = _timeline([(0.0, "फ़ोन मत करना"), (0.6, fragment)], until=2.3, keep=keep)
+    [(at, quote)] = records
+    assert quote == "फ़ोन मत करना" and 1.7 <= at <= 2.2, (fragment, at, quote)
+    assert to_model == []
+    users = [m["content"] for m in keep["run"].context.messages if m.get("role") == "user"]
+    assert users == ["फ़ोन मत करना"], "the fragment is not part of the parent's words"
+
+
+@pytest.mark.parametrize("fragment", FRAGMENTS)
+def test_the_fragments_are_exactly_what_the_stt_filter_drops(fragment):
+    with stubbed_runtime():
+        from src.stt_filter import STTConfidenceFilter
+
+        async def go():
+            f = STTConfidenceFilter()
+            await f.process_frame(TranscriptionFrame(text=fragment), FrameDirection.DOWNSTREAM)
+            return f.pushed
+
+        assert asyncio.run(go()) == []
