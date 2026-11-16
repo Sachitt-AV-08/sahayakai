@@ -21,6 +21,10 @@
  *     instructions, selected by the trusted `requestToTalk` flag and outside every <user_input>
  *     fence (text inside a fence is data the prompt tells the model to ignore), and a
  *     request-to-talk turn is never served by the sidecar, whose agent has no such rules.
+ *  2c. SIDECAR CONTRACT — every agent input the TwiML route builds (each reason, and a good-news
+ *     record without a subject) becomes a sidecar request that satisfies AgentReplyRequest as
+ *     declared in sahayakai-agents (field lengths, bounds, required fields, no extra fields),
+ *     read from the Python source so the two sides cannot drift unnoticed.
  *  3. STRUCTURAL — discovered, not listed:
  *     - a route that reads `spokenScript`, `generatedMessage` or `performanceContext` must be on
  *       the teacher-facing allow-list (its output never reaches a parent); parent-facing routes
@@ -367,6 +371,83 @@ describe('agent rules: structure and control', () => {
         const unflagged = await dispatchParentCallReply({ ...base, subject: 'Maths', requestToTalk: false });
         expect(unflagged.source).toBe('sidecar');
         expect(callSidecarReply).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ── 2c. Sidecar request contract ────────────────────────────────────────────────────────────
+
+type FieldRule = { optional: boolean; minLength?: number; maxLength?: number; ge?: number; le?: number };
+
+/** AgentReplyRequest's fields and constraints, read from the sidecar's own pydantic model. */
+function sidecarReplyContract(): Record<string, FieldRule> {
+    const file = path.resolve(SRC, '../../sahayakai-agents/src/sahayakai_agents/agents/parent_call/schemas.py');
+    const src = fs.readFileSync(file, 'utf8');
+    const start = src.indexOf('class AgentReplyRequest(BaseModel):');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rest = src.slice(start + 1);
+    const body = rest.slice(0, rest.search(/\nclass /));
+    const rules: Record<string, FieldRule> = {};
+    for (const m of body.matchAll(/^ {4}(\w+):\s*([^=\n]+?)(?:\s*=\s*(.+))?$/gm)) {
+        const [, name, type, rhs = ''] = m;
+        if (name === 'model_config') continue;
+        const num = (k: string) => {
+            const r = rhs.match(new RegExp(`\\b${k}=(\\d+)`));
+            return r ? Number(r[1]) : undefined;
+        };
+        rules[name] = {
+            optional: /\bdefault=/.test(rhs) || /\|\s*None\b/.test(type),
+            minLength: num('min_length'),
+            maxLength: num('max_length'),
+            ge: num('ge'),
+            le: num('le'),
+        };
+    }
+    return rules;
+}
+
+function contractViolations(request: Record<string, unknown>, rules: Record<string, FieldRule>): string[] {
+    const v: string[] = [];
+    for (const [k, val] of Object.entries(request)) if (val !== undefined && !rules[k]) v.push(`extra field ${k}`);
+    for (const [k, r] of Object.entries(rules)) {
+        const val = request[k];
+        if (val === undefined || val === null) {
+            if (!r.optional) v.push(`missing ${k}`);
+            continue;
+        }
+        const len = typeof val === 'string' || Array.isArray(val) ? val.length : undefined;
+        if (len !== undefined && r.minLength !== undefined && len < r.minLength) v.push(`${k}: length ${len} < ${r.minLength}`);
+        if (len !== undefined && r.maxLength !== undefined && len > r.maxLength) v.push(`${k}: length ${len} > ${r.maxLength}`);
+        if (typeof val === 'number' && r.ge !== undefined && val < r.ge) v.push(`${k}: ${val} < ${r.ge}`);
+        if (typeof val === 'number' && r.le !== undefined && val > r.le) v.push(`${k}: ${val} > ${r.le}`);
+    }
+    return v;
+}
+
+describe('sidecar contract: every agent input the TwiML route builds is a valid sidecar request', () => {
+    const rules = sidecarReplyContract();
+    const { toSidecarRequest } = jest.requireActual('@/lib/sidecar/dispatch');
+
+    it('reads the contract (guards against the parser matching nothing)', () => {
+        expect(rules.subject).toEqual(expect.objectContaining({ optional: false, minLength: 1 }));
+        expect(rules.reason).toEqual(expect.objectContaining({ optional: false, minLength: 1 }));
+        expect(rules.turnNumber).toEqual(expect.objectContaining({ ge: 1, le: 12 }));
+        expect(rules.teacherName?.optional).toBe(true);
+    });
+
+    const CASES: [string, Data][] = [
+        ...REQUEST_TO_TALK_REASONS.map((r) => [`request to talk, reason=${String(r)}`, concernRecord(r)] as [string, Data]),
+        ['good news', concernRecord('positive_feedback')],
+        ['good news saved without a subject', (() => { const d = concernRecord('positive_feedback'); delete d.subject; return d; })()],
+    ];
+
+    it.each(CASES)('%s', async (_label, record) => {
+        store.set(OUTREACH, record);
+        await twimlPostText();
+        expect(agentInputs).toHaveLength(1);
+        const request = toSidecarRequest(agentInputs[0]);
+        expect(contractViolations(request, rules)).toEqual([]);
+        // The stand-in subject is neutral: it never names the concern.
+        if (isRequestToTalk(record.reason)) expect(String(request.subject)).not.toContain('SENTINEL');
     });
 });
 
