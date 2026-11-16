@@ -10,8 +10,10 @@ image will deploy with, and fails the build if:
   * create_bot cannot build a full pipeline with either Gemini backend;
   * main.run_pipeline (the WorkerRunner construction with handle_sigint and
     loop, add_workers and run, exactly as every call runs it) cannot run a
-    pipeline that ends at once to its end within RUN_BOUND_SECONDS. That is
-    the API that broke revision 00036 (rereview-0b #11).
+    pipeline that ends at once to its end within RUN_BOUND_SECONDS, with
+    proof that it ran: the StartFrame and the EndFrame went through it and
+    the task finished. That is the API that broke revision 00036
+    (rereview-0b #11, final-0b #4).
 
 The call pipelines are built and discarded, never started. The one pipeline it
 runs holds a single pass-through processor: no transport, no socket, no call,
@@ -99,7 +101,10 @@ async def _run_one_that_ends_at_once() -> None:
     """main.run_pipeline, exactly as a call runs it, on a pipeline that ends at once.
 
     The EndFrame is queued once the run has started, the way the engine
-    queues its own frames during a call.
+    queues its own frames during a call. It fails unless the runner really
+    ran the pipeline: still running when the EndFrame is queued, the
+    processor saw both the StartFrame and the EndFrame, and the task reports
+    it has finished (final-0b #4: a run() that returns at once passed).
     """
     from pipecat.frames.frames import EndFrame
     from pipecat.pipeline.pipeline import Pipeline
@@ -108,17 +113,28 @@ async def _run_one_that_ends_at_once() -> None:
 
     from src.main import run_pipeline
 
+    seen: list[str] = []
+
     class _PassThrough(FrameProcessor):
         async def process_frame(self, frame, direction):
             await super().process_frame(frame, direction)
+            seen.append(type(frame).__name__)
             await self.push_frame(frame, direction)
 
     task = PipelineTask(Pipeline([_PassThrough()]))
     running = asyncio.ensure_future(run_pipeline(task))
     await asyncio.sleep(0.2)
-    if not running.done():
-        await task.queue_frames([EndFrame()])
+    if running.done():
+        running.result()  # a runner error (TypeError, AttributeError…) surfaces as itself
+        raise RuntimeError("run_pipeline returned before the pipeline was ended: "
+                           "WorkerRunner.run() no longer runs its workers to their end")
+    await task.queue_frames([EndFrame()])
     await asyncio.wait_for(running, RUN_BOUND_SECONDS)
+    missing = [name for name in ("StartFrame", "EndFrame") if name not in seen]
+    if missing:
+        raise RuntimeError(f"the pipeline never carried {missing} (saw {seen}): the runner did not run it")
+    if not task.has_finished():
+        raise RuntimeError("run_pipeline returned but the task has not finished")
 
 
 def main() -> int:

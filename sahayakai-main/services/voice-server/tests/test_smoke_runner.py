@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from bot_harness import RECORDER, ModelRunner, import_main, stubbed_runtime
+from bot_harness import RECORDER, EndFrame, Frame, FrameDirection, import_main, stubbed_runtime
 from main_ast import SOURCE as MAIN_SOURCE, call_name, handlers
 
 SMOKE = (Path(__file__).resolve().parents[1] / "src" / "smoke_check.py").read_text(encoding="utf-8")
@@ -74,9 +74,12 @@ def runner_problems(main_source: str, smoke_source: str) -> list[str]:
         calls = [call_name(n) for n in ast.walk(body) if isinstance(n, ast.Call)]
         imported = {a.name for n in ast.walk(body) if isinstance(n, ast.ImportFrom) and n.module == "src.main"
                     for a in n.names}
-        for needed in ("run_pipeline", "wait_for", "queue_frames", "EndFrame"):
+        for needed in ("run_pipeline", "wait_for", "queue_frames", "EndFrame", "has_finished"):
             if needed not in calls:
                 problems.append(f"_run_one_that_ends_at_once does not call {needed}")
+        literals = {n.value for n in ast.walk(body) if isinstance(n, ast.Constant)}
+        if not {"StartFrame", "EndFrame"} <= literals:
+            problems.append("_run_one_that_ends_at_once does not check the frames the pipeline carried")
         if "run_pipeline" not in imported:
             problems.append("_run_one_that_ends_at_once does not use src.main.run_pipeline")
     return problems
@@ -94,8 +97,10 @@ def test_the_smoke_step_runs_the_production_runner_path():
     ("main", "    await runner.add_workers(task)\n", ""),
     ("smoke", "    asyncio.run(_run_one_that_ends_at_once())\n", ""),
     ("smoke", "    await asyncio.wait_for(running, RUN_BOUND_SECONDS)\n", "    await running\n"),
+    ("smoke", "    if not task.has_finished():\n", "    if False:\n"),
+    ("smoke", 'for name in ("StartFrame", "EndFrame")', 'for name in ()'),
 ], ids=["a handler bypasses run_pipeline", "different runner arguments", "no add_workers",
-        "smoke never runs it", "unbounded run"])
+        "smoke never runs it", "unbounded run", "no finished check", "no frame check"])
 def test_the_checker_rejects_each_gap(bad):
     which, old, new = bad
     main_src, smoke_src = MAIN_SOURCE, SMOKE
@@ -131,20 +136,64 @@ def _smoke_run(tmp_path, monkeypatch, runner=None, bound=None):
         return seen, list(RECORDER.calls), RECORDER.instances_of("PipelineTask")
 
 
+class _FaithfulRunner:
+    """Runs the task the way pipecat does as far as the smoke step can see:
+    a StartFrame through every processor, then the queued EndFrame, then finished."""
+
+    built: list = []
+
+    def __init__(self, **kwargs):
+        self.kwargs, self.tasks = kwargs, []
+        _FaithfulRunner.built.append(self)
+
+    async def add_workers(self, task):
+        self.tasks.append(task)
+
+    async def _feed(self, frame):
+        for processor in self.tasks[0].pipeline.processors:
+            await processor.process_frame(frame, FrameDirection.DOWNSTREAM)
+
+    async def run(self):
+        task = self.tasks[0]
+        await self._feed(StartFrame())
+        while not any(isinstance(f, EndFrame) for f in task.queued):
+            await asyncio.sleep(0.005)
+        await self._feed(EndFrame())
+        task.finished = True
+
+
+class StartFrame(Frame):
+    pass
+
+
 def test_the_smoke_step_builds_adds_and_runs_the_runner_as_a_call_does(tmp_path, monkeypatch):
-    seen, calls, tasks = _smoke_run(tmp_path, monkeypatch)
-    [(_, args, kwargs)] = [c for c in calls if c[0] == "pipecat.workers.runner.WorkerRunner"]
-    assert args == () and kwargs == {"handle_sigint": False, "loop": seen["loop"]}
-    [task] = tasks
-    assert [c[1] for c in calls if c[0] == "pipecat.workers.runner.WorkerRunner.add_workers()"] == [(task,)]
-    assert [c for c in calls if c[0] == "pipecat.workers.runner.WorkerRunner.run()"]
+    _FaithfulRunner.built = []
+    seen, _calls, [task] = _smoke_run(tmp_path, monkeypatch, runner=_FaithfulRunner)
+    [runner] = _FaithfulRunner.built
+    assert runner.kwargs == {"handle_sigint": False, "loop": seen["loop"]}
+    assert runner.tasks == [task]
+    assert task.finished and task.end_reason == "EndFrame queued at the source"
 
 
-def test_the_pipeline_really_ends_and_the_run_returns(tmp_path, monkeypatch):
-    ModelRunner.last = None
-    _seen, _calls, [task] = _smoke_run(tmp_path, monkeypatch, runner=ModelRunner)
-    assert ModelRunner.last.ended and not ModelRunner.last.timed_out
-    assert task.end_reason == "EndFrame queued at the source"
+class _ReturnsAtOnce(_FaithfulRunner):  # final-0b #4: run() no longer blocks on its workers
+    async def run(self):
+        return None
+
+
+class _NeverStartsThePipeline(_FaithfulRunner):
+    async def run(self):
+        while not self.tasks[0].queued:
+            await asyncio.sleep(0.005)
+        self.tasks[0].finished = True
+
+
+class _NeverFinishes(_FaithfulRunner):
+    async def run(self):
+        task = self.tasks[0]
+        await self._feed(StartFrame())
+        while not task.queued:
+            await asyncio.sleep(0.005)
+        await self._feed(EndFrame())
 
 
 class _NoLoopRunner:  # the 00036 break: the kwarg is gone
@@ -175,7 +224,11 @@ class _NeverReturns:
     (_NoLoopRunner, TypeError, "loop"),
     (_NoAddWorkers, AttributeError, "add_workers"),
     (_NeverReturns, asyncio.TimeoutError, None),
-], ids=["loop kwarg removed", "add_workers removed", "run never returns"])
+    (_ReturnsAtOnce, RuntimeError, "returned before the pipeline was ended"),
+    (_NeverStartsThePipeline, RuntimeError, "never carried"),
+    (_NeverFinishes, RuntimeError, "has not finished"),
+], ids=["loop kwarg removed", "add_workers removed", "run never returns", "run returns at once",
+        "pipeline never started", "task never finishes"])
 def test_a_runner_api_change_fails_the_smoke_step(runner, error, match, tmp_path, monkeypatch):
     with pytest.raises(error, match=match):
         _smoke_run(tmp_path, monkeypatch, runner=runner, bound=0.3)
