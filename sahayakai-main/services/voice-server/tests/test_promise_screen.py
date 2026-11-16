@@ -496,3 +496,24 @@ def test_a_named_third_person_caller_is_still_not_a_match():
 def test_through_the_handler_a_no_caller_promise_is_replaced(text, tmp_path, monkeypatch):
     _runner, run, model_text, tts, _hangups, db = _vobiz_call("Hindi", "request_to_talk", text, tmp_path, monkeypatch)
     _assert_replaced_and_going_on("Hindi", text, run, model_text, tts, db)
+
+
+# ── Marathi: "we won't call their father" is about someone else ─────────────
+
+MARATHI_SOMEONE_ELSE = ["आम्ही त्यांच्या वडिलांना फोन करणार नाही", "आम्ही आईला फोन करणार नाही, तुम्हालाच करू",
+                        "आम्ही मिस्टरांना फोन करणार नाही"]
+
+
+@pytest.mark.parametrize("text", MARATHI_SOMEONE_ELSE)
+def test_a_marathi_reply_about_someone_else_is_not_a_promise(text):
+    assert not is_no_more_calls_promise(text), text
+
+
+def test_a_marathi_promise_to_the_parent_still_is():
+    assert is_no_more_calls_promise("आम्ही तुम्हाला पुन्हा फोन करणार नाही")
+
+
+def test_through_the_handler_the_marathi_reply_about_someone_else_is_spoken(tmp_path, monkeypatch):
+    reply = MARATHI_SOMEONE_ELSE[0]
+    _runner, _run, model_text, tts, _hangups, db = _vobiz_call("Marathi", "request_to_talk", reply, tmp_path, monkeypatch)
+    assert model_text.startswith("आम्ही त्यांच्या") and tts == []

@@ -784,6 +784,8 @@ _KIN_EN = r"(?:son|daughter|child|kid|husband|wife|father|mother|dad|mom|mum|bro
 _PROMISE_PARTY = _compile(
     rf"\b(?:call|phone|ring|contact)(?:ing)?\s+(?:him|her|them|(?:your|my|his|her|their)\s+{_KIN_EN})\b",
     *_PARTY_PARTS[2:],
+    # Marathi: "आम्ही त्यांच्या वडिलांना फोन करणार नाही" (we won't call their father)
+    _word(r"वडिलांना|आईला|बाबांना|मिस्टरांना|नवऱ्याला|बायकोला|सासूबाईंना|सासऱ्यांना|त्यांना|त्याला|तिला"),
 )
 # A genuine reschedule is a time AND a "will call" ("we won't call now, the
 # teacher will call this evening", "अभी फ़ोन नहीं करेंगे, शाम को करेंगे").
