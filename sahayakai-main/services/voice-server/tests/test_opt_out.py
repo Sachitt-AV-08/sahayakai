@@ -47,7 +47,8 @@ from bot_harness import (
 from src.call_policy import load_call_lines
 from src.opt_out import (
     SUPPRESSION_COLLECTION,
-    StopDetector,
+    StopAction,
+    StopConversation,
     backstop_quote,
     is_stop_request,
     persist_opt_out,
@@ -193,7 +194,7 @@ def test_the_suppression_is_written_even_if_the_outreach_flag_fails():
 STOPS = [
     "Please don't call me again.", "Do not call this number again", "Stop calling me!",
     "No more calls please", "Remove my number", "Don't call me.", "Please don't call.",
-    "I don't want these calls", "We don't want you to call", "Don't call me now, I said don't call me again",
+    "I don't want these calls", "We don't want you to call",
     "दोबारा फ़ोन मत करना", "आगे से फोन मत कीजिए", "फोन मत करो", "मेरा नंबर हटा दीजिए",
     "phir se call mat karna", "phone mat karo", "dobara phone mat karna",
     "আর ফোন করবেন না", "ফোন করবেন না", "पुन्हा फोन करू नका", "फोन करू नका",
@@ -230,17 +231,16 @@ def test_the_engine_never_hears_its_own_lines_as_a_stop():
     assert [t for t in own if is_stop_request(t)] == []
 
 
-def test_a_stop_split_across_two_transcriptions_is_caught_once():
-    d = StopDetector()
-    assert d.observe("please don't") is False
-    assert d.observe("call me again") is True
-    assert d.observe("don't call me") is False, "fires once"
+def test_a_stop_split_across_two_transcriptions_still_asks():
+    c = StopConversation()
+    assert c.on_parent_speech("please don't") is StopAction.PASS
+    assert c.on_parent_speech("call me again") is StopAction.ASK
 
 
 def test_an_earlier_reschedule_cannot_veto_a_later_plain_stop():
-    d = StopDetector()
-    assert d.observe("I am free in the evening") is False
-    assert d.observe("actually, don't call me") is True
+    c = StopConversation()
+    assert c.on_parent_speech("I am free in the evening") is StopAction.PASS
+    assert c.on_parent_speech("actually, don't call me") is StopAction.ASK
 
 
 # ── backstop ─────────────────────────────────────────────────────────────────
@@ -291,6 +291,14 @@ async def _hear(run, text: str):
     return guard.pushed[before:]
 
 
+YES = {"Hindi": "हाँ", "Tamil": "ஆமாம்", "English": "yes"}
+
+
+async def _stop_and_confirm(run, text: str, yes: str = "yes"):
+    """The parent asks not to be called, hears the question, and says yes."""
+    return await _hear(run, text) + await _hear(run, yes)
+
+
 @pytest.mark.parametrize("reason", ["consecutive_absences", "positive_feedback"])
 @pytest.mark.parametrize("language", ["Hindi", "Tamil", "English"])
 def test_a_stop_writes_acknowledges_ends_and_hides_the_words_from_the_model(reason, language):
@@ -299,17 +307,18 @@ def test_a_stop_writes_acknowledges_ends_and_hides_the_words_from_the_model(reas
     with stubbed_runtime():
         async def go():
             run = await build_bot(ctx, call_store=FakeCallStore(), on_opt_out=writer)
-            passed = await _hear(run, "Please don't call me again")
+            passed = await _stop_and_confirm(run, "Please don't call me again", YES[language])
             after = await _hear(run, "hello? are you there?")
             return run, passed, after
 
         run, passed, after = asyncio.run(go())
 
-    ack = load_call_lines()[{"Hindi": "hi-IN", "Tamil": "ta-IN", "English": "en-IN"}[language]]["stop_acknowledgement"]
+    lines = load_call_lines()[{"Hindi": "hi-IN", "Tamil": "ta-IN", "English": "en-IN"}[language]]
     assert writer.calls == 1
-    assert passed == [] and after == [], "the model must not see the stop request or anything after it"
-    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame", "EndFrame"]
-    assert run.task.queued[0].text == ack
+    assert passed == [] and after == [], "the model must not see the stop, the yes, or anything after"
+    assert [type(f).__name__ for f in run.task.queued] == ["TTSSpeakFrame", "TTSSpeakFrame", "EndFrame"]
+    assert run.task.queued[0].text == lines["stop_confirmation_question"]
+    assert run.task.queued[1].text == lines["stop_acknowledgement"]
 
 
 @pytest.mark.parametrize("text", NOT_STOPS[:12])
@@ -332,7 +341,7 @@ def test_a_failed_write_is_retried_once_at_the_end_of_the_call():
     with stubbed_runtime():
         async def go():
             run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out=writer)
-            await _hear(run, "stop calling me")
+            await _stop_and_confirm(run, "stop calling me")
             await run.finalize()
             await run.finalize()  # idempotent
         asyncio.run(go())
@@ -340,8 +349,14 @@ def test_a_failed_write_is_retried_once_at_the_end_of_the_call():
 
 
 @pytest.mark.parametrize("found", [True, False])
-def test_the_post_call_backstop_writes_only_on_a_verbatim_quote(found, monkeypatch):
+def test_the_post_call_backstop_only_flags_and_never_suppresses(found, monkeypatch):
     writer = Writer()
+    flagged = []
+
+    async def flag(quote):
+        flagged.append(quote)
+        return True
+
     quote = "we would rather the school did not ring this house"
     with stubbed_runtime():
         from src import bot
@@ -352,11 +367,13 @@ def test_the_post_call_backstop_writes_only_on_a_verbatim_quote(found, monkeypat
         monkeypatch.setattr(bot, "analyze_call", fake_analysis)
 
         async def go():
-            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(), on_opt_out=writer)
+            run = await build_bot({**outreach(), "id": "out-1"}, call_store=FakeCallStore(),
+                                  on_opt_out=writer, on_suspected_opt_out=flag)
             run.context.add_message({"role": "user", "content": f"Honestly, {quote}."})
             await run.finalize()
         asyncio.run(go())
-    assert writer.calls == (1 if found else 0)
+    assert writer.calls == 0, "the analysis must never write a suppression by itself"
+    assert flagged == ([quote] if found else [])
 
 
 # ── both entry points write to Firestore ─────────────────────────────────────
@@ -377,7 +394,7 @@ def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypat
         async def go():
             await run_vobiz_path(main, db)  # runs to the end: pipeline, hangup, finalize
             run = run_from_recorder()
-            await _hear(run, "दोबारा फ़ोन मत करना")
+            await _stop_and_confirm(run, "दोबारा फ़ोन मत करना", "हाँ")
             for _ in range(5):
                 await asyncio.sleep(0)
         asyncio.run(go())
@@ -405,7 +422,7 @@ def test_a_built_in_test_call_persists_nothing(tmp_path, monkeypatch):
             main.config = replace(main.config, allow_test_scenarios=True)
             await run_vobiz_path(main, db, outreach_id="__test__003")
             run = run_from_recorder()
-            await _hear(run, "please stop calling")
+            await _stop_and_confirm(run, "please stop calling")
             for _ in range(5):
                 await asyncio.sleep(0)
             return run

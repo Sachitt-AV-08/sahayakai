@@ -59,6 +59,11 @@ async def _hear(run, text):
     await asyncio.sleep(0)
 
 
+async def _stop_and_confirm(run, text, yes="yes"):
+    await _hear(run, text)
+    await _hear(run, yes)
+
+
 async def _disconnect(run):
     loop = asyncio.get_running_loop()
     started = loop.time()
@@ -85,7 +90,7 @@ def test_an_opt_out_heard_before_the_disconnect_is_still_retried_and_saved():
     with stubbed_runtime():
         async def go():
             run = await build_bot(CTX, call_store=FakeCallStore(), on_opt_out=writer)
-            await _hear(run, "please don't call me again")
+            await _stop_and_confirm(run, "please don't call me again")
             await _disconnect(run)
             return run
 
@@ -102,13 +107,13 @@ def test_a_stop_that_does_not_end_the_call_in_time_cancels_it(monkeypatch):
 
         async def go():
             run = await build_bot(CTX, call_store=FakeCallStore(), on_opt_out=Writer())
-            await _hear(run, "stop calling me")
+            await _stop_and_confirm(run, "stop calling me")
             queued = [type(f).__name__ for f in run.task.queued]
             await asyncio.sleep(0.05 + BOUND_SECONDS / 2)
             return run, queued
 
         run, queued = asyncio.run(go())
-    assert queued == ["TTSSpeakFrame", "EndFrame"], "the graceful end comes first"
+    assert queued == ["TTSSpeakFrame", "TTSSpeakFrame", "EndFrame"], "question, acknowledgement, then the graceful end"
     assert run.task.cancelled_at is not None, "a stalled stop left the pipeline running"
 
 
@@ -120,7 +125,7 @@ def test_a_stop_that_ended_the_call_is_not_cancelled_again(monkeypatch):
 
         async def go():
             run = await build_bot(CTX, call_store=FakeCallStore(), on_opt_out=Writer())
-            await _hear(run, "stop calling me")
+            await _stop_and_confirm(run, "stop calling me")
             run.task.finished = True
             await asyncio.sleep(0.2)
             return run
@@ -143,7 +148,7 @@ def test_a_vobiz_disconnect_mid_call_cancels_hangs_up_once_and_saves_the_stop(tm
 
         async def live():
             run = run_from_recorder()
-            await _hear(run, "दोबारा फ़ोन मत करना")
+            await _stop_and_confirm(run, "दोबारा फ़ोन मत करना", "हाँ")
             await _disconnect(run)
 
         ScriptedRunner.script = live

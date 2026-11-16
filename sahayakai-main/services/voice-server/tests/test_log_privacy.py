@@ -116,6 +116,7 @@ async def _live_call() -> None:
             await stage.process_frame(TranscriptionFrame(text=f"{MARK}-PARENT mera number {PHONE} hai"), FrameDirection.DOWNSTREAM)
     for stage in [p for p in run.processors if type(p).__name__ == "StopRequestGuard"]:
         await stage.process_frame(TranscriptionFrame(text=f"{MARK} please don't call me again"), FrameDirection.DOWNSTREAM)
+        await stage.process_frame(TranscriptionFrame(text=f"{MARK} हाँ"), FrameDirection.DOWNSTREAM)
     for _ in range(5):
         await asyncio.sleep(0)
 

@@ -86,6 +86,7 @@ def test_the_exit_checker_rejects_a_skipped_branch():
 def _ending(kind: str, main):
     async def script():
         await say("दोबारा फ़ोन मत करना")
+        await say("हाँ")  # the explicit yes to the confirmation question
         if kind == "disconnect":
             raise main.WebSocketDisconnect()
         if kind == "error":

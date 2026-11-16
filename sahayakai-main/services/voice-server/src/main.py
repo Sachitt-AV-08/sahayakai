@@ -35,6 +35,7 @@ from src.vobiz import (
     write_call_result_firestore,
     hangup_vobiz_call,
     persist_opt_out_firestore,
+    flag_suspected_opt_out_firestore,
     consume_stream_token_firestore,
 )
 from src.stream_tokens import StreamUse
@@ -69,6 +70,16 @@ def _opt_out_writer(authenticated_outreach_id: str):
         return await persist_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project)
 
     return _write
+
+
+def _suspected_opt_out_writer(authenticated_outreach_id: str):
+    """Lets the post-call analysis FLAG (never suppress) an unconfirmed stop."""
+    async def _flag(quote: str) -> bool:
+        if _is_test_scenario(authenticated_outreach_id):
+            return True
+        return await flag_suspected_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project, quote)
+
+    return _flag
 
 
 async def _finish(finalize) -> None:
@@ -420,6 +431,7 @@ async def handle_vobiz_call(websocket: WebSocket):
             serializer=serializer,
             on_call_end=_on_call_end,
             on_opt_out=_opt_out_writer(outreach_id),
+            on_suspected_opt_out=_suspected_opt_out_writer(outreach_id),
         )
         logger.info(f"Vobiz bot pipeline started for outreach {outreach_id}")
         # Pipecat 1.12 moved the event loop onto the runner and dropped the

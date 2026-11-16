@@ -153,6 +153,22 @@ async def persist_opt_out_firestore(outreach_id: str, project: str) -> bool:
     return result.ok
 
 
+async def flag_suspected_opt_out_firestore(outreach_id: str, project: str, quote: str) -> bool:
+    """Mark parent_outreach/{id} with a stop the analysis suspected but nobody confirmed.
+
+    Never writes call_suppressions: that needs the parent's own yes on the call.
+    """
+    from src.opt_out import flag_suspected_opt_out
+
+    try:
+        result = await flag_suspected_opt_out(_db(project), outreach_id, quote)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Suspected opt-out flag failed for {outreach_id}: {e}")
+        return False
+    (logger.info if result.ok else logger.error)(f"parent_outreach/{outreach_id}: {result.detail}")
+    return result.ok
+
+
 async def consume_stream_token_firestore(token: str, outreach_id: str, project: str):
     """Mark a verified stream token as used; returns a StreamUse (see src/stream_tokens.py).
 

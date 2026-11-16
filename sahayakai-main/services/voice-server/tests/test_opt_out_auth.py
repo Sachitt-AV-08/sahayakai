@@ -37,8 +37,14 @@ from main_ast import RECORD, SOURCE, call_name, handlers, say, suppressions
 
 # Calls that turn untrusted input into an authenticated outreach id.
 AUTHENTICATORS = {"verify_stream_token"}
-# The only things that write a suppression; only _opt_out_writer may use them.
-WRITERS = {"persist_opt_out_firestore", "persist_opt_out"}
+# Writes keyed by the outreach id: the suppression, and the post-call
+# "suspected opt-out" flag. Each may only be reached through its writer.
+WRITER_FOR = {
+    "on_opt_out": "_opt_out_writer",
+    "on_suspected_opt_out": "_suspected_opt_out_writer",
+}
+WRITERS = {"persist_opt_out_firestore", "persist_opt_out",
+           "flag_suspected_opt_out_firestore", "flag_suspected_opt_out"}
 
 
 def _assignments(fn: ast.AST, name: str) -> list[ast.AST]:
@@ -82,24 +88,24 @@ def unauthenticated_writes(source: str) -> list[str]:
             if call_name(node) != "create_bot":
                 continue
             for kw in node.keywords:
-                if kw.arg != "on_opt_out":
+                if kw.arg not in WRITER_FOR:
                     continue
                 v = kw.value
                 if isinstance(v, ast.Constant) and v.value is None:
                     continue
-                if call_name(v) == "_opt_out_writer" and len(v.args) == 1 and \
+                if call_name(v) == WRITER_FOR[kw.arg] and len(v.args) == 1 and \
                         isinstance(v.args[0], ast.Name) and _is_authenticated(fn, v.args[0].id):
                     approved.add(id(v))
                     continue
-                problems.append(f"{fn.name}: on_opt_out={ast.unparse(v)} is not built from an authenticated id")
+                problems.append(f"{fn.name}: {kw.arg}={ast.unparse(v)} is not built from an authenticated id")
 
-    # _opt_out_writer is only ever an authenticated create_bot's on_opt_out.
+    # Each writer is only ever an authenticated create_bot's matching argument.
     for node in ast.walk(tree):
-        if call_name(node) == "_opt_out_writer" and id(node) not in approved:
-            problems.append(f"_opt_out_writer used outside an authenticated create_bot: {ast.unparse(node)}")
-    # Nothing but _opt_out_writer touches the suppression writers.
+        if call_name(node) in WRITER_FOR.values() and id(node) not in approved:
+            problems.append(f"{call_name(node)} used outside an authenticated create_bot: {ast.unparse(node)}")
+    # Nothing but the writers touches the Firestore writes.
     for fn in tree.body:
-        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name != "_opt_out_writer":
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name not in WRITER_FOR.values():
             for node in ast.walk(fn):
                 if call_name(node) in WRITERS:
                     problems.append(f"{fn.name}: calls {call_name(node)} directly")

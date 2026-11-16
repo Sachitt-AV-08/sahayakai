@@ -75,7 +75,7 @@ LANGUAGE_NAMES: dict[str, str] = {
     "pa-IN": "Punjabi",
 }
 
-LINE_KEYS = ("request_to_talk", "explain_in_person", "stop_acknowledgement")
+LINE_KEYS = ("request_to_talk", "explain_in_person", "stop_acknowledgement", "stop_confirmation_question")
 CALL_LINES_PATH = Path(__file__).with_name("call_lines.json")
 
 # The only record fields a request-to-talk call may hand to the model.
@@ -116,6 +116,7 @@ class CallPlan:
     ai_reveal_line: str | None
     ai_reveal_pattern: re.Pattern[str]
     stop_acknowledgement: str
+    stop_confirmation_question: str
     uses_parent_history: bool
 
     @property
@@ -206,6 +207,7 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
             ai_reveal_line=None,
             ai_reveal_pattern=AI_REVEAL_ORIGINAL,
             stop_acknowledgement=lines["stop_acknowledgement"],
+            stop_confirmation_question=lines["stop_confirmation_question"],
             uses_parent_history=True,
         )
 
@@ -232,5 +234,6 @@ def plan_call(call_context: Mapping[str, Any], parent_history: str | None = None
         ai_reveal_line=greeting,
         ai_reveal_pattern=AI_REVEAL_WORD_BOUNDED,
         stop_acknowledgement=lines["stop_acknowledgement"],
+        stop_confirmation_question=lines["stop_confirmation_question"],
         uses_parent_history=False,
     )
