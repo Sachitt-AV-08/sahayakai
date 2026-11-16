@@ -47,6 +47,16 @@ _OUTREACH_ID = re.compile(r"[A-Za-z0-9]{20}|__test__[0-9]{3}")
 _EXPIRY = re.compile(r"[1-9][0-9]{0,11}")
 _SIGNATURE = re.compile(r"[A-Za-z0-9_-]{43}")
 
+# The carrier's call UUID (Plivo-compatible, 8-4-4-4-12 hex). It arrives as an
+# unsigned query parameter and becomes a path segment of an authenticated
+# REST DELETE, so nothing else is ever accepted.
+_CALL_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def is_call_uuid(value: object) -> bool:
+    return isinstance(value, str) and value.isascii() and _CALL_UUID.fullmatch(value) is not None
+
+
 CONSUMED_COLLECTION = "vobiz_stream_tokens"
 
 # Keep the consumed record a little past the token's own expiry, for a

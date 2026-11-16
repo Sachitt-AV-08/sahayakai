@@ -25,13 +25,13 @@ from bot_harness import UVICORN_LOGGING_CONFIG, import_main, mint_stream_token, 
 from src.log_redaction import FILTER_NAME, QuerySecretFilter, redact, with_redaction
 
 TOKEN = mint_stream_token("OutreachSt0000000001")
-PATH = f"/telephony/vobiz/stream?t={TOKEN}&cuid=call-uuid-test&lang=Kannada"
+PATH = f"/telephony/vobiz/stream?t={TOKEN}&cuid=123e4567-e89b-42d3-a456-426614174000&lang=Kannada"
 
 
 def test_redact_keeps_everything_but_the_credential():
     out = redact(PATH)
     assert TOKEN not in out and TOKEN.split(".")[2] not in out
-    assert out == "/telephony/vobiz/stream?t=<redacted>&cuid=call-uuid-test&lang=Kannada"
+    assert out == "/telephony/vobiz/stream?t=<redacted>&cuid=123e4567-e89b-42d3-a456-426614174000&lang=Kannada"
     assert redact("/x?a=1&token=abc&sig=def") == "/x?a=1&token=<redacted>&sig=<redacted>"
     assert redact("/health") == "/health"
 
@@ -57,7 +57,7 @@ def test_uvicorn_shaped_lines_reach_the_log_without_the_token(captured_uvicorn_l
     # The access log reads its arguments by position.
     logging.getLogger("uvicorn.access").info('%s - "%s %s HTTP/%s" %d', "169.254.0.1:1", "GET", PATH, "1.1", 200)
     logged = err.getvalue() + out.getvalue()
-    assert "[accepted]" in logged and "GET" in logged and "cuid=call-uuid-test" in logged
+    assert "[accepted]" in logged and "GET" in logged and "cuid=123e4567-e89b-42d3-a456-426614174000" in logged
     assert TOKEN not in logged and TOKEN.split(".")[2] not in logged
 
 

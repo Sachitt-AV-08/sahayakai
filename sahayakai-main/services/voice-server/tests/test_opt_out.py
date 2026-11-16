@@ -399,7 +399,7 @@ def test_vobiz_path_writes_the_suppression_and_hangs_up_once(tmp_path, monkeypat
                 await asyncio.sleep(0)
         asyncio.run(go())
 
-    assert hangups == ["call-uuid-test"], "the leg is ended exactly once after the pipeline stops"
+    assert hangups == ["123e4567-e89b-42d3-a456-426614174000"], "the leg is ended exactly once after the pipeline stops"
     writes = suppression_writes(db)
     assert len(writes) == 1 and writes[0][2] == DIGEST and writes[0][3]["outreachId"] == "OutreachFs0000000001"
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)

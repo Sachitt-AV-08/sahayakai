@@ -191,13 +191,31 @@ def _iso_now() -> str:
 
 # ── Vobiz REST hangup (keepCallAlive=true means we must end the leg) ─────────
 
+def hangup_url(call_uuid: str, auth_id: str) -> str | None:
+    """The DELETE URL for one call leg, or None if the uuid is not a call UUID.
+
+    The uuid comes from an unsigned query parameter. Checked against the
+    call-UUID shape and percent-encoded as a single segment, so no value can
+    walk the path ("..", "/", "%2F") to another account resource.
+    """
+    from urllib.parse import quote
+
+    from src.stream_tokens import is_call_uuid
+
+    if not is_call_uuid(call_uuid) or not auth_id:
+        return None
+    return f"{_VOBIZ_API_BASE}/Account/{quote(auth_id, safe='')}/Call/{quote(call_uuid, safe='')}/"
+
+
 async def hangup_vobiz_call(call_uuid: str, auth_id: str, auth_token: str) -> None:
-    """End the Vobiz leg via REST. No-op if we lack the uuid or creds."""
-    if not (call_uuid and auth_id and auth_token):
+    """End the Vobiz leg via REST. No-op if we lack a valid uuid or creds."""
+    url = hangup_url(call_uuid, auth_id)
+    if url is None or not auth_token:
+        if call_uuid:
+            logger.warning("Vobiz hangup skipped: call uuid is not a call UUID")
         return
     import httpx  # lazy — keeps the module importable without the dep installed
 
-    url = f"{_VOBIZ_API_BASE}/Account/{auth_id}/Call/{call_uuid}/"
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.delete(url, auth=(auth_id, auth_token))

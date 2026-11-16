@@ -38,7 +38,7 @@ from src.vobiz import (
     flag_suspected_opt_out_firestore,
     consume_stream_token_firestore,
 )
-from src.stream_tokens import StreamUse
+from src.stream_tokens import StreamUse, is_call_uuid
 from src.log_redaction import with_redaction
 from src.gemini_backend import resolve_gemini_backend
 
@@ -342,6 +342,14 @@ async def handle_vobiz_call(websocket: WebSocket):
     qp = websocket.query_params
     token = qp.get("t", "")
     call_uuid = qp.get("cuid", "")
+
+    # The call UUID is not signed and becomes a path segment of an
+    # authenticated Vobiz REST DELETE. Anything but a call UUID is refused
+    # before it is used for anything.
+    if not is_call_uuid(call_uuid):
+        logger.error("Vobiz stream rejected — cuid is not a call UUID")
+        await websocket.close(code=1008, reason="Bad call id")
+        return
 
     outreach_id = verify_stream_token(token, config.request_signing_key)
     if not outreach_id:

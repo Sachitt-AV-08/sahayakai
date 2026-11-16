@@ -116,7 +116,7 @@ def test_vobiz_persists_an_opt_out_on_every_exit_even_after_a_failed_write(kind,
     writes = suppressions(db)
     assert len(writes) == 1, f"{kind}: opt-out lost"
     assert writes[0][2] == phone_suppression_id(PHONE)
-    assert hangups == ["call-uuid-test"], f"{kind}: the leg must be ended exactly once"
+    assert hangups == ["123e4567-e89b-42d3-a456-426614174000"], f"{kind}: the leg must be ended exactly once"
 
 
 @pytest.mark.parametrize("kind", ["normal", "disconnect", "error"])

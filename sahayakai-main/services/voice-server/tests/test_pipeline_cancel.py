@@ -159,7 +159,7 @@ def test_a_vobiz_disconnect_mid_call_cancels_hangs_up_once_and_saves_the_stop(tm
             ScriptedRunner.script = None
         [task] = RECORDER.instances_of("PipelineTask")
     assert task.cancelled_at is not None
-    assert hangups == ["call-uuid-test"]
+    assert hangups == ["123e4567-e89b-42d3-a456-426614174000"]
     writes = suppressions(db)
     assert len(writes) == 1 and writes[0][2] == phone_suppression_id(PHONE)
 
@@ -204,6 +204,6 @@ def test_the_watchdog_ends_a_stalled_graceful_end_and_still_finishes_the_call(tm
     assert task.end_in_flight, "the scenario really stalled the graceful end"
     assert runner.ended and not runner.timed_out, "the watchdog could not get past the stuck EndFrame"
     assert task.end_reason == "CancelFrame injected into the pipeline"
-    assert hangups == ["call-uuid-test"]
+    assert hangups == ["123e4567-e89b-42d3-a456-426614174000"]
     assert any(w[0] == "set" and w[1] == "parent_outreach" and "transcript" in w[3] for w in db.writes)
     assert len(suppressions(db)) == 1

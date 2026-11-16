@@ -344,6 +344,7 @@ _SPECIFIC: dict[str, dict[str, Any]] = {
     "loguru": {"logger": LOGGER},
     # main.py catches it, so it must be a real exception class.
     "fastapi": {"WebSocketDisconnect": type("WebSocketDisconnect", (Exception,), {})},
+    "httpx": {},  # AsyncClient filled in below
     "uvicorn.config": {"LOGGING_CONFIG": None},  # filled in below
 }
 
@@ -367,6 +368,35 @@ UVICORN_LOGGING_CONFIG: dict = {
     },
 }
 _SPECIFIC["uvicorn.config"]["LOGGING_CONFIG"] = UVICORN_LOGGING_CONFIG
+
+
+class FakeHttpxClient:
+    """httpx.AsyncClient stand-in: records every request; nothing leaves the process."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        RECORDER.add("httpx.AsyncClient", args, kwargs)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        return None
+
+    async def _request(self, method: str, url: str, **kwargs):
+        RECORDER.add(f"httpx.{method}", (url,), {k: v for k, v in kwargs.items() if k != "auth"})
+        return types.SimpleNamespace(status_code=200, text="", json=lambda: {})
+
+    async def delete(self, url, **kwargs):
+        return await self._request("DELETE", url, **kwargs)
+
+    async def get(self, url, **kwargs):
+        return await self._request("GET", url, **kwargs)
+
+    async def post(self, url, **kwargs):
+        return await self._request("POST", url, **kwargs)
+
+
+_SPECIFIC["httpx"]["AsyncClient"] = FakeHttpxClient
 
 
 def _root(name: str) -> str:
@@ -789,7 +819,14 @@ async def run_twilio_path(main, call_context: dict, outreach_id: str = "out-ctx-
     return ws
 
 
-async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "OutreachFs0000000001", token: str | None = None):
+# A made-up call UUID in the shape Vobiz (Plivo-compatible) sends.
+CALL_UUID = "123e4567-e89b-42d3-a456-426614174000"
+
+
+async def run_vobiz_path(
+    main, db: FakeAsyncFirestore, outreach_id: str = "OutreachFs0000000001",
+    token: str | None = None, cuid: str = CALL_UUID,
+):
     """/telephony/vobiz/stream: the context is read straight from parent_outreach in Firestore."""
     from src import vobiz
 
@@ -798,7 +835,7 @@ async def run_vobiz_path(main, db: FakeAsyncFirestore, outreach_id: str = "Outre
         [{"event": "start", "start": {"streamId": "stream-test"}}],
         query_params={
             "t": mint_stream_token(outreach_id) if token is None else token,
-            "cuid": "call-uuid-test",
+            "cuid": cuid,
             "lang": "Hindi",
         },
     )
