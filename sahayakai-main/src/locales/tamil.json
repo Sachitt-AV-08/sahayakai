@@ -1689,5 +1689,13 @@
   "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "பெற்றோருக்கான அழைப்புகள் 10:00 முதல் 19:00 IST வரை மட்டுமே செய்யப்படும். அழைப்பு நேரத்தில் மீண்டும் முயற்சிக்கவும்.",
   "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "இந்தப் பெற்றோர் மீண்டும் அழைக்க வேண்டாம் என்று கேட்டுள்ளார், எனவே நாங்கள் அழைக்கவில்லை. WhatsApp செய்தி அல்லது வீட்டுக்கு அனுப்பும் குறிப்பு போன்ற வேறு வழியில் அவர்களைத் தொடர்பு கொள்ளவும்.",
   "We could not check this parent's call preferences just now. Please try again in a minute.": "இந்தப் பெற்றோரின் அழைப்பு விருப்பங்களை இப்போது சரிபார்க்க முடியவில்லை. ஒரு நிமிடம் கழித்து மீண்டும் முயற்சிக்கவும்.",
-  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "இந்தத் தொடர்பில் உள்ள பெற்றோரின் தொலைபேசி எண் இனி மாணவர் பதிவுடன் பொருந்தவில்லை. புதிய தொடர்பைத் தொடங்கவும்."
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "இந்தத் தொடர்பில் உள்ள பெற்றோரின் தொலைபேசி எண் இனி மாணவர் பதிவுடன் பொருந்தவில்லை. புதிய தொடர்பைத் தொடங்கவும்.",
+  "This outreach record could not be found. Please start a new outreach.": "இந்தத் தொடர்புப் பதிவு கிடைக்கவில்லை. புதிய தொடர்பைத் தொடங்கவும்.",
+  "You can only contact parents of students in your own classes.": "உங்கள் சொந்த வகுப்புகளில் உள்ள மாணவர்களின் பெற்றோரை மட்டுமே நீங்கள் தொடர்பு கொள்ள முடியும்.",
+  "This student is no longer in this class.": "இந்த மாணவர் இனி இந்த வகுப்பில் இல்லை.",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "இந்த மாணவரின் பதிவில் பெற்றோரின் சரியான தொலைபேசி எண் இல்லை. முதலில் மாணவர் விவரங்களில் அதைச் சேர்க்கவும்.",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "பெற்றோரை அழைக்கும் வசதி இப்போது கிடைக்கவில்லை. மாற்றாக WhatsApp நகலைப் பயன்படுத்தவும்.",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "இந்தப் பெற்றோரின் மொழியில் தானியங்கி அழைப்புகள் இன்னும் கிடைக்கவில்லை. மாற்றாக WhatsApp நகலைப் பயன்படுத்தவும்.",
+  "We could not place the call just now. Please try again in a few minutes.": "இப்போது அழைப்பைச் செய்ய முடியவில்லை. சில நிமிடங்கள் கழித்து மீண்டும் முயற்சிக்கவும்.",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "சில நிமிடங்களுக்கு முன்பு இந்தப் பெற்றோரைத் தொடர்பு கொண்டீர்கள். மீண்டும் முயற்சிக்கும் முன் சில நிமிடங்கள் காத்திருக்கவும்."
 }

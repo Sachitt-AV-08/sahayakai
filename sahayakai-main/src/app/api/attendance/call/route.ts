@@ -52,7 +52,7 @@ async function forwardToExotel(userId: string, outreachId: string, callUrl: stri
         return NextResponse.json({ callSid: data?.callSid ?? data?.callId ?? data?.sid ?? 'exotel' });
     } catch (error) {
         console.error('[attendance/call] Exotel forward failed:', error);
-        return NextResponse.json({ error: 'Failed to initiate call' }, { status: 502 });
+        return NextResponse.json({ error: 'Failed to initiate call', code: 'CALL_NOT_PLACED' }, { status: 502 });
     }
 }
 
@@ -92,11 +92,11 @@ async function resolveOutreachTarget(
 ): Promise<TargetResolution> {
     const snap = await db.collection('parent_outreach').doc(outreachId).get();
     if (!snap.exists) {
-        return { ok: false, owned: false, response: NextResponse.json({ error: 'Outreach record not found' }, { status: 404 }) };
+        return { ok: false, owned: false, response: NextResponse.json({ error: 'Outreach record not found', code: 'OUTREACH_NOT_FOUND' }, { status: 404 }) };
     }
     const data = snap.data()!;
     if (data.teacherUid !== userId) {
-        return { ok: false, owned: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 403 }) };
+        return { ok: false, owned: false, response: NextResponse.json({ error: 'Unauthorized', code: 'FORBIDDEN' }, { status: 403 }) };
     }
 
     const classId = typeof data.classId === 'string' ? data.classId : '';
@@ -106,13 +106,13 @@ async function resolveOutreachTarget(
             ok: false,
             owned: true,
             category: 'outreach_incomplete',
-            response: NextResponse.json({ error: 'Outreach record is missing its class or student' }, { status: 422 }),
+            response: NextResponse.json({ error: 'Outreach record is missing its class or student', code: 'OUTREACH_INCOMPLETE' }, { status: 422 }),
         };
     }
     const classRef = db.collection('classes').doc(classId);
     const classDoc = await classRef.get();
     if (!classDoc.exists || classDoc.data()?.teacherUid !== userId) {
-        return { ok: false, owned: true, category: 'class_not_owned', response: NextResponse.json({ error: 'Unauthorized' }, { status: 403 }) };
+        return { ok: false, owned: true, category: 'class_not_owned', response: NextResponse.json({ error: 'Unauthorized', code: 'CLASS_NOT_OWNED' }, { status: 403 }) };
     }
     const studentDoc = await classRef.collection('students').doc(studentId).get();
     if (!studentDoc.exists) {
@@ -120,7 +120,7 @@ async function resolveOutreachTarget(
             ok: false,
             owned: true,
             category: 'student_not_found',
-            response: NextResponse.json({ error: 'Student not found in this class' }, { status: 404 }),
+            response: NextResponse.json({ error: 'Student not found in this class', code: 'STUDENT_NOT_FOUND' }, { status: 404 }),
         };
     }
 
@@ -130,7 +130,7 @@ async function resolveOutreachTarget(
             ok: false,
             owned: true,
             category: 'no_valid_parent_phone',
-            response: NextResponse.json({ error: 'Student has no valid parent phone on record' }, { status: 422 }),
+            response: NextResponse.json({ error: 'Student has no valid parent phone on record', code: 'NO_PARENT_PHONE' }, { status: 422 }),
         };
     }
     if (data.parentPhone !== parentPhone) {
@@ -301,7 +301,7 @@ function refuseBeforeDial(
         console.error(`[attendance/call] PROVIDER_MISCONFIGURED — ${detail}. Operator action; retrying will not help.`);
         return {
             category: 'provider_unconfigured',
-            response: NextResponse.json({ error: 'Voice service not configured' }, { status: 503 }),
+            response: NextResponse.json({ error: 'Voice service not configured', code: 'VOICE_NOT_CONFIGURED' }, { status: 503 }),
         };
     };
     if (ctx.provider === 'exotel') {
@@ -318,7 +318,7 @@ function refuseBeforeDial(
         console.error('[attendance/call] PROVIDER_MISCONFIGURED — Twilio credentials or number are not set.');
         return {
             category: 'provider_unconfigured',
-            response: NextResponse.json({ error: 'Twilio not configured' }, { status: 503 }),
+            response: NextResponse.json({ error: 'Twilio not configured', code: 'VOICE_NOT_CONFIGURED' }, { status: 503 }),
         };
     }
     // Check that the language is supported for Twilio calls
@@ -326,7 +326,7 @@ function refuseBeforeDial(
         return {
             category: 'language_unsupported',
             response: NextResponse.json(
-                { error: `Auto-call not supported for ${ctx.parentLanguage}. Use WhatsApp copy instead.` },
+                { error: `Auto-call not supported for ${ctx.parentLanguage}. Use WhatsApp copy instead.`, code: 'LANGUAGE_NOT_SUPPORTED' },
                 { status: 422 },
             ),
         };
@@ -503,24 +503,24 @@ async function placeTwilioCall(
     } catch (error: any) {
         console.error('[attendance/call] Error:', error);
         // Don't leak internal error messages (may contain stack, secrets, service paths)
-        return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+        return NextResponse.json({ error: 'Internal error', code: 'INTERNAL' }, { status: 500 });
     }
 }
 
 export async function POST(req: NextRequest) {
     const userId = req.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!userId) return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHENTICATED' }, { status: 401 });
 
     // Parse the body once up front — both the Exotel and Twilio providers need it,
     // and req.json() can only be consumed a single time.
     const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    if (!body) return NextResponse.json({ error: 'Invalid JSON body', code: 'INVALID_REQUEST' }, { status: 400 });
     const { outreachId, parentLanguage } = body as {
         outreachId: string;
         parentLanguage: Language;
     };
     if (!outreachId || !parentLanguage) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        return NextResponse.json({ error: 'Missing required fields', code: 'INVALID_REQUEST' }, { status: 400 });
     }
 
     // Ownership and the server-stored destination first: until the record is

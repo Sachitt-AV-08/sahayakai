@@ -26,6 +26,23 @@ export const CALL_REFUSAL_LABELS: Readonly<Record<string, string>> = {
     SUPPRESSION_CHECK_FAILED: "We could not check this parent's call preferences just now. Please try again in a minute.",
     PHONE_MISMATCH: "The parent's phone on this outreach no longer matches the student record. Start a new outreach.",
     INTERNAL: 'Something went wrong',
+    INVALID_REQUEST: 'Something went wrong',
+    USER_NOT_FOUND: 'Something went wrong',
+    UNAUTHENTICATED: 'Session expired. Please log in again.',
+    PREMIUM_REQUIRED: 'Attendance is a Pro feature. Please upgrade your plan.',
+    OUTREACH_NOT_FOUND: 'This outreach record could not be found. Please start a new outreach.',
+    OUTREACH_INCOMPLETE: 'This outreach record could not be found. Please start a new outreach.',
+    FORBIDDEN: 'You can only contact parents of students in your own classes.',
+    CLASS_NOT_OWNED: 'You can only contact parents of students in your own classes.',
+    CLASS_NOT_FOUND: 'You can only contact parents of students in your own classes.',
+    STUDENT_NOT_FOUND: 'This student is no longer in this class.',
+    NO_PARENT_PHONE:
+        "This student has no valid parent phone number on record. Please add it to the student's details first.",
+    VOICE_NOT_CONFIGURED: 'Parent calling is not available right now. Please use the WhatsApp copy instead.',
+    LANGUAGE_NOT_SUPPORTED:
+        "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.",
+    CALL_NOT_PLACED: 'We could not place the call just now. Please try again in a few minutes.',
+    RECENT_OUTREACH_EXISTS: 'You contacted this parent a few minutes ago. Please wait a few minutes before trying again.',
 };
 
 /** The toast text for a failed call: the translated label when the route sent a known code. */

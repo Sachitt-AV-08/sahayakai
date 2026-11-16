@@ -6,7 +6,15 @@
  * Bengali UI got a translated "Call failed" over an English sentence. The instances were
  * PARENT_OPTED_OUT, SUPPRESSION_CHECK_FAILED and the rewritten OUTSIDE_CALLING_HOURS.
  *
+ * What it enforces: every error response the call and outreach routes can send a teacher
+ * carries a code with a translated label, or is a provider pass-through named below.
+ *
  * Layers:
+ *  0. EVERY ERROR RESPONSE HAS A CODE — every `NextResponse.json(..., { status })` in the call
+ *     and outreach routes and in the helpers they return (call-suppression.ts) whose status is
+ *     4xx/5xx or computed must carry a `code`, or build its body with a coded helper
+ *     (outsideCallingHoursBody). The only exemptions are provider pass-throughs, listed with
+ *     reasons. A new code-less error response fails here, which a code-only scan could not see.
  *  1. DISCOVERY — every literal `code` the call and outreach routes can return (directly, or
  *     through call-suppression.ts and calling-hours.ts) has a label in CALL_REFUSAL_LABELS. The
  *     only non-literal codes allowed are the two provider-failure pass-throughs, listed below;
@@ -41,6 +49,69 @@ const COMPUTED_CODES_ALLOWED = [
     'result.failure.category.toUpperCase()', // Vobiz failure category (lib/vobiz/client.ts)
     'failure.code', // Twilio failure classification (lib/twilio-errors.ts)
 ];
+
+/** Every `NextResponse.json(...)` call in a source, as its full argument text (balanced parens). */
+function jsonResponses(src: string): string[] {
+    const out: string[] = [];
+    let from = 0;
+    for (;;) {
+        const at = src.indexOf('NextResponse.json(', from);
+        if (at < 0) return out;
+        let i = at + 'NextResponse.json('.length;
+        let depth = 1;
+        while (i < src.length && depth > 0) {
+            const ch = src[i];
+            if (ch === "'" || ch === '"' || ch === '`') {
+                const quote = ch;
+                i++;
+                while (i < src.length && src[i] !== quote) i += src[i] === '\\' ? 2 : 1;
+            } else if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+            i++;
+        }
+        out.push(src.slice(at, i));
+        from = i;
+    }
+}
+
+/** Error responses whose body is a provider's own, passed through. Each names its reason. */
+const UNCODED_PROVIDER_PASS_THROUGHS: Record<string, string> = {
+    'data?.error':
+        "the Exotel voicebot's own error and status, passed through unchanged (Exotel is parked; the " +
+        'voicebot owns that text)',
+};
+
+function isErrorResponse(call: string): boolean {
+    const status = call.match(/\bstatus:\s*([^,}\n]+)/);
+    if (!status) return false; // 200
+    const literal = status[1].trim().match(/^(\d{3})$/);
+    return literal ? Number(literal[1]) >= 400 : true; // a computed status may be an error
+}
+
+describe('every error response carries a code', () => {
+    const responses = CODE_SOURCES.flatMap((rel) => jsonResponses(read(rel)).map((call) => ({ rel, call })));
+
+    it('finds the responses (guards against the scan matching nothing)', () => {
+        expect(responses.filter((r) => isErrorResponse(r.call)).length).toBeGreaterThanOrEqual(25);
+    });
+
+    it('no error response is code-less, except a named provider pass-through', () => {
+        const offenders = responses
+            .filter((r) => isErrorResponse(r.call))
+            .filter((r) => !/\bcode:/.test(r.call) && !/\boutsideCallingHoursBody\(/.test(r.call))
+            .filter((r) => !Object.keys(UNCODED_PROVIDER_PASS_THROUGHS).some((k) => r.call.includes(k)))
+            .map((r) => `${r.rel}: ${r.call.replace(/\s+/g, ' ').slice(0, 140)}`);
+        expect(offenders).toEqual([]);
+    });
+
+    it('every pass-through exemption is still used and names its reason', () => {
+        const all = responses.map((r) => r.call).join('\n');
+        for (const [k, why] of Object.entries(UNCODED_PROVIDER_PASS_THROUGHS)) {
+            expect(all).toContain(k);
+            expect(why.length).toBeGreaterThan(30);
+        }
+    });
+});
 
 function discoverCodes(): { literal: Set<string>; computed: string[] } {
     const literal = new Set<string>();
@@ -78,7 +149,10 @@ describe('every refusal code has a label', () => {
     const { literal, computed } = discoverCodes();
 
     it('finds the codes (guards against the scan matching nothing)', () => {
-        for (const c of ['OUTSIDE_CALLING_HOURS', 'PARENT_OPTED_OUT', 'SUPPRESSION_CHECK_FAILED', 'PHONE_MISMATCH', 'INTERNAL']) {
+        for (const c of [
+            'OUTSIDE_CALLING_HOURS', 'PARENT_OPTED_OUT', 'SUPPRESSION_CHECK_FAILED', 'PHONE_MISMATCH', 'INTERNAL',
+            'NO_PARENT_PHONE', 'VOICE_NOT_CONFIGURED', 'LANGUAGE_NOT_SUPPORTED', 'RECENT_OUTREACH_EXISTS',
+        ]) {
             expect(literal).toContain(c);
         }
     });

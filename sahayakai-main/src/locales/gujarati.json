@@ -1689,5 +1689,13 @@
   "Calls to parents are only placed between 10:00 and 19:00 IST. Please try again during calling hours.": "વાલીઓને કૉલ ફક્ત 10:00 થી 19:00 IST વચ્ચે જ કરવામાં આવે છે. કૃપા કરીને કૉલના સમય દરમિયાન ફરી પ્રયાસ કરો.",
   "This parent asked not to be called again, so we have not placed the call. Please reach them another way, such as a WhatsApp message or a note home.": "આ વાલીએ ફરી કૉલ ન કરવા કહ્યું છે, તેથી અમે કૉલ કર્યો નથી. કૃપા કરીને તેમનો બીજી રીતે સંપર્ક કરો, જેમ કે WhatsApp સંદેશ અથવા ઘરે મોકલેલી નોંધ.",
   "We could not check this parent's call preferences just now. Please try again in a minute.": "અમે હમણાં આ વાલીની કૉલ સંબંધી પસંદગી તપાસી શક્યા નહીં. કૃપા કરીને એક મિનિટ પછી ફરી પ્રયાસ કરો.",
-  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "આ આઉટરીચ પરનો વાલીનો ફોન નંબર હવે વિદ્યાર્થીના રેકોર્ડ સાથે મેળ ખાતો નથી. નવી આઉટરીચ શરૂ કરો."
+  "The parent's phone on this outreach no longer matches the student record. Start a new outreach.": "આ આઉટરીચ પરનો વાલીનો ફોન નંબર હવે વિદ્યાર્થીના રેકોર્ડ સાથે મેળ ખાતો નથી. નવી આઉટરીચ શરૂ કરો.",
+  "This outreach record could not be found. Please start a new outreach.": "આ આઉટરીચ રેકોર્ડ મળ્યો નથી. નવી આઉટરીચ શરૂ કરો.",
+  "You can only contact parents of students in your own classes.": "તમે ફક્ત તમારા વર્ગના વિદ્યાર્થીઓના વાલીઓનો જ સંપર્ક કરી શકો છો.",
+  "This student is no longer in this class.": "આ વિદ્યાર્થી હવે આ વર્ગમાં નથી.",
+  "This student has no valid parent phone number on record. Please add it to the student's details first.": "આ વિદ્યાર્થીના રેકોર્ડમાં વાલીનો માન્ય ફોન નંબર નથી. કૃપા કરીને પહેલાં વિદ્યાર્થીની વિગતોમાં તે ઉમેરો.",
+  "Parent calling is not available right now. Please use the WhatsApp copy instead.": "વાલીઓને કૉલ કરવાની સુવિધા હમણાં ઉપલબ્ધ નથી. કૃપા કરીને બદલે WhatsApp કૉપિ વાપરો.",
+  "Automatic calls are not available in this parent's language yet. Please use the WhatsApp copy instead.": "આ વાલીની ભાષામાં સ્વયંસંચાલિત કૉલ હજી ઉપલબ્ધ નથી. કૃપા કરીને બદલે WhatsApp કૉપિ વાપરો.",
+  "We could not place the call just now. Please try again in a few minutes.": "અમે હમણાં કૉલ કરી શક્યા નહીં. કૃપા કરીને થોડી મિનિટો પછી ફરી પ્રયાસ કરો.",
+  "You contacted this parent a few minutes ago. Please wait a few minutes before trying again.": "તમે થોડી મિનિટ પહેલાં આ વાલીનો સંપર્ક કર્યો હતો. ફરી પ્રયાસ કરતાં પહેલાં કૃપા કરીને થોડી મિનિટ રાહ જુઓ."
 }
