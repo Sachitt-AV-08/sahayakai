@@ -33,10 +33,17 @@
 #     socket; the signed single-use stream token is the gate.
 #   - The service-level instance cap (run.googleapis.com/maxScale: 10).
 #
+# Reproducible image: the Dockerfile installs ONLY from requirements.lock
+# (every package pinned, sha256-hashed; regenerate with scripts/lock.sh, which
+# needs PyPI access). Revision 00037's exact package set could not be
+# recovered (its build log is empty and reading the image needs a pull), so
+# the first lock pins the set resolved on the day it is generated. Until the
+# lock is committed the image build fails, on purpose.
+#
 # Leftovers from the never-deployed sahayakai-agents engine that this Pipecat
 # app does not read: SAHAYAKAI_AGENTS_ENV, SAHAYAKAI_PROMPTS_DIR,
-# SAHAYAKAI_REQUIRE_APP_CHECK, SAHAYAKAI_TELEPHONY_ONLY. Kept so the first
-# deploy from this file changes code only; drop them in a separate change.
+# SAHAYAKAI_REQUIRE_APP_CHECK, SAHAYAKAI_TELEPHONY_ONLY. Kept so the env of
+# the first deploy from this file matches 00037; drop them in a separate change.
 #
 # Gemini backend: this spec keeps the AI Studio key (GOOGLE_GENAI_API_KEY),
 # exactly as live. To move the conversation model and the post-call analysis
@@ -74,12 +81,28 @@ steps:
       - .
     waitFor: [test]
 
+  # Run the engine against the REAL packages in the image it just built: the
+  # unit tests stub pipecat, so only this catches a dependency that moved
+  # (src/smoke_check.py). Builds both Gemini backends' pipelines, starts
+  # nothing, calls no API. --network=cloudbuild gives it ADC for Vertex.
+  - id: smoke-real-pipecat
+    name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - --network=cloudbuild
+      - --entrypoint=python
+      - asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
+      - -m
+      - src.smoke_check
+    waitFor: [build]
+
   - id: push
     name: gcr.io/cloud-builders/docker
     args:
       - push
       - asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
-    waitFor: [build]
+    waitFor: [smoke-real-pipecat]
 
   - id: deploy-candidate
     name: gcr.io/google.com/cloudsdktool/cloud-sdk

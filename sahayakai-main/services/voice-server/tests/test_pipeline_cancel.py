@@ -177,11 +177,11 @@ def test_the_watchdog_ends_a_stalled_graceful_end_and_still_finishes_the_call(tm
     db = FakeAsyncFirestore({("parent_outreach", "OutreachFs0000000001"): RECORD})
     hangups = []
     with stubbed_runtime():
+        main = import_main(tmp_path, monkeypatch)  # first: it points the call store at tmp_path
+        main.call_store = FakeCallStore()
         from src import bot
 
         monkeypatch.setattr(bot, "STOP_CANCEL_AFTER_SECONDS", 0.05)
-        main = import_main(tmp_path, monkeypatch)
-        main.call_store = FakeCallStore()
 
         async def fake_hangup(call_uuid, auth_id, auth_token):
             hangups.append(call_uuid)
