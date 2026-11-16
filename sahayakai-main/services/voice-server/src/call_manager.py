@@ -225,15 +225,14 @@ class CallManager(FrameProcessor):
                     # Also need to push this replacement to TTS
                     from pipecat.frames.frames import TTSSpeakFrame
                     await self.push_frame(TTSSpeakFrame(text=truncated), direction)
-                    self._context.add_message(
-                        {"role": "assistant", "content": truncated}
-                    )
-                    await self.push_frame(frame, direction)
-                    return
-
-                # Length only: what the model said is part of the conversation.
-                logger.info(f"Turn {self._turn_number}: reply of {len(truncated)} chars")
-                # Add TRUNCATED model response to LLM context
+                    # No early return: a replaced reply is still a turn, and
+                    # on the last turn the call must still end (review
+                    # rereview-0b #7: a goodbye that tripped the guard left the
+                    # line up until the parent hung up).
+                else:
+                    # Length only: what the model said is part of the conversation.
+                    logger.info(f"Turn {self._turn_number}: reply of {len(truncated)} chars")
+                # Add the TRUNCATED (or replacement) response to LLM context
                 self._context.add_message(
                     {"role": "assistant", "content": truncated}
                 )
