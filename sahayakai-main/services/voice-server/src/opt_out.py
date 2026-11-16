@@ -377,6 +377,25 @@ _REPEAT_WORDS = _compile(
 )
 _STRONG_STOP = _compile(_STRONG_PHRASES.pattern, _REPEAT_WORDS.pattern)
 
+# "From now on", "after today": with a "don't call" they make it STRONG, and
+# their own time words are not a limit (the model side's _PROMISE_MARKER,
+# for the parent's words).
+_FROM_NOW_ON_PARTS = (
+    r"\b(?:from now on|from today|after today|after this|from this day)\b",
+    r"\b(?:ab se|aage se|aaj se|aaj ke baad|ab ke baad|iske baad)\b",
+    r"(?:आज|अब|इस)\s*के\s*बाद", r"इसके\s*बाद", r"(?:अब|आगे|आज)\s*से",
+    r"(?:এখন|আজ|এরপর)\s*থেকে",
+    r"(?:आता|आज)\s*पासून", r"आतापासून|आजपासून|यापुढे",
+    r"(?:હવે|આજ)\s*(?:થી|પછી)", r"હવેથી|આજથી",
+    r"(?:ਹੁਣ|ਅੱਜ)\s*ਤੋਂ(?:\s*ਬਾਅਦ)?",
+    r"ಇನ್ನು\s*ಮುಂದೆ|ಇನ್ಮೇಲೆ|ಇವತ್ತಿನಿಂದ",
+    r"இன்னைக்கு\s*அப்புறம்|இன்றிலிருந்து|இன்று\s*முதல்|இனிமேல்",
+    r"ఈరోజు\s*(?:తర్వాత|నుంచి|నుండి)|ఇకపై|ఇక\s*(?:నుంచి|నుండి)",
+    r"(?:ഇന്ന്|ഇനി)\s*മുതൽ|ഇനിമുതൽ",
+)
+_FROM_NOW_ON = _compile(*_FROM_NOW_ON_PARTS)
+_FROM_NOW_ON_COMMA = re.compile("(" + "|".join(_FROM_NOW_ON_PARTS) + r")\s*[,]", re.IGNORECASE)
+
 # "Again and again", "बार बार": a frequency complaint, never a repeat word.
 _FREQUENCY = _compile(r"\bagain and again\b", r"\b(?:baar baar|bar bar)\b", r"बार\s*[-]?\s*बार",
                       r"বারবার|বার\s*বার", r"वारंवार", r"વારંવાર", r"ਵਾਰ\s*ਵਾਰ")
@@ -474,6 +493,7 @@ def _clauses(text: str) -> list[tuple[str, bool]]:
     out: list[tuple[str, bool]] = []
     pos = 0
     raw = text.replace("’", "'").replace("‘", "'")
+    raw = _FROM_NOW_ON_COMMA.sub(r"\1 ", raw)  # "From now on, don't call me": one clause
     for m in _CLAUSE_SPLIT.finditer(raw):
         out.append((normalize(raw[pos:m.start()]), "?" in (m.group(1) or "")))
         pos = m.end()
@@ -539,8 +559,8 @@ def stop_kind(text: object, current: object = None) -> str | None:
     for clause, question in _stop_clauses(text):
         if question:
             return None
-        if (_STRONG_PHRASES.search(clause) or _next_to_a_repeat_word(clause)) and not _LIMITS.search(clause) \
-                and not _FREQUENCY.search(clause):
+        strong = _FROM_NOW_ON.search(clause) or _STRONG_PHRASES.search(clause) or _next_to_a_repeat_word(clause)
+        if strong and not _LIMITS.search(_FROM_NOW_ON.sub(" ", clause)) and not _FREQUENCY.search(clause):
             return "strong"
     if not _leftover(t) and not _QUESTION_START.search(t) and not _NOT_A_STOP.search(t) \
             and not _FREQUENCY.search(t):
@@ -554,8 +574,11 @@ def is_stop_request(text: object, current: object = None) -> bool:
 
 
 def has_reschedule_cue(text: object) -> bool:
-    """Any time, third-party or redirection cue (used by the post-call flag too)."""
-    return bool(_NOT_A_STOP.search(normalize(text)))
+    """Any time, third-party or redirection cue (used by the post-call flag too).
+
+    "From now on / after today" is not one: it makes a stop stronger.
+    """
+    return bool(_NOT_A_STOP.search(_FROM_NOW_ON.sub(" ", normalize(text))))
 
 
 # ── What the engine must never say ───────────────────────────────────────────
