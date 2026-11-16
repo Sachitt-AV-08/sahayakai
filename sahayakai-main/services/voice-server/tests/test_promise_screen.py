@@ -475,3 +475,24 @@ def test_politeness_stays_politeness(text):
 def test_through_the_handler_wont_disturb_you_again_is_replaced(language, text, tmp_path, monkeypatch):
     _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, "positive_feedback", text, tmp_path, monkeypatch)
     _assert_replaced_and_going_on(language, text, run, model_text, tts, db)
+
+
+# ── a Hindi promise that names no caller (review, lower priority) ───────────
+
+NO_CALLER_PROMISES = ["जी ठीक है, फ़ोन नहीं करेंगे।", "आगे कोई कॉल नहीं आएगी।"]
+
+
+@pytest.mark.parametrize("text", NO_CALLER_PROMISES)
+def test_a_hindi_promise_that_names_no_caller_is_matched(text):
+    assert is_no_more_calls_promise(text), text
+
+
+def test_a_named_third_person_caller_is_still_not_a_match():
+    assert not is_no_more_calls_promise("क्लास टीचर फ़ोन नहीं करेंगे, आप स्कूल आकर मिल सकते हैं।")
+    assert not is_no_more_calls_promise("अभी फ़ोन नहीं करेंगे, शाम को करेंगे।")
+
+
+@pytest.mark.parametrize("text", NO_CALLER_PROMISES)
+def test_through_the_handler_a_no_caller_promise_is_replaced(text, tmp_path, monkeypatch):
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call("Hindi", "request_to_talk", text, tmp_path, monkeypatch)
+    _assert_replaced_and_going_on("Hindi", text, run, model_text, tts, db)

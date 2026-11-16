@@ -479,6 +479,15 @@ _HOW_LONG = _compile(
     _word(r"વધુ|લાંબો|વધારે"),
 )
 
+# A Hindi "won't call / no call will come" that names no caller ("जी ठीक
+# है, फ़ोन नहीं करेंगे", "आगे कोई कॉल नहीं आएगी") is ours: it counts unless a
+# third person is the subject ("क्लास टीचर फ़ोन नहीं करेंगे, आप स्कूल आकर
+# मिल सकते हैं").
+_HI_NO_CALLER = re.compile(
+    rf"{_HI_CALLS}\s*{_N}नहीं\s*(?:करेंगे|आएगा|आयेगा|आएगी|आयेगी|आएँगी|आएंगी|आएँगे|आएंगे|आयेंगे){_END}"
+)
+_HI_THIRD_PERSON = _compile(_word(r"टीचर|सर|मैडम|मैम|वो|वे|वह|प्रिंसिपल|उन्होंने"), r"\bteacher\b")
+
 # We / I as the subject, or you as the object, in each call language.
 _PROMISE_PERSON = _compile(
     r"\b(?:hum|hamne|main|mai|aapko|apko|tumhe|tumko)\b",
@@ -558,7 +567,7 @@ def is_no_more_calls_promise(text: object) -> bool:
         return False
     said = bool(_PROMISE_FIRST.search(t)) or bool(
         _PROMISE_NEUTRAL.search(t) and (_PROMISE_PERSON.search(t) or _PROMISE_MARKER.search(t))
-    ) or (
+    ) or bool(_HI_NO_CALLER.search(t) and not _HI_THIRD_PERSON.search(t)) or (
         not _HOW_LONG.search(t) and bool(
             _DISTURB_EN.search(t) or (_DISTURB.search(t) and _PROMISE_PERSON.search(t) and _PROMISE_REPEAT.search(t))
         )
