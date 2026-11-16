@@ -365,9 +365,11 @@ def is_stop_request(text: object, current: object = None) -> bool:
     for the teacher (StopListener).
 
     `current`: when `text` is the previous transcription joined to the
-    current one, the part that was just said. What makes a stop strong must
-    be in it: "can you say that AGAIN?" followed by "don't call me at work"
-    is not a strong stop.
+    current one, the part that was just said. When the stop phrase is wholly
+    in it, what makes the stop strong must be in it too ("can you say that
+    AGAIN?" then "don't call me, I'm busy" is not a strong stop). When the
+    stop itself is split across the two ("मुझे दोबारा फ़ोन" then "मत करना,
+    मैं व्यस्त रहता हूँ"), the joined text is judged.
     """
     t = normalize(text)
     if not t:
@@ -378,7 +380,8 @@ def is_stop_request(text: object, current: object = None) -> bool:
         return False
     if not _NOT_A_STOP.search(t):
         return True
-    strong_in = t if current is None else normalize(current)
+    cur = None if current is None else normalize(current)
+    strong_in = cur if cur and _STOP_PHRASES.search(cur) else t
     return bool(_STRONG_STOP.search(strong_in)) and not _LIMITS.search(t)
 
 

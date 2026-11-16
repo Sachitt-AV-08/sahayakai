@@ -497,3 +497,43 @@ def test_a_limit_through_the_real_handler_records_nothing_and_reaches_the_model(
     noted = load_call_lines()["en-IN" if language == "English" else "hi-IN"]["opt_out_noted"]
     assert noted not in spoken
     assert passed == list(utterances), "the model hears the parent as usual"
+
+
+
+# ── a stop split across two transcriptions (review #3) ──────────────────────
+# Strength was judged on the just-said part alone, so a stop whose "again"
+# was in the FIRST part and "busy" in the second was vetoed by "busy".
+
+SPLIT_STRONG_STOPS = [
+    ("मुझे दोबारा फ़ोन", "मत करना, मैं व्यस्त रहता हूँ"),
+    ("Stop", "calling me, I'm busy"),
+    ("मुझे ये कॉल्स", "नहीं चाहिए, मैं बिज़ी रहता हूँ"),
+    ("Please don't call me", "again, I'm busy"),
+    ("আমাকে আর ফোন", "করবেন না, আমি ব্যস্ত"),
+]
+SPLIT_NOT_STOPS = [
+    ("Sorry, can you say that again?", "Don't call me, I'm busy"),
+    ("Sorry, can you say that again?", "I'm at work, don't call me at work"),
+]
+
+
+@pytest.mark.parametrize("parts", SPLIT_STRONG_STOPS, ids=lambda p: " / ".join(p)[:40])
+def test_a_strong_stop_split_across_two_transcriptions_is_noticed(parts):
+    c = StopListener()
+    assert any([c.on_parent_speech(t) for t in parts]), parts
+
+
+@pytest.mark.parametrize("parts", SPLIT_NOT_STOPS, ids=lambda p: " / ".join(p)[:40])
+def test_a_repeat_word_in_an_earlier_unrelated_sentence_still_does_not_make_it_strong(parts):
+    c = StopListener()
+    assert [c.on_parent_speech(t) for t in parts] == [False, False]
+
+
+@pytest.mark.parametrize("parts", SPLIT_STRONG_STOPS[:2], ids=lambda p: " / ".join(p)[:40])
+def test_through_the_handler_the_split_stop_is_recorded(parts, tmp_path, monkeypatch):
+    from test_opt_out_never_suppresses import _run_call
+
+    language = "English" if parts[0].isascii() else "Hindi"
+    db, _persisted, spoken, _passed = _run_call(language, parts, tmp_path, monkeypatch)
+    [request] = opt_out_requests(db)
+    assert request["quote"] == " ".join(parts) and request["source"] == "live"
