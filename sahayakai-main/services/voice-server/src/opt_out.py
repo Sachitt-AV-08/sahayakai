@@ -269,6 +269,10 @@ _TIME_PARTS = (
     r"after|before|until|till|during|weekend|weekdays?|"
     r"o'?clock|\d{1,2}\s*(?:am|pm)|minutes?|hours?|next week|this week|exams?)\b",
     r"\b(?:abhi|baad|kal|shaam|subah|raat|dopahar|aaj|ghante|minute|baje)\b",
+    r"\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|daytime|between)\b",
+    _word(r"रविवार|संडे|सोमवार|मंगलवार|बुधवार|गुरुवार|शुक्रवार|शनिवार"),
+    _word(r"রবিবার|সোমবার|মঙ্গলবার|বুধবার|বৃহস্পতিবার|শুক্রবার|শনিবার"),
+    _word(r"रविवारी|सोमवारी|मंगळवारी|बुधवारी|गुरुवारी|शुक्रवारी|शनिवारी"),
     _word(r"अभी|बाद|कल|शाम|सुबह|रात|दोपहर|आज|घंटे|मिनट|बजे"),
     _word(r"आता|नंतर|उद्या|संध्याकाळी|सकाळी|रात्री|दुपारी"),
     _word(r"এখন|পরে|কাল|সন্ধ্যা|সন্ধ্যায়|সকাল|সকালে|রাতে|দুপুর|দুপুরে|আজ"),
@@ -573,6 +577,15 @@ def is_stop_request(text: object, current: object = None) -> bool:
     return stop_kind(text, current) is not None
 
 
+def has_strong_marker(text: object) -> bool:
+    """Does this say "never again" in any of the live detector's ways?"""
+    t = normalize(text)
+    return bool(t) and bool(
+        _UNAMBIGUOUS.search(t) or _FROM_NOW_ON.search(t) or _STRONG_PHRASES.search(t)
+        or any(_next_to_a_repeat_word(clause) for clause, _q in _clauses(text if isinstance(text, str) else ""))
+    )
+
+
 def has_reschedule_cue(text: object) -> bool:
     """Any time, third-party or redirection cue (used by the post-call flag too).
 
@@ -844,6 +857,11 @@ def backstop_quote(insights: Mapping[str, Any] | None, transcript: Sequence[Mapp
     PARENT's turns, AND the quote is not a rescheduling request. A model that
     invents or paraphrases a quote, or reads "call me later" as a stop, is
     ignored.
+
+    "Not a rescheduling request" is the live detector's rule: a limit (time,
+    place, someone else, redirection, or "busy") rejects the quote only when
+    no strong marker is in it. "Stop calling me, I'm busy" or "don't call me
+    again, I'm at work all day" is a stop.
     """
     if not isinstance(insights, Mapping):
         return None
@@ -852,7 +870,7 @@ def backstop_quote(insights: Mapping[str, Any] | None, transcript: Sequence[Mapp
         return None
     quote = opt_out.get("quote")
     needle = normalize(quote)
-    if len(needle) < 4 or has_reschedule_cue(needle):
+    if len(needle) < 4 or (has_reschedule_cue(needle) and not has_strong_marker(quote)):
         return None
     for turn in transcript:
         if isinstance(turn, Mapping) and turn.get("role") == "parent" and needle in normalize(turn.get("text")):
