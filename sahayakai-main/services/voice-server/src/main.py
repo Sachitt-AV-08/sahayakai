@@ -31,6 +31,7 @@ from src.vobiz import (
     consume_stream_token_firestore,
 )
 from src.stream_tokens import StreamUse
+from src.log_redaction import with_redaction
 
 # After the pipeline ends on its own (last turn, or a stop request) the final
 # sentence may still be playing from the carrier's buffer: the transport sends
@@ -533,11 +534,17 @@ def main():
     if missing:
         logger.warning(f"Missing API keys: {', '.join(missing)}")
 
+    # uvicorn logs each accepted WebSocket with its query string, which on
+    # the Vobiz route carries the signed stream token; redact it before any
+    # handler writes it (src/log_redaction.py).
+    from uvicorn.config import LOGGING_CONFIG
+
     uvicorn.run(
         "src.main:app",
         host=config.host,
         port=config.port,
         ws_max_size=16 * 1024 * 1024,  # 16MB for audio chunks
+        log_config=with_redaction(LOGGING_CONFIG),
     )
 
 

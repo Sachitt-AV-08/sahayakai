@@ -267,7 +267,29 @@ _SPECIFIC: dict[str, dict[str, Any]] = {
     "loguru": {"logger": _Logger()},
     # main.py catches it, so it must be a real exception class.
     "fastapi": {"WebSocketDisconnect": type("WebSocketDisconnect", (Exception,), {})},
+    "uvicorn.config": {"LOGGING_CONFIG": None},  # filled in below
 }
+
+# The shape of uvicorn.config.LOGGING_CONFIG (uvicorn 0.46), with stdlib
+# formatters so it can be applied without uvicorn installed.
+UVICORN_LOGGING_CONFIG: dict = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {"format": "%(levelname)s: %(message)s"},
+        "access": {"format": "%(levelname)s: %(message)s"},
+    },
+    "handlers": {
+        "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stderr"},
+        "access": {"formatter": "access", "class": "logging.StreamHandler", "stream": "ext://sys.stdout"},
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+    },
+}
+_SPECIFIC["uvicorn.config"]["LOGGING_CONFIG"] = UVICORN_LOGGING_CONFIG
 
 
 def _root(name: str) -> str:
