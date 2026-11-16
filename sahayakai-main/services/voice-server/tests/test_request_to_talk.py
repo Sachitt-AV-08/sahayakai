@@ -370,14 +370,9 @@ def test_bounded_identity_guard():
 # itself (src/locales/call-scripts/request-to-talk.json); this service cannot
 # read it at runtime because its Docker build context is this directory only.
 def test_request_line_matches_the_web_apps_copy():
-    from bot_harness import monorepo_root
+    from bot_harness import contract_file_or_skip
 
-    root = monorepo_root()
-    if root is None:
-        pytest.skip("this service was copied out of the monorepo (e.g. the Cloud Build upload)")
-    web_lines = root / "sahayakai-main" / "src" / "locales" / "call-scripts" / "request-to-talk.json"
-    if not web_lines.exists():
-        pytest.skip(f"{web_lines.name} is not on this branch yet; the check runs once it is")
+    web_lines = contract_file_or_skip("sahayakai-main/src/locales/call-scripts/request-to-talk.json")
     web = json.loads(web_lines.read_text(encoding="utf-8"))["lines"]
     ours = load_call_lines()
     for language, code in LANGUAGE_CODES.items():

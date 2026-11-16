@@ -7,9 +7,13 @@
 # --no-traffic and tagged `candidate`. Promotion is a separate, manual step
 # after a test call reaches the candidate.
 #
-# Build and deploy a candidate (the build context is this directory only):
-#   gcloud builds submit sahayakai-main/services/voice-server \
+# Build and deploy a candidate, from the MONOREPO ROOT. The upload is limited to
+# this service plus the web and agents files its contract tests read
+# (cloudbuild.gcloudignore, an allowlist); the Docker build context is still
+# this directory only:
+#   gcloud builds submit . \
 #     --config=sahayakai-main/services/voice-server/cloudbuild.yaml \
+#     --ignore-file=sahayakai-main/services/voice-server/cloudbuild.gcloudignore \
 #     --project=sahayakai-b4248
 #
 # Candidate URL (reaches the new revision only):
@@ -66,6 +70,11 @@ steps:
   # only, so a red gate stops the deploy before anything is built.
   - id: test
     name: python:3.12-slim
+    dir: sahayakai-main/services/voice-server
+    # The contract tests read the web and agents files uploaded alongside;
+    # without the monorepo they must fail, not skip.
+    env:
+      - VOICE_SERVER_REQUIRE_MONOREPO=1
     entrypoint: bash
     args:
       - -ceu
@@ -78,7 +87,7 @@ steps:
     args:
       - build
       - --tag=asia-southeast1-docker.pkg.dev/sahayakai-b4248/cloud-run-source-deploy/sahayakai-telephony:$BUILD_ID
-      - .
+      - sahayakai-main/services/voice-server
     waitFor: [test]
 
   # Run the engine against the REAL packages in the image it just built: the

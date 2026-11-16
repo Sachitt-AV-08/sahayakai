@@ -39,7 +39,8 @@ from bot_harness import (
     TranscriptionFrame,
     build_bot,
     import_main,
-    monorepo_root,
+    CONTRACT_FILES,
+    contract_file_or_skip,
     run_from_recorder,
     run_vobiz_path,
     stubbed_runtime,
@@ -58,7 +59,6 @@ from src.opt_out import (
 )
 
 TESTS = Path(__file__).resolve().parent
-REPO = monorepo_root()  # None when the service is built on its own
 FIXTURE = json.loads((TESTS / "fixtures" / "suppression_digest.json").read_text(encoding="utf-8"))
 PHONE = FIXTURE["cases"][0]["phone"]
 DIGEST = FIXTURE["cases"][0]["digest"]
@@ -104,9 +104,7 @@ def test_node_computes_the_same_digest_with_the_web_modules_expression():
         assert out.stdout == case["digest"]
 
 
-def _pinned(path: Path) -> tuple[str, str] | None:
-    if not path.exists():
-        return None
+def _pinned(path: Path) -> tuple[str, str]:
     text = path.read_text(encoding="utf-8")
     phone = re.search(r"FIXTURE_PHONE\s*=\s*['\"]([^'\"]+)['\"]", text)
     digest = re.search(r"FIXTURE_DIGEST\s*=\s*['\"]([0-9a-f]{64})['\"]", text)
@@ -114,17 +112,12 @@ def _pinned(path: Path) -> tuple[str, str] | None:
     return phone.group(1), digest.group(1)
 
 
-@pytest.mark.parametrize("relative", [
-    "sahayakai-main/src/__tests__/lib/call-suppression.test.ts",
-    "sahayakai-agents/tests/unit/test_telephony_opt_out_persistence.py",
-])
-def test_the_web_and_agents_tests_pin_the_same_pair(relative):
-    if REPO is None:
-        pytest.skip("this service was copied out of the monorepo (e.g. the Cloud Build upload)")
-    pinned = _pinned(REPO / relative)
-    if pinned is None:
-        pytest.skip(f"{relative} is not on this branch yet; the check runs once it is")
-    assert pinned == (PHONE, DIGEST)
+@pytest.mark.parametrize("relative", [f for f in CONTRACT_FILES if "suppression" in f or "opt_out" in f])
+def test_the_web_and_agents_tests_pin_a_pair_we_agree_with(relative):
+    # Not literal equality with our fixture: each side may pin its own made-up
+    # number. What must hold is that their pinned digest is the one we compute.
+    phone, digest = _pinned(contract_file_or_skip(relative))
+    assert phone_suppression_id(phone) == digest, relative
 
 
 # ── the write ────────────────────────────────────────────────────────────────

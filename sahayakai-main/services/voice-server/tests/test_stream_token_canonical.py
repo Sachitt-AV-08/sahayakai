@@ -178,3 +178,17 @@ def test_a_token_minted_the_web_apps_way_is_accepted():
                            capture_output=True, text=True, check=True, timeout=30).stdout
     assert parse_stream_token(token) is not None
     assert _verify(token) == OUTREACH
+
+
+def test_the_shared_token_format_fixture_is_exactly_what_the_engine_accepts():
+    """The web side checks its minted tokens against this fixture on every PR."""
+    import json
+    from pathlib import Path
+
+    from src import stream_tokens
+
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "stream_token_format.json").read_text(encoding="utf-8"))
+    assert fixture["domain"] == stream_tokens.STREAM_DOMAIN
+    assert fixture["outreach_id"] == stream_tokens._OUTREACH_ID.pattern
+    assert fixture["exp"] == stream_tokens._EXPIRY.pattern
+    assert fixture["signature"] == stream_tokens._SIGNATURE.pattern

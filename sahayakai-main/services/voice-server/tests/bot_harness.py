@@ -27,6 +27,42 @@ from importlib.machinery import ModuleSpec
 from typing import Any, Iterator
 
 
+# The other side's files the contract tests read. One list: the GitHub
+# workflow triggers, the Cloud Build upload allowlist and the tests all follow
+# it (tests/test_contract_wiring.py).
+CONTRACT_FILES = (
+    "sahayakai-main/src/__tests__/lib/call-suppression.test.ts",
+    "sahayakai-agents/tests/unit/test_telephony_opt_out_persistence.py",
+    "sahayakai-main/src/locales/call-scripts/request-to-talk.json",
+)
+REQUIRE_MONOREPO_ENV = "VOICE_SERVER_REQUIRE_MONOREPO"
+REQUIRE_CONTRACT_FILES_ENV = "VOICE_SERVER_REQUIRE_CONTRACT_FILES"
+
+
+def contract_file_or_skip(relative: str):
+    """The path of a contract file, or skip (or fail, when CI says it must be there).
+
+    In GitHub Actions and the Cloud Build test step VOICE_SERVER_REQUIRE_MONOREPO=1,
+    so a missing monorepo is a failure, not a silent skip. A file the other
+    side has not merged yet still skips, unless VOICE_SERVER_REQUIRE_CONTRACT_FILES=1.
+    """
+    import os
+
+    import pytest
+
+    root = monorepo_root()
+    if root is None:
+        if os.environ.get(REQUIRE_MONOREPO_ENV) == "1":
+            pytest.fail("the monorepo is required here but this service was copied out of it")
+        pytest.skip("this service was copied out of the monorepo")
+    path = root / relative
+    if not path.exists():
+        if os.environ.get(REQUIRE_CONTRACT_FILES_ENV) == "1":
+            pytest.fail(f"{relative} is required but missing")
+        pytest.skip(f"{relative} is not on this branch yet; the check runs once it is")
+    return path
+
+
 def monorepo_root():
     """The repository root when this service sits in its usual place in the monorepo.
 
