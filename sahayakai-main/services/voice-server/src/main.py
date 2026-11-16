@@ -63,11 +63,11 @@ def _opt_out_writer(authenticated_outreach_id: str):
     from an unauthenticated handshake. tests/test_opt_out_auth.py enforces
     this over every handler in this file.
     """
-    async def _write() -> bool:
+    async def _write(quote: str | None = None) -> bool:
         if authenticated_outreach_id.startswith("__test__"):
             logger.info(f"Test call {authenticated_outreach_id}: opt-out heard, nothing persisted")
             return True
-        return await persist_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project)
+        return await persist_opt_out_firestore(authenticated_outreach_id, config.google_cloud_project, quote)
 
     return _write
 
@@ -494,9 +494,27 @@ async def _wait_for_plivo_start(websocket: WebSocket, max_messages: int = 5) -> 
     return ""
 
 
+OPT_OUT_NOTE = (
+    "The parent asked not to be called again and confirmed it on the call. "
+    "They will not be called by this system; please reach them another way."
+)
+
+
 def _to_call_summary(insights: dict) -> dict:
     """Map post-call analysis insights onto the parent_outreach.callSummary shape
     the Contact-Parent modal renders (src/types/attendance CallSummary)."""
+    summary = _summary_from_insights(insights)
+    if insights.get("optOutConfirmed"):
+        # First thing the teacher reads, with the parent's own words.
+        quote = insights.get("optOutQuote") or ""
+        note = OPT_OUT_NOTE + (f' Their words: "{quote}"' if quote else "")
+        summary["actionItemsForTeacher"] = [note, *summary["actionItemsForTeacher"]]
+        summary["parentResponse"] = summary["parentResponse"] or "The parent asked not to be called again."
+        summary["followUpNeeded"] = True
+    return summary
+
+
+def _summary_from_insights(insights: dict) -> dict:
     follow_ups = insights.get("followUps") or []
     return {
         "parentResponse": insights.get("parentResponse") or insights.get("summary") or "",

@@ -87,7 +87,9 @@ class OptOutWrite:
     detail: str
 
 
-async def persist_opt_out(db: Any, outreach_id: str, *, now: str | None = None) -> OptOutWrite:
+async def persist_opt_out(
+    db: Any, outreach_id: str, *, now: str | None = None, quote: str | None = None,
+) -> OptOutWrite:
     """Write call_suppressions/{sha256(phone)} for this outreach's parent.
 
     `db` is a google.cloud.firestore.AsyncClient (or a fake with the same
@@ -114,7 +116,10 @@ async def persist_opt_out(db: Any, outreach_id: str, *, now: str | None = None) 
         return OptOutWrite(False, f"suppression write failed for {outreach_id}: {type(exc).__name__}: {exc}")
 
     try:
-        await ref.update({"optedOut": True, "optedOutAt": now, "updatedAt": now})
+        flag = {"optedOut": True, "optedOutAt": now, "updatedAt": now, "optOutSource": "parent_speech"}
+        if quote:
+            flag["optOutQuote"] = quote[:500]  # the parent's own words, for the teacher
+        await ref.update(flag)
     except Exception as exc:  # noqa: BLE001
         return OptOutWrite(True, f"suppression saved; outreach flag not set: {type(exc).__name__}")
     return OptOutWrite(True, "suppression saved")

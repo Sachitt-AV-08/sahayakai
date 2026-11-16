@@ -132,7 +132,7 @@ async def write_call_result_firestore(
         logger.error(f"Firestore result write failed for {outreach_id}: {e}")
 
 
-async def persist_opt_out_firestore(outreach_id: str, project: str) -> bool:
+async def persist_opt_out_firestore(outreach_id: str, project: str, quote: str | None = None) -> bool:
     """Save "do not call this parent again" where the web app's dial check reads it.
 
     Writes call_suppressions/{sha256(parentPhone)} (src/opt_out.py has the
@@ -142,7 +142,7 @@ async def persist_opt_out_firestore(outreach_id: str, project: str) -> bool:
     from src.opt_out import persist_opt_out
 
     try:
-        result = await persist_opt_out(_db(project), outreach_id)
+        result = await persist_opt_out(_db(project), outreach_id, quote=quote)
     except Exception as e:  # noqa: BLE001 — e.g. the client itself could not be built
         logger.error(f"Opt-out write failed for {outreach_id}: {e}")
         return False

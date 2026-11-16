@@ -163,7 +163,7 @@ class Writer:
     def __init__(self):
         self.calls = 0
 
-    async def __call__(self):
+    async def __call__(self, *args):
         self.calls += 1
         return True
 

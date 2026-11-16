@@ -342,7 +342,7 @@ async def create_bot(
             logger.error(f"Opt-out for {outreach_id} NOT saved: no writer configured")
             return False
         try:
-            saved = bool(await on_opt_out())
+            saved = bool(await on_opt_out(opt_out.get("quote")))
         except Exception as e:  # noqa: BLE001
             logger.error(f"Opt-out write raised for {outreach_id}: {e}")
             saved = False
@@ -357,6 +357,7 @@ async def create_bot(
         # parent's words and the question go into the conversation so that,
         # if the answer is no, the model carries on knowing what was asked.
         logger.info(f"Possible stop request (outreach {outreach_id}); asking the parent to confirm")
+        opt_out["asked_about"] = text
         context.add_message({"role": "user", "content": text})
         context.add_message({"role": "assistant", "content": plan.stop_confirmation_question})
         await task.queue_frames([TTSSpeakFrame(text=plan.stop_confirmation_question)])
@@ -366,6 +367,14 @@ async def create_bot(
             return
         opt_out["requested"] = True
         opt_out["source"] = "parent_speech"
+        # The teacher must be able to see why this parent will not be called
+        # again: the parent's words, the question, the yes and the
+        # acknowledgement all go into the conversation record (the model is
+        # not asked anything further; EndFrame follows).
+        opt_out["quote"] = " / ".join(t for t in (opt_out.get("asked_about"), answer) if t)
+        if answer:
+            context.add_message({"role": "user", "content": answer})
+        context.add_message({"role": "assistant", "content": plan.stop_acknowledgement})
         logger.info(f"Parent confirmed they do not want calls (outreach {outreach_id}); acknowledging and ending")
         opt_out["write"] = asyncio.ensure_future(_write_opt_out())
         await task.queue_frames([TTSSpeakFrame(text=plan.stop_acknowledgement), EndFrame()])
@@ -529,6 +538,11 @@ async def create_bot(
         # Provider-specific finalisation. The Vobiz path uses this to write the
         # transcript + summary to Firestore (for the modal) and to end the leg
         # over Vobiz REST — the Twilio serializer hangs up on its own instead.
+        if opt_out["requested"] and on_opt_out is not None:
+            # Make the summary say so even when the analysis is missing.
+            insights = dict(insights or {})
+            insights["optOutConfirmed"] = True
+            insights["optOutQuote"] = opt_out.get("quote") or ""
         if on_call_end:
             try:
                 await on_call_end(transcript, turns, insights)

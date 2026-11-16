@@ -278,7 +278,7 @@ class Writer:
         self.results = list(results)
         self.calls = 0
 
-    async def __call__(self):
+    async def __call__(self, *args):
         self.calls += 1
         return self.results[min(self.calls, len(self.results)) - 1]
 
