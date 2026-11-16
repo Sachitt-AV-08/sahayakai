@@ -412,3 +412,32 @@ TIMED_CALLS = [("Hindi", TIMED_PROMISES[-1]), ("Hindi", TIMED_PROMISES[2]), ("En
 def test_a_promise_with_a_time_word_never_reaches_tts(language, reply, mode, tmp_path, monkeypatch):
     _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, mode, reply, tmp_path, monkeypatch)
     _assert_replaced_and_going_on(language, reply, run, model_text, tts, db)
+
+
+# ── a negated verb is not a "will call" (review #2) ─────────────────────────
+# The reschedule check's "will call" matched the start of a NEGATED verb:
+# "করবো না" read as "করব" + "ো" with no "না" right after, so "এখন থেকে আর
+# ফোন করবো না" (a time word plus that "will call") was excused and spoken.
+
+NEGATED_VERB_PROMISES = [
+    ("Bengali", "এখন থেকে আর ফোন করবো না।"),
+    ("Bengali", "আজ থেকে আর ফোন করবো না।"),
+    ("Bengali", "আজ থেকে আমরা আপনাকে আর ফোন দেবো না।"),
+    ("Gujarati", "હવે પછી અમે તમને ફોન કરીશું નહીં."),
+]
+
+
+@pytest.mark.parametrize("language,text", NEGATED_VERB_PROMISES, ids=lambda v: v[:30])
+def test_a_negated_verb_is_not_read_as_will_call(language, text):
+    assert is_no_more_calls_promise(text), text
+
+
+@pytest.mark.parametrize("language,text", NEGATED_VERB_PROMISES, ids=lambda v: v[:30])
+def test_through_the_handler_a_negated_verb_promise_is_replaced(language, text, tmp_path, monkeypatch):
+    _runner, run, model_text, tts, _hangups, db = _vobiz_call(language, "request_to_talk", text, tmp_path, monkeypatch)
+    _assert_replaced_and_going_on(language, text, run, model_text, tts, db)
+
+
+def test_a_genuine_bengali_and_gujarati_reschedule_still_excuses():
+    assert not is_no_more_calls_promise("আমরা এখন ফোন করবো না, সন্ধ্যায় ফোন করবো।")
+    assert not is_no_more_calls_promise("અમે હમણાં ફોન નહીં કરીએ, સાંજે ફોન કરીશું.")
