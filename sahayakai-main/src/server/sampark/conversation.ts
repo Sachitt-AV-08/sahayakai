@@ -65,6 +65,7 @@ import { forwardResponse, forwardWebhook, isAthithiEvent, productContextOf, read
 import { hashId } from '@/lib/sampark/intents';
 import { decryptPhone, hashPhone } from '@/lib/sampark/phone';
 import { evaluateGate, FREQUENCY_WINDOW_MS } from '@/lib/sampark/policy/gate';
+import { countRoutineCallsToPhone } from '@/lib/sampark/policy/recent-calls';
 import { SAMPARK_NONPROD_DATABASE } from '@/lib/sampark/repo/factory';
 import { SARGVISION_ORG_ID } from '@/lib/sampark/sargvision';
 import { acceptSynopsis, rulesSynopsis, spokenTurns, synopsisNeedsWrite, type RiyaSynopsis, type SynopsisInput } from '@/lib/sampark/conversation/synopsis';
@@ -644,8 +645,7 @@ async function evaluate(deps: RiyaDeps, orgId: string, input: RiyaPreviewInput):
     // (test calls are recorded against the test phone, so they never add to it).
     const recentCallsToPhone = spec.emergency
         ? 0
-        : (await deps.repo.countCallsToPhoneSince(orgId, guardian.phoneHash, since, true)) +
-          (await deps.calls.countRealCallsToPhoneSince(orgId, guardian.phoneHash, since));
+        : await countRoutineCallsToPhone({ notice: deps.repo, conversation: deps.calls }, orgId, guardian.phoneHash, since);
 
     const verdict = evaluateGate({
         school,
@@ -849,10 +849,12 @@ export async function startRiyaCall(deps: RiyaDeps, orgId: string, uid: string, 
     const factsHash = factsHashOf(input.purpose, preview.variables);
 
     // 9a. An unresolved earlier attempt at the same announcement to the same family blocks this one.
-    const recent = await deps.calls.listCalls(orgId, 100);
-    const unresolved = recent.find((c) =>
-        c.guardianId === guardian.id && c.studentId === student.id && c.factsHash === factsHash &&
+    // Read by family and announcement, not from the latest page of the school's calls: an old
+    // unknown outcome must keep blocking however many calls the school has placed since.
+    const unresolved = (await deps.calls.listCallsForAnnouncement(orgId, guardian.id, factsHash)).find((c) =>
+        c.studentId === student.id &&
         (!isTerminalConversationState(c.state) || (c.state === 'unknown' && !c.reviewedAt)));
+    const recent = await deps.calls.listCalls(orgId, 100);
     if (unresolved) throw conflict('UNRESOLVED_PREVIOUS_CALL', 'An earlier call to this family about the same thing has no confirmed outcome yet; check it before calling again');
 
     // 9b. Test mode: a small daily cap on calls to the test phone.
