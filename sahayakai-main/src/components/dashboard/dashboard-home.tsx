@@ -45,6 +45,7 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useLanguage } from "@/context/language-context";
 import { LANGUAGE_TO_ISO } from "@/types";
+import { tts } from "@/lib/tts";
 import { SectionCard } from "@/components/layout";
 import { SampleOutputSection } from "@/components/landing/sample-output-section";
 import { useCommunityIntro } from "@/hooks/use-community-intro";
@@ -184,8 +185,12 @@ export function DashboardHome() {
   // Guards the URL voice_transcript auto-submit so it fires at most once,
   // even when the greeting effect re-runs on a language change.
   const voiceHandledRef = useRef(false);
+  // The current request was spoken (the tap-to-talk mic), so VIDYA answers it aloud too.
+  const spokenTurnRef = useRef(false);
 
   const onSubmit = async (values: FormValues) => {
+    const spoken = spokenTurnRef.current;
+    spokenTurnRef.current = false;
     if (!requireAuth()) return;
     // Determine intent using the Smart Router
     setIsThinking(true);
@@ -234,6 +239,8 @@ export function DashboardHome() {
         trackGeneration();
         setAnswer(result.content);
         setIsThinking(false);
+        // A spoken question gets a spoken answer (before, Home only showed it as text).
+        if (spoken && result.content) void tts.speak(result.content, `${LANGUAGE_TO_ISO[userLanguage] ?? "en"}-IN`);
       } else {
         // Fallback or error
         toast({
@@ -293,6 +300,7 @@ export function DashboardHome() {
   }, [form, t]);
 
   const handleTranscript = (transcript: string, _language?: string) => {
+    spokenTurnRef.current = true;
     form.setValue("topic", transcript);
     form.handleSubmit(onSubmit)();
   };
