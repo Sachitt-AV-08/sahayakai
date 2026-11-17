@@ -20,8 +20,8 @@ import { handleRiyaWebhook, UNLINKED_RETRY_WINDOW_SECONDS, type RiyaDeps } from 
 
 import { testClock } from '../engine/_fixtures';
 
-const AGENT = 'agent_0601unifiedunifiedunified0001';
-const HOTEL_AGENT = 'agent_6801hotelonlyhotelonlyhotel0001';
+const AGENT = 'agent_fakeunifiedunifiedunified0001';
+const HOTEL_AGENT = 'agent_fakehotelonlyhotelonlyhotel01';
 const SECRET = 'whsec_shared_between_both_products';
 const ATHITHI_URL = 'https://atithi-voice-bridge.example.run.app/elevenlabs/post-call';
 const NOW = new Date('2026-11-15T05:30:00.000Z');
@@ -33,7 +33,7 @@ function env(over: Record<string, string | undefined> = {}): Record<string, stri
         SAMPARK_ELEVENLABS_ENABLED: 'true',
         ELEVENLABS_API_KEY: 'xi-test',
         ELEVENLABS_AGENT_ID: AGENT,
-        ELEVENLABS_AGENT_PHONE_NUMBER_ID: 'phnum_5301numbernumbernumbernum0001',
+        ELEVENLABS_AGENT_PHONE_NUMBER_ID: 'phnum_fakenumbernumbernumbernum0001',
         ELEVENLABS_SOURCE_AGENT_ID: 'agent_0000sourcesourcesourcesource00',
         ELEVENLABS_WEBHOOK_SECRET: SECRET,
         SAMPARK_ATHITHI_WEBHOOK_URL: ATHITHI_URL,
