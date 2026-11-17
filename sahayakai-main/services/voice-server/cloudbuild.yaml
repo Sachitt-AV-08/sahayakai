@@ -52,12 +52,12 @@
 # SAHAYAKAI_REQUIRE_APP_CHECK, SAHAYAKAI_TELEPHONY_ONLY. Kept so the env of
 # the first deploy from this file matches 00037; drop them in a separate change.
 #
-# Gemini backend: this spec keeps the AI Studio key (GOOGLE_GENAI_API_KEY),
-# exactly as live. To move the conversation model and the post-call analysis
-# to Vertex AI as the runtime service account (it holds roles/aiplatform.user),
-# add SAHAYAKAI_GEMINI_BACKEND=vertex (and optionally SAHAYAKAI_VERTEX_LOCATION,
-# default asia-south1) to --set-env-vars in a deliberate change, deploy a
-# candidate and test-call it. See src/gemini_backend.py.
+# Gemini backend: Vertex AI as the runtime service account (it holds
+# roles/aiplatform.user), SAHAYAKAI_GEMINI_BACKEND=vertex, default location
+# asia-south1. Chosen 17 Nov 2026: the AI Studio key (GOOGLE_GENAI_API_KEY, still
+# bound for anything that reads it) returned 402 RESOURCE_EXHAUSTED on 16 Nov and
+# broke production calls; production web already runs on Vertex. A candidate is
+# test-called before promotion (PROMOTE.md). See src/gemini_backend.py.
 #
 # No trigger runs this file. CLASS GATE: sahayakai-main/src/__tests__/scripts/
 # one-deploy-source-per-service.test.ts fails if a second deploy definition
@@ -149,7 +149,7 @@ steps:
       - --ingress=all
       - --startup-probe=httpGet.path=/readyz,httpGet.port=8080,periodSeconds=2,timeoutSeconds=1,failureThreshold=30
       - --liveness-probe=httpGet.path=/healthz,httpGet.port=8080,periodSeconds=10,timeoutSeconds=2,failureThreshold=3
-      - --set-env-vars=GOOGLE_CLOUD_PROJECT=sahayakai-b4248,GOOGLE_CLOUD_REGION=asia-southeast1,SAHAYAKAI_AGENTS_ENV=production,SAHAYAKAI_PROMPTS_DIR=/srv/prompts,SAHAYAKAI_REQUIRE_APP_CHECK=false,SAHAYAKAI_TELEPHONY_ONLY=1
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=sahayakai-b4248,GOOGLE_CLOUD_REGION=asia-southeast1,SAHAYAKAI_AGENTS_ENV=production,SAHAYAKAI_PROMPTS_DIR=/srv/prompts,SAHAYAKAI_REQUIRE_APP_CHECK=false,SAHAYAKAI_TELEPHONY_ONLY=1,SAHAYAKAI_GEMINI_BACKEND=vertex
       - --set-secrets=GOOGLE_GENAI_API_KEY=GOOGLE_GENAI_API_KEY:latest,SAHAYAKAI_REQUEST_SIGNING_KEY=SAHAYAKAI_REQUEST_SIGNING_KEY:latest,SARVAM_AI_API_KEY=SARVAM_AI_API_KEY:latest,VOBIZ_AUTH_ID=VOBIZ_AUTH_ID:latest,VOBIZ_AUTH_TOKEN=VOBIZ_AUTH_TOKEN:latest
       - --quiet
     waitFor: [push]

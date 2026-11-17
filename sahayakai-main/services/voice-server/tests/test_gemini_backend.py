@@ -177,3 +177,18 @@ def test_a_misconfigured_backend_stops_the_server_before_it_listens(tmp_path, mo
         with pytest.raises(ValueError):
             main.main()
     assert started == []
+
+
+def test_the_deploy_spec_runs_on_vertex():
+    """Class gate: production calls must not depend on the AI Studio prepaid key.
+
+    16 Nov 2026: that key returned 402 RESOURCE_EXHAUSTED and every live parent call
+    died after one turn. The one deploy definition for sahayakai-telephony runs the
+    engine on Vertex AI as its service account.
+    """
+    from pathlib import Path
+
+    spec = (Path(__file__).resolve().parents[1] / "cloudbuild.yaml").read_text(encoding="utf-8")
+    env_lines = [ln for ln in spec.splitlines() if ln.strip().startswith("- --set-env-vars=")]
+    assert len(env_lines) == 1
+    assert "SAHAYAKAI_GEMINI_BACKEND=vertex" in env_lines[0]
