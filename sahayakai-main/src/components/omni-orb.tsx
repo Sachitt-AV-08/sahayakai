@@ -33,7 +33,6 @@ import type { VidyaLiveToolCall } from "@/lib/vidya-live/live-session";
 // Off by default: the turn-based STT → /api/assistant → TTS mic stays the
 // shipped path until the live path is rolled out. Server-side access is still
 // gated by VIDYA_VOICE_LIVE_ENABLED + VIDYA_VOICE_LIVE_ALLOWED_UIDS.
-const LIVE_VOICE_ENABLED = process.env.NEXT_PUBLIC_VIDYA_LIVE_VOICE === "1";
 
 // ADK tool name (`open_lesson_plan`) → routable flow id (`lesson-plan`).
 // Anything not in KNOWN_FLOWS is dropped, same guard as the text path.
@@ -919,13 +918,15 @@ export function OmniOrb() {
     // (VidyaLiveProvider) so the central home VIDYA and the compact tool-page
     // VIDYA both act through exactly this code path.
     const liveSession = useVidyaLiveSession();
+    // Hands-free VIDYA only when this teacher may use it (server-decided); else the tap-to-talk mic.
+    const liveEnabled = liveSession?.liveEnabled === true;
     const registerToolHandler = liveSession?.registerToolHandler;
     const registerInputBuilder = liveSession?.registerInputBuilder;
     useEffect(() => {
-        if (!LIVE_VOICE_ENABLED || !registerToolHandler || !registerInputBuilder) return;
+        if (!liveEnabled || !registerToolHandler || !registerInputBuilder) return;
         registerToolHandler(onLiveToolCall);
         registerInputBuilder(buildLiveSessionInput);
-    }, [registerToolHandler, registerInputBuilder, onLiveToolCall, buildLiveSessionInput]);
+    }, [liveEnabled, registerToolHandler, registerInputBuilder, onLiveToolCall, buildLiveSessionInput]);
     useEffect(() => () => {
         registerToolHandler?.(null);
         registerInputBuilder?.(null);
@@ -938,7 +939,7 @@ export function OmniOrb() {
     // An enhancement only: any failure here leaves voice untouched.
     const setLiveAppContext = liveSession?.setAppContext;
     useEffect(() => {
-        if (!LIVE_VOICE_ENABLED || !setLiveAppContext) return;
+        if (!liveEnabled || !setLiveAppContext) return;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const push = () => {
             if (timer) clearTimeout(timer);
@@ -956,7 +957,7 @@ export function OmniOrb() {
             if (timer) clearTimeout(timer);
             unsubscribe();
         };
-    }, [setLiveAppContext, pathname]);
+    }, [liveEnabled, setLiveAppContext, pathname]);
 
     // Chip tap handler — pops the action from pendingActions and dispatches.
     // Chips render one-shot so consecutive taps cleanly chain navigations.
@@ -1148,7 +1149,7 @@ export function OmniOrb() {
                 )}
 
                 <div className="relative z-10 pointer-events-auto">
-                    {LIVE_VOICE_ENABLED ? (
+                    {liveEnabled ? (
                         // Home ("/") shows VIDYA large and central in the
                         // workspace itself; everywhere else the SAME session
                         // is shown as a compact presence. Never two mics.

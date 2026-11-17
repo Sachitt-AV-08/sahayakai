@@ -33,7 +33,7 @@ import { MicrophoneInput, type MicStatus } from "@/components/microphone-input";
 import { greetingFirstName } from "@/lib/teacher-name";
 import { VidyaSphere, type VidyaOrbState } from "@/components/vidya/vidya-sphere";
 import { VidyaPresence } from "@/components/vidya/vidya-presence";
-import { useVidyaLiveSession, VIDYA_LIVE_VOICE_ENABLED } from "@/components/vidya/vidya-live-provider";
+import { useVidyaLiveSession } from "@/components/vidya/vidya-live-provider";
 import { vidyaStatusKey } from "@/lib/vidya-live/use-vidya-live";
 import { deriveOrbState } from "@/components/vidya/orb-state";
 import { usePrefersReducedMotion, useVidyaSpeaking } from "@/components/vidya/use-vidya-signals";
@@ -156,7 +156,8 @@ export function DashboardHome() {
   const orbState = deriveOrbState({ failed: orbFailed, micStatus, speaking: vidyaSpeaking, awaitingReply: isThinking });
   // Hands-free Live session (null when the flag is off or outside the app shell).
   const liveSession = useVidyaLiveSession();
-  const live = VIDYA_LIVE_VOICE_ENABLED ? liveSession : null;
+  // Hands-free VIDYA only when this teacher may use it; otherwise the tap-to-talk mic.
+  const live = liveSession?.liveEnabled ? liveSession : null;
   const liveOrbState: VidyaOrbState = !live ? orbState
     : live.state === "error" ? "error"
     : live.state === "listening" || live.state === "interrupted" ? "listening"
